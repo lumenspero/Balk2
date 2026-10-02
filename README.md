@@ -200,6 +200,18 @@ const markdownString = renderMarkdown(mapObj);
 const jsonString = serializeConnectionMap(mapObj);
 ```
 
+The package root is the supported programmatic entry point. Balk2 ships both ESM and CommonJS runtime entries with matching TypeScript declarations:
+
+```javascript
+// ESM
+import { ConnectionGraph } from '@lumenspero/balk2';
+
+// CommonJS
+const { ConnectionGraph } = require('@lumenspero/balk2');
+```
+
+Direct imports from `@lumenspero/balk2/dist/*` are not part of the public API.
+
 ---
 
 ## Development & Testing

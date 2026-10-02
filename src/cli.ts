@@ -1,8 +1,11 @@
 #!/usr/bin/env node
 
+import { createRequire } from 'node:module';
 import { generateConnectionMap } from './cli/generate.js';
 import { installGitHook, uninstallGitHook } from './cli/hook-installer.js';
 import { checkConnectionMap } from './cli/check.js';
+
+const packageMetadata = createRequire(import.meta.url)('../package.json') as { version: string };
 
 function main(): void {
   const args = process.argv.slice(2);
@@ -22,7 +25,7 @@ function main(): void {
   }
 
   if (args.includes('-v') || args.includes('--version')) {
-    console.log('balk2 v0.1.0');
+    console.log(`balk2 v${packageMetadata.version}`);
     process.exit(0);
   }
 

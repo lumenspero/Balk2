@@ -25,16 +25,16 @@ The package includes only `dist` in its published files, so every supported cons
 
 Phase 1 will implement the following contract.
 
-| Concern | V2 contract |
-| --- | --- |
-| Package root | `@lumenspero/balk2` is the only supported programmatic import path. |
-| Runtime modules | Ship ESM and CommonJS builds, selected through conditional package exports. |
-| Type declarations | The root entry provides declarations matching both runtime builds. |
-| CLI | `balk2` is a package binary, not a supported programmatic import path. |
-| Deep imports | `dist/*` and source-module deep imports are unsupported. |
-| Node support | Node.js 18 and later. |
+| Concern              | V2 contract                                                                         |
+| -------------------- | ----------------------------------------------------------------------------------- |
+| Package root         | `@lumenspero/balk2` is the only supported programmatic import path.                 |
+| Runtime modules      | Ship ESM and CommonJS builds, selected through conditional package exports.         |
+| Type declarations    | The root entry provides declarations matching both runtime builds.                  |
+| CLI                  | `balk2` is a package binary, not a supported programmatic import path.              |
+| Deep imports         | `dist/*` and source-module deep imports are unsupported.                            |
+| Node support         | Node.js 18 and later.                                                               |
 | TypeScript consumers | Node16, NodeNext, and Bundler module resolution must resolve the root declarations. |
-| Version reporting | `balk2 --version` reports the installed package version. |
+| Version reporting    | `balk2 --version` reports the installed package version.                            |
 
 This contract intentionally favors a narrow, stable public API. New subpath exports require documentation and packed-package tests before release.
 
@@ -42,16 +42,16 @@ This contract intentionally favors a narrow, stable public API. New subpath expo
 
 The current root entry point exports these public groups. Phase 1 package tests must prove that each value export can be imported at runtime and each type export can be resolved by TypeScript.
 
-| Group | Public exports |
-| --- | --- |
-| Graph | `ConnectionGraph`, `normalizePath` |
-| Serialization | `serializeConnectionMap`, `deserializeConnectionMap` |
-| Analyzers | `JsTsAnalyzer`, `PythonAnalyzer`, `resolveImportPath`, `Analyzer`, `AnalyzerOptions` |
-| Data | `SUPPORTED_DATA_EXTENSIONS`, `detectArtifactFormat`, `isDataArtifact`, `registerDataArtifacts`, `inferDataRelationshipType`, `addDataRelationship`, `DataReference` |
-| Rendering | `renderMarkdown`, `findConnectionPaths`, `MarkdownOptions`, `PathFinderOptions`, `FormattedPath` |
-| Generation and Git | `generateConnectionMap`, `installGitHook`, `uninstallGitHook`, `checkConnectionMap`, `getGitCommitHash`, `isGitRepository`, `GenerateOptions`, `GenerateResult`, `HookResult`, `CheckOptions`, `CheckResult` |
-| Configuration | `loadBalk2Config`, `applyExplicitLineage`, `filterFilesWithConfig`, `matchPattern`, `Balk2Config`, `DataConfig`, `DataLineageEntry` |
-| Graph types | `NodeKind`, `FileNode`, `SymbolNode`, `SymbolType`, `ArtifactNode`, `ArtifactFormat`, `GraphNode`, `CodeRelationship`, `DataRelationship`, `RelationshipType`, `Confidence`, `Relationship`, `RepositoryMetadata`, `ConnectionMap` |
+| Group              | Public exports                                                                                                                                                                                                                     |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Graph              | `ConnectionGraph`, `normalizePath`                                                                                                                                                                                                 |
+| Serialization      | `serializeConnectionMap`, `deserializeConnectionMap`                                                                                                                                                                               |
+| Analyzers          | `JsTsAnalyzer`, `PythonAnalyzer`, `resolveImportPath`, `Analyzer`, `AnalyzerOptions`                                                                                                                                               |
+| Data               | `SUPPORTED_DATA_EXTENSIONS`, `detectArtifactFormat`, `isDataArtifact`, `registerDataArtifacts`, `inferDataRelationshipType`, `addDataRelationship`, `DataReference`                                                                |
+| Rendering          | `renderMarkdown`, `findConnectionPaths`, `MarkdownOptions`, `PathFinderOptions`, `FormattedPath`                                                                                                                                   |
+| Generation and Git | `generateConnectionMap`, `installGitHook`, `uninstallGitHook`, `checkConnectionMap`, `getGitCommitHash`, `isGitRepository`, `GenerateOptions`, `GenerateResult`, `HookResult`, `CheckOptions`, `CheckResult`                       |
+| Configuration      | `loadBalk2Config`, `applyExplicitLineage`, `filterFilesWithConfig`, `matchPattern`, `Balk2Config`, `DataConfig`, `DataLineageEntry`                                                                                                |
+| Graph types        | `NodeKind`, `FileNode`, `SymbolNode`, `SymbolType`, `ArtifactNode`, `ArtifactFormat`, `GraphNode`, `CodeRelationship`, `DataRelationship`, `RelationshipType`, `Confidence`, `Relationship`, `RepositoryMetadata`, `ConnectionMap` |
 
 ## Connection-Map Schema Contract
 
