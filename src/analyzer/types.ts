@@ -1,4 +1,5 @@
 import type { ConnectionGraph } from '../graph.js';
+import type { RepositoryProgram } from './repository-program.js';
 
 /**
  * Options passed to analyzers during repository analysis.
@@ -13,6 +14,8 @@ export interface AnalyzerOptions {
    * Enables strict import path resolution against existing files.
    */
   readonly knownFiles?: ReadonlySet<string> | readonly string[];
+  /** Shared repository analysis session, when the caller has one. */
+  readonly repository?: RepositoryProgram;
 }
 
 /**

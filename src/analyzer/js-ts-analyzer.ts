@@ -1,5 +1,6 @@
 import * as ts from 'typescript';
 import type { Analyzer, AnalyzerOptions } from './types.js';
+import type { RepositoryProgram } from './repository-program.js';
 import { resolveImportPath } from './resolver.js';
 import type { ConnectionGraph } from '../graph.js';
 import { normalizePath } from '../graph.js';
@@ -23,12 +24,6 @@ export class JsTsAnalyzer implements Analyzer {
     options?: AnalyzerOptions,
   ): void {
     const normalizedPath = normalizePath(filePath);
-    const language = isTypeScript(normalizedPath) ? 'typescript' : 'javascript';
-
-    // 1. Add file node to graph immediately
-    graph.addFile(normalizedPath, language);
-
-    // 2. Parse SourceFile
     const scriptKind = getScriptKind(normalizedPath);
     const sourceFile = ts.createSourceFile(
       normalizedPath,
@@ -37,6 +32,30 @@ export class JsTsAnalyzer implements Analyzer {
       true,
       scriptKind,
     );
+
+    this.analyzeSourceFile(normalizedPath, sourceFile, graph, options);
+  }
+
+  /** Analyze every parsed JS/TS file in one shared repository session. */
+  analyzeRepository(repository: RepositoryProgram, graph: ConnectionGraph): void {
+    for (const [filePath, sourceFile] of repository.sourceFiles) {
+      this.analyzeSourceFile(filePath, sourceFile, graph, {
+        rootDir: repository.rootDir,
+        knownFiles: Array.from(repository.sourceFiles.keys()),
+        repository,
+      });
+    }
+  }
+
+  private analyzeSourceFile(
+    normalizedPath: string,
+    sourceFile: ts.SourceFile,
+    graph: ConnectionGraph,
+    options?: AnalyzerOptions,
+  ): void {
+    const language = isTypeScript(normalizedPath) ? 'typescript' : 'javascript';
+
+    graph.addFile(normalizedPath, language);
 
     // Context tracking for analysis pass
     const importsMap = new Map<string, { targetFile: string; importedName: string }>();
@@ -216,7 +235,7 @@ function handleImportDeclaration(
 ): void {
   if (!ts.isStringLiteral(node.moduleSpecifier)) return;
   const specifier = node.moduleSpecifier.text;
-  const targetFile = resolveImportPath(fromFile, specifier, options?.knownFiles);
+  const targetFile = resolveInternalModule(fromFile, specifier, options);
   if (!targetFile) return;
 
   graph.addRelationship('imports', fromFile, targetFile);
@@ -251,7 +270,7 @@ function handleExportDeclaration(
 ): void {
   if (node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
     const specifier = node.moduleSpecifier.text;
-    const targetFile = resolveImportPath(fromFile, specifier, options?.knownFiles);
+    const targetFile = resolveInternalModule(fromFile, specifier, options);
     if (targetFile) {
       graph.addRelationship('imports', fromFile, targetFile);
       graph.addRelationship('importedBy', targetFile, fromFile);
@@ -277,7 +296,7 @@ function handleRequireCall(
   const firstArg = node.arguments[0];
   if (firstArg && ts.isStringLiteral(firstArg)) {
     const specifier = firstArg.text;
-    const targetFile = resolveImportPath(fromFile, specifier, options?.knownFiles);
+    const targetFile = resolveInternalModule(fromFile, specifier, options);
     if (targetFile) {
       graph.addRelationship('imports', fromFile, targetFile);
       graph.addRelationship('importedBy', targetFile, fromFile);
@@ -299,6 +318,16 @@ function handleRequireCall(
       }
     }
   }
+}
+
+function resolveInternalModule(
+  fromFile: string,
+  specifier: string,
+  options?: AnalyzerOptions,
+): string | undefined {
+  const resolved = options?.repository?.resolveModule(fromFile, specifier);
+  if (resolved) return resolved.kind === 'internal' ? resolved.path : undefined;
+  return resolveImportPath(fromFile, specifier, options?.knownFiles);
 }
 
 function getParentClassName(node: ts.MethodDeclaration): string | undefined {

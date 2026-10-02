@@ -3,7 +3,12 @@ import * as path from 'path';
 import { ConnectionGraph, normalizePath } from '../graph.js';
 import { serializeConnectionMap } from '../serialize.js';
 import { renderMarkdown } from '../renderer/markdown-renderer.js';
-import { JsTsAnalyzer, PythonAnalyzer, type Analyzer } from '../analyzer/index.js';
+import {
+  createRepositoryProgram,
+  JsTsAnalyzer,
+  PythonAnalyzer,
+  type Analyzer,
+} from '../analyzer/index.js';
 import { registerDataArtifacts } from '../data/formats.js';
 import { getGitCommitHash } from './git-utils.js';
 import { loadBalk2Config, filterFilesWithConfig, applyExplicitLineage } from '../config/index.js';
@@ -43,7 +48,8 @@ const DEFAULT_EXCLUDES = new Set([
 export function generateConnectionMap(options: GenerateOptions = {}): GenerateResult {
   const rootDir = path.resolve(options.cwd ?? process.cwd());
   const balk2Config = loadBalk2Config(rootDir);
-  const analyzers: Analyzer[] = [new JsTsAnalyzer(), new PythonAnalyzer()];
+  const jsTsAnalyzer = new JsTsAnalyzer();
+  const analyzers: Analyzer[] = [new PythonAnalyzer()];
   const graph = new ConnectionGraph();
 
   // 1. Scan directory for repository files & apply config filters
@@ -62,7 +68,14 @@ export function generateConnectionMap(options: GenerateOptions = {}): GenerateRe
     applyExplicitLineage(balk2Config.data.lineage, graph);
   }
 
-  // 4. Analyze code files with matching analyzers
+  // 4. Parse and analyze JS/TS once through a shared repository session.
+  const jsTsFiles = allRelativeFiles.filter((filePath) => jsTsAnalyzer.canAnalyze(filePath));
+  if (jsTsFiles.length > 0) {
+    const repository = createRepositoryProgram({ rootDir, filePaths: jsTsFiles });
+    jsTsAnalyzer.analyzeRepository(repository, graph);
+  }
+
+  // 5. Analyze files for language analyzers that do not yet use the shared session.
   for (const relFile of allRelativeFiles) {
     for (const analyzer of analyzers) {
       if (analyzer.canAnalyze(relFile)) {
@@ -80,7 +93,7 @@ export function generateConnectionMap(options: GenerateOptions = {}): GenerateRe
     }
   }
 
-  // 5. Build connection map
+  // 6. Build connection map
   const commit = getGitCommitHash(rootDir);
   const generatedAt = options.timestamp ?? new Date().toISOString();
 
@@ -89,7 +102,7 @@ export function generateConnectionMap(options: GenerateOptions = {}): GenerateRe
     generatedAt,
   });
 
-  // 6. Determine output file paths
+  // 7. Determine output file paths
   const outputTarget = options.output ?? balk2Config?.output;
   const { jsonPath, mdPath } = resolveOutputPaths(rootDir, outputTarget);
 
@@ -99,7 +112,7 @@ export function generateConnectionMap(options: GenerateOptions = {}): GenerateRe
     fs.mkdirSync(jsonDir, { recursive: true });
   }
 
-  // 6. Serialize and write artifacts
+  // 8. Serialize and write artifacts
   const jsonContent = serializeConnectionMap(map);
   const mdContent = renderMarkdown(map);
 
