@@ -29,6 +29,7 @@ export class RepositoryProgram {
   readonly rootDir: string;
   readonly compilerOptions: ts.CompilerOptions;
   readonly sourceFiles: ReadonlyMap<string, ts.SourceFile>;
+  readonly checker: ts.TypeChecker;
 
   private readonly knownFiles: ReadonlySet<string>;
   private readonly host: ts.ModuleResolutionHost;
@@ -41,6 +42,7 @@ export class RepositoryProgram {
 
     const rootNames = [...this.knownFiles].map((filePath) => path.resolve(this.rootDir, filePath));
     const program = ts.createProgram({ rootNames, options: this.compilerOptions });
+    this.checker = program.getTypeChecker();
     const sourceFiles = new Map<string, ts.SourceFile>();
 
     for (const sourceFile of program.getSourceFiles()) {
