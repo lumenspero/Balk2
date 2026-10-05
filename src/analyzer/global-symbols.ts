@@ -53,7 +53,7 @@ export function collectGlobalSymbols(repository: RepositoryProgram): GlobalSymbo
     }
 
     const visit = (node: ts.Node): void => {
-      if (ts.isModuleDeclaration(node) && node.name.kind === ts.SyntaxKind.GlobalKeyword) {
+      if (ts.isModuleDeclaration(node) && (node.flags & ts.NodeFlags.GlobalAugmentation) !== 0) {
         collectAmbientDeclarations(node.body, filePath, repository, index);
       }
 
@@ -132,12 +132,21 @@ function collectDeclaration(
   } else if (ts.isVariableStatement(statement)) {
     for (const declaration of statement.declarationList.declarations) {
       if (ts.isIdentifier(declaration.name)) {
-        const symbolType = declaration.initializer && isFunctionLike(declaration.initializer)
-          ? 'function'
-          : statement.declarationList.flags & ts.NodeFlags.Const
-            ? 'constant'
-            : 'variable';
-        addDeclaration(declaration.name, symbolType, declaration, filePath, origin, repository, index);
+        const symbolType =
+          declaration.initializer && isFunctionLike(declaration.initializer)
+            ? 'function'
+            : statement.declarationList.flags & ts.NodeFlags.Const
+              ? 'constant'
+              : 'variable';
+        addDeclaration(
+          declaration.name,
+          symbolType,
+          declaration,
+          filePath,
+          origin,
+          repository,
+          index,
+        );
       }
     }
   }

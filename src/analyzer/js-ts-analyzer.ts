@@ -473,14 +473,23 @@ function isIdentifierReference(node: ts.Identifier): boolean {
   if (ts.isPropertyAccessExpression(parent) && parent.name === node) return false;
   if (ts.isPropertyAssignment(parent) && parent.name === node) return false;
   if (ts.isShorthandPropertyAssignment(parent) && parent.name === node) return true;
-  if (ts.isBindingElement(parent) || ts.isVariableDeclaration(parent) || ts.isParameter(parent)) return false;
-  if (ts.isFunctionDeclaration(parent) || ts.isClassDeclaration(parent) || ts.isEnumDeclaration(parent)) {
+  if (ts.isBindingElement(parent) || ts.isVariableDeclaration(parent) || ts.isParameter(parent))
+    return false;
+  if (
+    ts.isFunctionDeclaration(parent) ||
+    ts.isClassDeclaration(parent) ||
+    ts.isEnumDeclaration(parent)
+  ) {
     return false;
   }
   if (ts.isImportClause(parent) || ts.isImportSpecifier(parent) || ts.isNamespaceImport(parent)) {
     return false;
   }
-  if (ts.isExportSpecifier(parent) || ts.isLabeledStatement(parent) || ts.isBreakStatement(parent)) {
+  if (
+    ts.isExportSpecifier(parent) ||
+    ts.isLabeledStatement(parent) ||
+    ts.isBreakStatement(parent)
+  ) {
     return false;
   }
   return true;

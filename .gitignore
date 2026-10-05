@@ -3,3 +3,7 @@ dist/
 coverage/
 *.tgz
 .DS_Store
+
+# Balk2 Connection Map
+/connection-map
+.balk2.json
