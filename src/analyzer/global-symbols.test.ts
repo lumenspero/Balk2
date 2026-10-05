@@ -1,0 +1,240 @@
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { ConnectionGraph } from '../graph.js';
+import type { Relationship } from '../types.js';
+import { collectGlobalSymbols } from './global-symbols.js';
+import { JsTsAnalyzer } from './js-ts-analyzer.js';
+import { createRepositoryProgram, type RepositoryProgram } from './repository-program.js';
+
+/**
+ * The checker classifies files differently per compiler setting (under node16 every
+ * file is a module; under esnext/commonjs script files are real scripts), so the
+ * whole suite runs against each of these.
+ */
+const TSCONFIGS: ReadonlyArray<readonly [string, Record<string, unknown> | undefined]> = [
+  ['no tsconfig (node16 defaults)', undefined],
+  ['esnext + bundler', { module: 'ESNext', moduleResolution: 'Bundler' }],
+  ['commonjs + node10', { module: 'CommonJS', moduleResolution: 'Node10' }],
+];
+
+describe.each(TSCONFIGS)('Phase 3: global symbol traversal [%s]', (_label, compilerOptions) => {
+  let rootDir: string;
+
+  beforeEach(() => {
+    rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'balk2-globals-test-'));
+    if (compilerOptions) {
+      fs.writeFileSync(
+        path.join(rootDir, 'tsconfig.json'),
+        JSON.stringify({ compilerOptions }),
+        'utf8',
+      );
+    }
+  });
+
+  afterEach(() => {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+  });
+
+  function open(files: Record<string, string>): RepositoryProgram {
+    for (const [name, content] of Object.entries(files)) {
+      const full = path.join(rootDir, name);
+      fs.mkdirSync(path.dirname(full), { recursive: true });
+      fs.writeFileSync(full, content, 'utf8');
+    }
+    return createRepositoryProgram({ rootDir, filePaths: Object.keys(files).sort() });
+  }
+
+  interface AnalysisResult {
+    readonly graph: ConnectionGraph;
+    readonly references: readonly Relationship[];
+    readonly has: (from: string, to: string) => boolean;
+  }
+
+  function analyze(files: Record<string, string>): AnalysisResult {
+    const graph = new ConnectionGraph();
+    new JsTsAnalyzer().analyzeRepository(open(files), graph);
+    const references = graph.getRelationships().filter((r) => r.type === 'references');
+    return {
+      graph,
+      references,
+      has: (from: string, to: string): boolean =>
+        references.some((r) => r.from === from && r.to === to),
+    };
+  }
+
+  describe('collection pass', () => {
+    it('collects script-scope declarations but not ES module declarations', () => {
+      const index = collectGlobalSymbols(
+        open({
+          'a.ts': 'function scriptFn() {}\nvar scriptVar = 1;',
+          'b.ts': 'export {};\nfunction moduleFn() {}',
+        }),
+      );
+      expect(index.all().map((s) => s.name)).toEqual(['scriptFn', 'scriptVar']);
+    });
+
+    it('does not treat CommonJS file declarations as globals', () => {
+      const index = collectGlobalSymbols(
+        open({ 'a.js': 'function helper() {}\nmodule.exports = { helper };' }),
+      );
+      expect(index.all().map((s) => s.name)).not.toContain('helper');
+    });
+
+    it('collects declarations inside `declare global`', () => {
+      const index = collectGlobalSymbols(
+        open({ 'a.ts': 'export {};\ndeclare global { function ext(): void; }' }),
+      );
+      const ext = index.all().find((s) => s.name === 'ext');
+      expect(ext?.origin).toBe('ambient');
+    });
+
+    it('collects explicit assignments to global roots with static paths', () => {
+      const index = collectGlobalSymbols(
+        open({
+          'a.js': 'window.Engine = function () {};\nglobalThis.App.Engine = class {};',
+        }),
+      );
+      expect(
+        index
+          .all()
+          .map((s) => s.name)
+          .sort(),
+      ).toEqual(['App.Engine', 'Engine']);
+    });
+
+    it('ignores assignments whose root only looks like a global root', () => {
+      const index = collectGlobalSymbols(
+        open({
+          'a.js': [
+            'export {};',
+            'function f(self) { self.handler = 1; }',
+            'function g() { const window = {}; window.panel = 1; }',
+          ].join('\n'),
+        }),
+      );
+      expect(index.all()).toEqual([]);
+    });
+
+    it('resolves statically established aliases of a global root', () => {
+      const index = collectGlobalSymbols(
+        open({ 'a.js': 'export {};\nconst root = globalThis;\nroot.Shared = function () {};' }),
+      );
+      expect(index.all().map((s) => s.name)).toEqual(['Shared']);
+    });
+
+    it('treats overloads of one function as a single declaration', () => {
+      const index = collectGlobalSymbols(
+        open({
+          'a.ts':
+            'function f(a: string): void;\nfunction f(a: number): void;\nfunction f(a: any) {}',
+        }),
+      );
+      expect(index.resolve('f')?.symbolId).toBe('a.ts:f');
+    });
+  });
+
+  describe('resolution pass', () => {
+    it('links a module symbol to a script global in another file', () => {
+      const { has } = analyze({
+        'lib.ts': 'function boot() {}',
+        'main.ts': 'export function run() { boot(); }',
+      });
+      expect(has('main.ts:run', 'lib.ts:boot')).toBe(true);
+      expect(has('main.ts', 'lib.ts')).toBe(true);
+    });
+
+    it('links uses of an assigned global, bare and through a root', () => {
+      const { has } = analyze({
+        'lib.js': 'window.Engine = function () {};\nglobalThis.App.Engine = {};',
+        'bare.js': 'export function a() { Engine(); }',
+        'rooted.js': 'export function b() { return window.App.Engine; }',
+      });
+      expect(has('bare.js:a', 'lib.js:Engine')).toBe(true);
+      expect(has('rooted.js:b', 'lib.js:App.Engine')).toBe(true);
+    });
+
+    it('attributes references inside arrow-function and class owners to that owner', () => {
+      const { has } = analyze({
+        'lib.ts': 'function boot() {}',
+        'arrow.ts': 'export const handler = () => { boot(); };',
+        'cls.ts': 'export class Svc { start() { boot(); } }',
+      });
+      expect(has('arrow.ts:handler', 'lib.ts:boot')).toBe(true);
+      expect(has('cls.ts:Svc.start', 'lib.ts:boot')).toBe(true);
+    });
+
+    it('resolves references to `declare global` symbols', () => {
+      const { has } = analyze({
+        'types.ts': 'export {};\ndeclare global { function ext(): void; }',
+        'main.ts': 'export function run() { ext(); }',
+      });
+      expect(has('main.ts:run', 'types.ts:ext')).toBe(true);
+    });
+
+    it('resolves overloaded globals to one target', () => {
+      const { has } = analyze({
+        'lib.ts':
+          'function f(a: string): void;\nfunction f(a: number): void;\nfunction f(a: any) {}',
+        'main.ts': 'export function run() { f(1); }',
+      });
+      expect(has('main.ts:run', 'lib.ts:f')).toBe(true);
+    });
+
+    it('resolves through a global-root alias', () => {
+      const { has } = analyze({
+        'lib.js': 'export {};\nconst root = globalThis;\nroot.Shared = function () {};',
+        'main.js': 'export function run() { Shared(); }',
+      });
+      expect(has('main.js:run', 'lib.js:Shared')).toBe(true);
+    });
+  });
+
+  describe('false-positive guards', () => {
+    it('does not link locals, parameters, or module-scope names to a same-named global', () => {
+      const { references } = analyze({
+        'lib.ts': 'function boot() {}',
+        'local.ts': 'export function a() { const boot = () => {}; boot(); }',
+        'param.ts': 'export function b(boot: () => void) { boot(); }',
+        'module.ts': 'function boot2() {}\nexport function c() { boot2(); }',
+      });
+      expect(references.filter((r) => r.to === 'lib.ts:boot')).toEqual([]);
+    });
+
+    it('does not link a shadowed global root or a local namespace-like object', () => {
+      const { references } = analyze({
+        'lib.js': 'globalThis.App.Engine = {};\nwindow.handler = function () {};',
+        'shadow.js': [
+          'export function a() { const App = { Engine: 1 }; return App.Engine; }',
+          'export function b(self) { return self.handler; }',
+        ].join('\n'),
+      });
+      expect(references).toEqual([]);
+    });
+
+    it('emits no edge for duplicate global names', () => {
+      const { references } = analyze({
+        'one.ts': 'function init() {}',
+        'two.ts': 'function init() {}',
+        'main.ts': 'export function run() { init(); }',
+      });
+      expect(references.filter((r) => r.from === 'main.ts:run')).toEqual([]);
+    });
+
+    it('does not create references for a global declared in the same file', () => {
+      const { references } = analyze({
+        'lib.ts': 'function boot() {}\nfunction go() { boot(); }',
+      });
+      expect(references).toEqual([]);
+    });
+
+    it('does not treat a declaration in a CommonJS file as a global', () => {
+      const { references } = analyze({
+        'a.js': 'function helper() {}\nmodule.exports = { helper };',
+        'b.js': 'export function run() { helper(); }',
+      });
+      expect(references).toEqual([]);
+    });
+  });
+});

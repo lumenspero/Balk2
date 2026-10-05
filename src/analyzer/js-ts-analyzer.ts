@@ -3,7 +3,7 @@ import type { Analyzer, AnalyzerOptions } from './types.js';
 import type { RepositoryProgram } from './repository-program.js';
 import {
   collectGlobalSymbols,
-  getStaticPropertyPath,
+  getStaticPropertyChain,
   type GlobalSymbol,
   type GlobalSymbolIndex,
 } from './global-symbols.js';
@@ -45,11 +45,12 @@ export class JsTsAnalyzer implements Analyzer {
   /** Analyze every parsed JS/TS file in one shared repository session. */
   analyzeRepository(repository: RepositoryProgram, graph: ConnectionGraph): void {
     const globalSymbols = collectGlobalSymbols(repository);
+    const knownFiles = Array.from(repository.sourceFiles.keys());
 
     for (const [filePath, sourceFile] of repository.sourceFiles) {
       this.analyzeSourceFile(filePath, sourceFile, graph, {
         rootDir: repository.rootDir,
-        knownFiles: Array.from(repository.sourceFiles.keys()),
+        knownFiles,
         repository,
       });
     }
@@ -422,13 +423,22 @@ function addGlobalReferenceRelationships(
     let owner = currentOwner;
     if (ts.isFunctionDeclaration(node) && node.name) {
       owner = `${fromFile}:${node.name.text}`;
+    } else if (ts.isClassDeclaration(node) && node.name) {
+      owner = `${fromFile}:${node.name.text}`;
     } else if (ts.isMethodDeclaration(node) && node.name && ts.isIdentifier(node.name)) {
       const className = getParentClassName(node);
       if (className) owner = `${fromFile}:${className}.${node.name.text}`;
+    } else if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer &&
+      (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))
+    ) {
+      owner = `${fromFile}:${node.name.text}`;
     }
 
     if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
-      const name = getGlobalReferenceName(node, globalSymbols);
+      const name = getGlobalReferenceName(node, repository, globalSymbols);
       const globalSymbol = name ? globalSymbols.resolve(name) : undefined;
       if (globalSymbol && !isAssignmentTarget(node)) addReference(owner ?? fromFile, globalSymbol);
     } else if (ts.isIdentifier(node) && isIdentifierReference(node)) {
@@ -454,16 +464,22 @@ function resolveIdentifierGlobal(
 
 function getGlobalReferenceName(
   node: ts.PropertyAccessExpression | ts.ElementAccessExpression,
+  repository: RepositoryProgram,
   globalSymbols: GlobalSymbolIndex,
 ): string | undefined {
-  const path = getStaticPropertyPath(node);
-  if (!path) return undefined;
+  const chain = getStaticPropertyChain(node);
+  if (!chain) return undefined;
 
-  const [root, ...parts] = path.split('.');
-  if (['globalThis', 'window', 'self', 'global'].includes(root ?? '') && parts.length > 0) {
-    return parts.join('.');
+  // `window.a.b` / alias.a.b: the root must really be the global object.
+  if (chain.parts.length > 0 && globalSymbols.roots.isGlobalRoot(chain.root)) {
+    return chain.parts.join('.');
   }
 
+  // `a.b` where `a.b` was registered as a global path: the root must not be a local binding.
+  const rootSymbol = repository.checker.getSymbolAtLocation(chain.root);
+  if (rootSymbol && !globalSymbols.resolveTypeScriptSymbol(rootSymbol)) return undefined;
+
+  const path = [chain.root.text, ...chain.parts].join('.');
   return globalSymbols.resolve(path) ? path : undefined;
 }
 

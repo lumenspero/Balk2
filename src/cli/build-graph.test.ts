@@ -32,15 +32,14 @@ describe('generate and check share one analysis path', () => {
     fs.rmSync(rootDir, { recursive: true, force: true });
   });
 
-  it('reports a freshly generated map as current, including tsconfig aliases', () => {
+  it('reports a freshly generated map as current, including aliases and globals', () => {
     const { map } = generateConnectionMap({ cwd: rootDir, timestamp: '2026-01-01T00:00:00.000Z' });
 
-    // Only the shared repository session resolves the `@/*` tsconfig alias.
-    expect(
-      map.relationships.some(
-        (r) => r.type === 'imports' && r.from === 'src/main.ts' && r.to === 'src/util.ts',
-      ),
-    ).toBe(true);
+    // The fixture only produces these edges through the shared repository session.
+    const has = (type: string, from: string, to: string): boolean =>
+      map.relationships.some((r) => r.type === type && r.from === from && r.to === to);
+    expect(has('imports', 'src/main.ts', 'src/util.ts')).toBe(true);
+    expect(has('references', 'src/main.ts:run', 'src/boot.ts:boot')).toBe(true);
 
     expect(checkConnectionMap({ cwd: rootDir })).toMatchObject({ isCurrent: true });
   });
