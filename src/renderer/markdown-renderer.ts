@@ -68,10 +68,9 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
         .filter((r) => r.type === 'imports')
         .map((r) => r.to)
         .sort();
-      const importedBy = inRels
-        .filter((r) => r.type === 'imports' || r.type === 'importedBy')
-        .map((r) => r.from)
-        .sort();
+      const importedBy = reverseSources(inRels, outRels, 'imports', 'importedBy');
+      const references = targetsOf(outRels, 'references');
+      const referencedBy = sourcesOf(inRels, 'references');
 
       if (imports.length > 0) {
         lines.push('Imports:');
@@ -89,6 +88,20 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
 
       if (imports.length === 0 && importedBy.length === 0) {
         lines.push('*(No direct file imports)*');
+      }
+
+      if (references.length > 0) {
+        lines.push('References:');
+        for (const target of dedupe(references)) {
+          lines.push(`  → ${target}`);
+        }
+      }
+
+      if (referencedBy.length > 0) {
+        lines.push('Referenced by:');
+        for (const source of dedupe(referencedBy)) {
+          lines.push(`  ← ${source}`);
+        }
       }
 
       lines.push('');
@@ -120,10 +133,9 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
         .filter((r) => r.type === 'calls')
         .map((r) => r.to)
         .sort();
-      const calledBy = inRels
-        .filter((r) => r.type === 'calls' || r.type === 'calledBy')
-        .map((r) => r.from)
-        .sort();
+      const calledBy = reverseSources(inRels, outRels, 'calls', 'calledBy');
+      const symbolReferences = targetsOf(outRels, 'references');
+      const symbolReferencedBy = sourcesOf(inRels, 'references');
       const extendsRels = outRels
         .filter((r) => r.type === 'extends')
         .map((r) => r.to)
@@ -158,6 +170,20 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
         lines.push('Called by:');
         for (const caller of dedupe(calledBy)) {
           lines.push(`  ← ${caller}`);
+        }
+      }
+
+      if (symbolReferences.length > 0) {
+        lines.push('References:');
+        for (const target of dedupe(symbolReferences)) {
+          lines.push(`  → ${target}`);
+        }
+      }
+
+      if (symbolReferencedBy.length > 0) {
+        lines.push('Referenced by:');
+        for (const source of dedupe(symbolReferencedBy)) {
+          lines.push(`  ← ${source}`);
         }
       }
 
@@ -263,6 +289,36 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
   lines.push('');
 
   return lines.join('\n');
+}
+
+/** Sorted targets of a node's outgoing relationships of one type. */
+function targetsOf(outgoing: readonly Relationship[], type: Relationship['type']): string[] {
+  return outgoing
+    .filter((r) => r.type === type)
+    .map((r) => r.to)
+    .sort();
+}
+
+/** Sorted sources of a node's incoming relationships of one type. */
+function sourcesOf(incoming: readonly Relationship[], type: Relationship['type']): string[] {
+  return incoming
+    .filter((r) => r.type === type)
+    .map((r) => r.from)
+    .sort();
+}
+
+/**
+ * Nodes on the other side of a forward relationship (`calls`, `imports`), seen from its
+ * target. The stored reverse type (`calledBy`, `importedBy`) points from the target back
+ * to the source, so it is read from the node's *outgoing* edges.
+ */
+function reverseSources(
+  incoming: readonly Relationship[],
+  outgoing: readonly Relationship[],
+  forward: Relationship['type'],
+  reverse: Relationship['type'],
+): string[] {
+  return [...sourcesOf(incoming, forward), ...targetsOf(outgoing, reverse)].sort();
 }
 
 function dedupe(items: readonly string[]): string[] {
