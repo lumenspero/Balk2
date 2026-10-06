@@ -52,7 +52,7 @@ export function buildConnectionGraph(rootDir: string, config?: Balk2Config): Con
   const jsTsFiles = allRelativeFiles.filter((filePath) => jsTsAnalyzer.canAnalyze(filePath));
   if (jsTsFiles.length > 0) {
     const repository = createRepositoryProgram({ rootDir, filePaths: jsTsFiles });
-    jsTsAnalyzer.analyzeRepository(repository, graph);
+    jsTsAnalyzer.analyzeRepository(repository, graph, { globals: config?.globals });
   }
 
   // 5. Analyze files for language analyzers that do not yet use the shared session.

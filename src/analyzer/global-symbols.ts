@@ -1,5 +1,6 @@
 import * as ts from 'typescript';
-import type { SymbolType } from '../types.js';
+import { normalizePath } from '../graph.js';
+import type { Confidence, SymbolType } from '../types.js';
 import type { RepositoryProgram } from './repository-program.js';
 
 /** Default global-object roots. Configuration will extend this set (see Phase 8). */
@@ -12,6 +13,16 @@ export const GLOBAL_ROOTS: ReadonlySet<string> = new Set([
 
 const MAX_ALIAS_DEPTH = 4;
 
+/** 1-based position in a repository file. */
+export interface SourceLocation {
+  readonly filePath: string;
+  readonly line: number;
+  readonly column: number;
+}
+
+/** Where a global is established: straight-line file code, or inside a function/class body. */
+export type GlobalScope = 'top-level' | 'function';
+
 export interface GlobalSymbol {
   readonly name: string;
   readonly filePath: string;
@@ -20,7 +31,46 @@ export interface GlobalSymbol {
   readonly origin: 'script' | 'assignment' | 'ambient';
   readonly declaration: ts.Node;
   readonly typeScriptSymbol?: ts.Symbol;
+  /** `top-level` declarations outrank in-function assignments when a name is resolved. */
+  readonly scope: GlobalScope;
+  /** True when the declaration (or, for an assignment, the assigned binding) is exported. */
+  readonly exported: boolean;
+  /** Where the declaration or establishing assignment is written. */
+  readonly location: SourceLocation;
 }
+
+/** Optional behavior supplied from `.balk2.json` (`globals`). */
+export interface GlobalSymbolOptions {
+  /** Replaces the default global roots when provided. */
+  readonly roots?: readonly string[];
+  /** Selects the owning file for a duplicated global name, e.g. `{ "init": "src/legacy.js" }`. */
+  readonly targets?: Readonly<Record<string, string>>;
+}
+
+export type GlobalFactKind = 'declare' | 'read' | 'write' | 'delete';
+
+/**
+ * One observation about a global, kept independent of graph edges so later phases
+ * (state analysis, diagnostics) can reuse it. Ambiguous observations carry the
+ * candidate origins and low confidence instead of a target.
+ */
+export interface GlobalFact {
+  readonly kind: GlobalFactKind;
+  readonly name: string;
+  readonly location: SourceLocation;
+  /** Symbol id of the enclosing symbol, or the file path for file-level code. */
+  readonly owner: string;
+  readonly resolution: 'resolved' | 'selected' | 'ambiguous';
+  readonly confidence: Confidence;
+  readonly targetSymbolId?: string;
+  /** Candidate symbol ids, sorted, present when `resolution` is `ambiguous`. */
+  readonly candidates?: readonly string[];
+}
+
+export type GlobalLookup =
+  | { readonly kind: 'resolved' | 'selected'; readonly symbol: GlobalSymbol }
+  | { readonly kind: 'ambiguous'; readonly candidates: readonly GlobalSymbol[] }
+  | { readonly kind: 'none' };
 
 /**
  * Decides whether an identifier denotes the global object. A name such as
@@ -91,13 +141,31 @@ const BINDING_DECLARATION_GUARDS: ReadonlyArray<(node: ts.Node) => boolean> = [
 
 export class GlobalSymbolIndex {
   private readonly symbolsByName = new Map<string, GlobalSymbol[]>();
+  private readonly targets: ReadonlyMap<string, string>;
 
-  constructor(readonly roots: GlobalRootResolver) {}
+  constructor(
+    readonly roots: GlobalRootResolver,
+    targets: Readonly<Record<string, string>> = {},
+  ) {
+    this.targets = new Map(
+      Object.entries(targets).map(([name, file]) => [name, normalizePath(file)]),
+    );
+  }
 
-  /** Add a candidate. A second declaration with the same symbol id (overloads, repeated assignments) is the same symbol. */
+  /**
+   * Add a candidate. A second entry with the same symbol id (overloads, repeated
+   * assignments) is the same symbol, except that a top-level establishment replaces
+   * an in-function one.
+   */
   add(symbol: GlobalSymbol): void {
     const existing = this.symbolsByName.get(symbol.name) ?? [];
-    if (existing.some((candidate) => candidate.symbolId === symbol.symbolId)) return;
+    const duplicate = existing.findIndex((candidate) => candidate.symbolId === symbol.symbolId);
+    if (duplicate >= 0) {
+      if (existing[duplicate]?.scope === 'function' && symbol.scope === 'top-level') {
+        existing[duplicate] = symbol;
+      }
+      return;
+    }
     existing.push(symbol);
     this.symbolsByName.set(symbol.name, existing);
   }
@@ -106,28 +174,93 @@ export class GlobalSymbolIndex {
     return Array.from(this.symbolsByName.values()).flat();
   }
 
-  /** All candidates for a name, so callers can report ambiguity. */
+  /**
+   * Effective candidates for a name. Top-level declarations and assignments win;
+   * in-function assignments only count when the name has no top-level origin.
+   */
   candidates(name: string): readonly GlobalSymbol[] {
-    return this.symbolsByName.get(name) ?? [];
+    const all = this.symbolsByName.get(name) ?? [];
+    const topLevel = all.filter((candidate) => candidate.scope === 'top-level');
+    return topLevel.length > 0 ? topLevel : all;
+  }
+
+  /** Every effective candidate across all names (what deserves a graph node). */
+  effective(): readonly GlobalSymbol[] {
+    return Array.from(this.symbolsByName.keys()).flatMap((name) => this.candidates(name));
+  }
+
+  lookup(name: string): GlobalLookup {
+    return this.decide(name, this.candidates(name));
+  }
+
+  lookupTypeScriptSymbol(symbol: ts.Symbol): GlobalLookup {
+    const name = symbol.getName();
+    return this.decide(
+      name,
+      this.candidates(name).filter((candidate) => candidate.typeScriptSymbol === symbol),
+    );
   }
 
   resolve(name: string): GlobalSymbol | undefined {
-    const candidates = this.symbolsByName.get(name);
-    return candidates?.length === 1 ? candidates[0] : undefined;
+    return unwrap(this.lookup(name));
   }
 
   resolveTypeScriptSymbol(symbol: ts.Symbol): GlobalSymbol | undefined {
-    const candidates = this.symbolsByName.get(symbol.getName());
-    if (!candidates) return undefined;
+    return unwrap(this.lookupTypeScriptSymbol(symbol));
+  }
 
-    const matches = candidates.filter((candidate) => candidate.typeScriptSymbol === symbol);
-    return matches.length === 1 ? matches[0] : undefined;
+  /** The effective candidate that `node` establishes, if it is a declaring site. */
+  declaredAt(node: ts.Node): GlobalSymbol | undefined {
+    return this.all().find(
+      (symbol) => symbol.declaration === node && this.candidates(symbol.name).includes(symbol),
+    );
+  }
+
+  /** `declare` facts for script and ambient declarations (assignments are reported at their use sites). */
+  declarationFacts(): readonly GlobalFact[] {
+    return this.all()
+      .filter((symbol) => symbol.origin !== 'assignment')
+      .map((symbol) => ({
+        kind: 'declare' as const,
+        name: symbol.name,
+        location: symbol.location,
+        owner: symbol.symbolId,
+        resolution: 'resolved' as const,
+        confidence: 'high' as const,
+        targetSymbolId: symbol.symbolId,
+      }));
+  }
+
+  private decide(name: string, pool: readonly GlobalSymbol[]): GlobalLookup {
+    const [only] = pool;
+    if (!only) return { kind: 'none' };
+    if (pool.length === 1) return { kind: 'resolved', symbol: only };
+
+    const targetFile = this.targets.get(name);
+    const selected = targetFile
+      ? pool.filter((candidate) => candidate.filePath === targetFile)
+      : [];
+    const [chosen] = selected;
+    if (chosen && selected.length === 1) return { kind: 'selected', symbol: chosen };
+
+    return { kind: 'ambiguous', candidates: pool };
   }
 }
 
+function unwrap(lookup: GlobalLookup): GlobalSymbol | undefined {
+  return lookup.kind === 'resolved' || lookup.kind === 'selected' ? lookup.symbol : undefined;
+}
+
 /** Collect globally visible script declarations and explicit assignments. */
-export function collectGlobalSymbols(repository: RepositoryProgram): GlobalSymbolIndex {
-  const index = new GlobalSymbolIndex(new GlobalRootResolver(repository));
+export function collectGlobalSymbols(
+  repository: RepositoryProgram,
+  options: GlobalSymbolOptions = {},
+): GlobalSymbolIndex {
+  const roots = new GlobalRootResolver(
+    repository,
+    options.roots ? new Set(options.roots) : GLOBAL_ROOTS,
+  );
+  const index = new GlobalSymbolIndex(roots, options.targets);
 
   for (const [filePath, sourceFile] of repository.sourceFiles) {
     if (isScriptFile(sourceFile)) {
@@ -151,6 +284,9 @@ export function collectGlobalSymbols(repository: RepositoryProgram): GlobalSymbo
             symbolType: inferAssignedSymbolType(node.right),
             origin: 'assignment',
             declaration: node.left,
+            scope: scopeOf(node),
+            exported: isExportedValue(node.right, repository.checker),
+            location: locationOf(node.left, filePath),
           });
         }
       }
@@ -329,7 +465,7 @@ function collectDeclaration(
 function addDeclaration(
   nameNode: ts.Identifier,
   symbolType: SymbolType,
-  declaration: ts.Node,
+  declaration: ts.Declaration,
   filePath: string,
   origin: 'script' | 'ambient',
   repository: RepositoryProgram,
@@ -343,7 +479,35 @@ function addDeclaration(
     origin,
     declaration,
     typeScriptSymbol: repository.checker.getSymbolAtLocation(nameNode),
+    scope: 'top-level',
+    exported: isExportedDeclaration(declaration),
+    location: locationOf(nameNode, filePath),
   });
+}
+
+export function locationOf(node: ts.Node, filePath: string): SourceLocation {
+  const sourceFile = node.getSourceFile();
+  const { line, character } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+  return { filePath, line: line + 1, column: character + 1 };
+}
+
+/** `function` when the node sits inside any function-like or class body. */
+function scopeOf(node: ts.Node): GlobalScope {
+  for (let current: ts.Node | undefined = node.parent; current; current = current.parent) {
+    if (ts.isFunctionLike(current) || ts.isClassLike(current)) return 'function';
+  }
+  return 'top-level';
+}
+
+function isExportedDeclaration(declaration: ts.Declaration): boolean {
+  return (ts.getCombinedModifierFlags(declaration) & ts.ModifierFlags.Export) !== 0;
+}
+
+/** `window.App = App` where `App` is an exported binding. */
+function isExportedValue(value: ts.Expression, checker: ts.TypeChecker): boolean {
+  if (!ts.isIdentifier(value)) return false;
+  const declaration = checker.getSymbolAtLocation(value)?.declarations?.[0];
+  return !!declaration && isExportedDeclaration(declaration);
 }
 
 function inferAssignedSymbolType(node: ts.Expression): SymbolType {

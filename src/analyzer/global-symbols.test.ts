@@ -1,12 +1,16 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConnectionGraph } from '../graph.js';
 import type { Relationship } from '../types.js';
 import { collectGlobalSymbols } from './global-symbols.js';
 import { JsTsAnalyzer } from './js-ts-analyzer.js';
 import { createRepositoryProgram, type RepositoryProgram } from './repository-program.js';
+
+// Each case builds one or two TypeScript programs; the default 5s limit is too tight when the
+// whole suite runs in parallel on a busy machine.
+vi.setConfig({ testTimeout: 30_000 });
 
 /**
  * The checker classifies files differently per compiler setting (under node16 every

@@ -3,16 +3,29 @@ import type { Analyzer, AnalyzerOptions } from './types.js';
 import type { RepositoryProgram } from './repository-program.js';
 import {
   collectGlobalSymbols,
-  getStaticPropertyChain,
-  type GlobalSymbol,
-  type GlobalSymbolIndex,
+  type GlobalFact,
+  type GlobalSymbolOptions,
 } from './global-symbols.js';
+import { collectGlobalReferences } from './global-references.js';
 import { resolveImportPath } from './resolver.js';
 import type { ConnectionGraph } from '../graph.js';
 import { normalizePath } from '../graph.js';
 import type { SymbolType } from '../types.js';
 import { isDataArtifact } from '../data/formats.js';
 import { inferDataRelationshipType, addDataRelationship } from '../data/data-analyzer.js';
+
+export interface RepositoryAnalysisOptions {
+  /** Global-symbol behavior from `.balk2.json`. */
+  readonly globals?: GlobalSymbolOptions;
+}
+
+export interface RepositoryAnalysis {
+  /**
+   * Independent declare/read/write/delete observations about globals, including
+   * ambiguous ones. They are not part of the v1 graph schema yet.
+   */
+  readonly globalFacts: readonly GlobalFact[];
+}
 
 export class JsTsAnalyzer implements Analyzer {
   readonly name = 'JsTsAnalyzer';
@@ -43,8 +56,12 @@ export class JsTsAnalyzer implements Analyzer {
   }
 
   /** Analyze every parsed JS/TS file in one shared repository session. */
-  analyzeRepository(repository: RepositoryProgram, graph: ConnectionGraph): void {
-    const globalSymbols = collectGlobalSymbols(repository);
+  analyzeRepository(
+    repository: RepositoryProgram,
+    graph: ConnectionGraph,
+    options: RepositoryAnalysisOptions = {},
+  ): RepositoryAnalysis {
+    const globalSymbols = collectGlobalSymbols(repository, options.globals);
     const knownFiles = Array.from(repository.sourceFiles.keys());
 
     for (const [filePath, sourceFile] of repository.sourceFiles) {
@@ -55,15 +72,20 @@ export class JsTsAnalyzer implements Analyzer {
       });
     }
 
-    for (const globalSymbol of globalSymbols.all()) {
+    for (const globalSymbol of globalSymbols.effective()) {
       if (!graph.hasSymbol(globalSymbol.symbolId)) {
         graph.addSymbol(globalSymbol.filePath, globalSymbol.name, globalSymbol.symbolType);
       }
     }
 
+    const globalFacts: GlobalFact[] = [...globalSymbols.declarationFacts()];
     for (const [filePath, sourceFile] of repository.sourceFiles) {
-      addGlobalReferenceRelationships(sourceFile, filePath, repository, globalSymbols, graph);
+      globalFacts.push(
+        ...collectGlobalReferences(sourceFile, filePath, repository, globalSymbols, graph),
+      );
     }
+
+    return { globalFacts };
   }
 
   private analyzeSourceFile(
@@ -392,132 +414,4 @@ function handleCall(
     graph.addRelationship('calls', callerId, localSym.id);
     graph.addRelationship('calledBy', localSym.id, callerId);
   }
-}
-
-function addGlobalReferenceRelationships(
-  sourceFile: ts.SourceFile,
-  fromFile: string,
-  repository: RepositoryProgram,
-  globalSymbols: GlobalSymbolIndex,
-  graph: ConnectionGraph,
-): void {
-  const emitted = new Set<string>();
-
-  const addReference = (owner: string, globalSymbol: GlobalSymbol): void => {
-    if (globalSymbol.filePath === fromFile) return;
-
-    const symbolKey = `references:${owner}:${globalSymbol.symbolId}`;
-    if (!emitted.has(symbolKey)) {
-      graph.addRelationship('references', owner, globalSymbol.symbolId);
-      emitted.add(symbolKey);
-    }
-
-    const fileKey = `references:${fromFile}:${globalSymbol.filePath}`;
-    if (!emitted.has(fileKey)) {
-      graph.addRelationship('references', fromFile, globalSymbol.filePath);
-      emitted.add(fileKey);
-    }
-  };
-
-  const visit = (node: ts.Node, currentOwner?: string): void => {
-    let owner = currentOwner;
-    if (ts.isFunctionDeclaration(node) && node.name) {
-      owner = `${fromFile}:${node.name.text}`;
-    } else if (ts.isClassDeclaration(node) && node.name) {
-      owner = `${fromFile}:${node.name.text}`;
-    } else if (ts.isMethodDeclaration(node) && node.name && ts.isIdentifier(node.name)) {
-      const className = getParentClassName(node);
-      if (className) owner = `${fromFile}:${className}.${node.name.text}`;
-    } else if (
-      ts.isVariableDeclaration(node) &&
-      ts.isIdentifier(node.name) &&
-      node.initializer &&
-      (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))
-    ) {
-      owner = `${fromFile}:${node.name.text}`;
-    }
-
-    if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
-      const name = getGlobalReferenceName(node, repository, globalSymbols);
-      const globalSymbol = name ? globalSymbols.resolve(name) : undefined;
-      if (globalSymbol && !isAssignmentTarget(node)) addReference(owner ?? fromFile, globalSymbol);
-    } else if (ts.isIdentifier(node) && isIdentifierReference(node)) {
-      const globalSymbol = resolveIdentifierGlobal(node, repository, globalSymbols);
-      if (globalSymbol) addReference(owner ?? fromFile, globalSymbol);
-    }
-
-    ts.forEachChild(node, (child) => visit(child, owner));
-  };
-
-  visit(sourceFile);
-}
-
-function resolveIdentifierGlobal(
-  node: ts.Identifier,
-  repository: RepositoryProgram,
-  globalSymbols: GlobalSymbolIndex,
-): GlobalSymbol | undefined {
-  const symbol = repository.checker.getSymbolAtLocation(node);
-  if (symbol) return globalSymbols.resolveTypeScriptSymbol(symbol);
-  return globalSymbols.resolve(node.text);
-}
-
-function getGlobalReferenceName(
-  node: ts.PropertyAccessExpression | ts.ElementAccessExpression,
-  repository: RepositoryProgram,
-  globalSymbols: GlobalSymbolIndex,
-): string | undefined {
-  const chain = getStaticPropertyChain(node);
-  if (!chain) return undefined;
-
-  // `window.a.b` / alias.a.b: the root must really be the global object.
-  if (chain.parts.length > 0 && globalSymbols.roots.isGlobalRoot(chain.root)) {
-    return chain.parts.join('.');
-  }
-
-  // `a.b` where `a.b` was registered as a global path: the root must not be a local binding.
-  const rootSymbol = repository.checker.getSymbolAtLocation(chain.root);
-  if (rootSymbol && !globalSymbols.resolveTypeScriptSymbol(rootSymbol)) return undefined;
-
-  const path = [chain.root.text, ...chain.parts].join('.');
-  return globalSymbols.resolve(path) ? path : undefined;
-}
-
-function isIdentifierReference(node: ts.Identifier): boolean {
-  const parent = node.parent;
-  if (!parent || isAssignmentTarget(node)) return false;
-  if (ts.isPropertyAccessExpression(parent) && parent.name === node) return false;
-  if (ts.isPropertyAssignment(parent) && parent.name === node) return false;
-  if (ts.isShorthandPropertyAssignment(parent) && parent.name === node) return true;
-  if (ts.isBindingElement(parent) || ts.isVariableDeclaration(parent) || ts.isParameter(parent))
-    return false;
-  if (
-    ts.isFunctionDeclaration(parent) ||
-    ts.isClassDeclaration(parent) ||
-    ts.isEnumDeclaration(parent)
-  ) {
-    return false;
-  }
-  if (ts.isImportClause(parent) || ts.isImportSpecifier(parent) || ts.isNamespaceImport(parent)) {
-    return false;
-  }
-  if (
-    ts.isExportSpecifier(parent) ||
-    ts.isLabeledStatement(parent) ||
-    ts.isBreakStatement(parent)
-  ) {
-    return false;
-  }
-  return true;
-}
-
-function isAssignmentTarget(node: ts.Node): boolean {
-  const parent = node.parent;
-  return (
-    !!parent &&
-    ts.isBinaryExpression(parent) &&
-    parent.left === node &&
-    parent.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
-    parent.operatorToken.kind <= ts.SyntaxKind.LastAssignment
-  );
 }
