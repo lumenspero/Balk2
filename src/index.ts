@@ -12,17 +12,26 @@ export type {
   SymbolType,
   ArtifactNode,
   ArtifactFormat,
+  EventChannelNode,
+  UnresolvedReferenceNode,
+  UnresolvedReason,
+  SourceSpan,
   GraphNode,
   CodeRelationship,
+  EventRelationship,
   DataRelationship,
   RelationshipType,
   Confidence,
+  Evidence,
+  RelationshipMetadata,
+  RelationshipDetail,
   Relationship,
   RepositoryMetadata,
   ConnectionMap,
+  ConnectionMapV1,
 } from './types.js';
 
-export { ConnectionGraph, normalizePath } from './graph.js';
+export { ConnectionGraph, normalizePath, eventChannelId } from './graph.js';
 export { serializeConnectionMap, deserializeConnectionMap } from './serialize.js';
 export type { Analyzer, AnalyzerOptions } from './analyzer/index.js';
 export { JsTsAnalyzer, PythonAnalyzer, resolveImportPath } from './analyzer/index.js';
@@ -67,4 +76,5 @@ export {
   type Balk2Config,
   type DataConfig,
   type DataLineageEntry,
+  type GlobalsConfig,
 } from './config/index.js';

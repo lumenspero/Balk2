@@ -1,4 +1,4 @@
-import type { ConnectionMap, Relationship } from '../types.js';
+import type { ConnectionMap, EventRelationship, Relationship } from '../types.js';
 import { findConnectionPaths, type PathFinderOptions } from './path-finder.js';
 
 export interface MarkdownOptions {
@@ -28,12 +28,16 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
   const symbolCount = Object.keys(map.symbols).length;
   const artifactCount = Object.keys(map.artifacts).length;
   const relationshipCount = map.relationships.length;
+  const channelCount = Object.keys(map.eventChannels).length;
+  const unresolvedCount = Object.keys(map.unresolved).length;
 
   lines.push('## Repository Overview');
   lines.push('');
   lines.push(`- **Files**: ${fileCount}`);
   lines.push(`- **Symbols**: ${symbolCount}`);
   lines.push(`- **Data Artifacts**: ${artifactCount}`);
+  if (channelCount > 0) lines.push(`- **Event Channels**: ${channelCount}`);
+  if (unresolvedCount > 0) lines.push(`- **Unresolved Observations**: ${unresolvedCount}`);
   lines.push(`- **Relationships**: ${relationshipCount}`);
   lines.push('');
 
@@ -69,7 +73,7 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
         .map((r) => r.to)
         .sort();
       const importedBy = reverseSources(inRels, outRels, 'imports', 'importedBy');
-      const references = targetsOf(outRels, 'references');
+      const references = annotatedTargets(outRels, 'references');
       const referencedBy = sourcesOf(inRels, 'references');
 
       if (imports.length > 0) {
@@ -104,15 +108,18 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
         }
       }
 
+      pushEventLinks(lines, outRels);
+
       lines.push('');
     }
   }
 
   // 4. Symbol Connections
+  const virtualIds = new Set([...Object.keys(map.eventChannels), ...Object.keys(map.unresolved)]);
   const symbolKeySet = new Set(Object.keys(map.symbols));
   for (const rel of map.relationships) {
-    if (rel.from.includes(':')) symbolKeySet.add(rel.from);
-    if (rel.to.includes(':')) symbolKeySet.add(rel.to);
+    if (rel.from.includes(':') && !virtualIds.has(rel.from)) symbolKeySet.add(rel.from);
+    if (rel.to.includes(':') && !virtualIds.has(rel.to)) symbolKeySet.add(rel.to);
   }
   const symbols = Array.from(symbolKeySet).sort();
 
@@ -134,7 +141,7 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
         .map((r) => r.to)
         .sort();
       const calledBy = reverseSources(inRels, outRels, 'calls', 'calledBy');
-      const symbolReferences = targetsOf(outRels, 'references');
+      const symbolReferences = annotatedTargets(outRels, 'references');
       const symbolReferencedBy = sourcesOf(inRels, 'references');
       const extendsRels = outRels
         .filter((r) => r.type === 'extends')
@@ -183,6 +190,40 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
       if (symbolReferencedBy.length > 0) {
         lines.push('Referenced by:');
         for (const source of dedupe(symbolReferencedBy)) {
+          lines.push(`  ← ${source}`);
+        }
+      }
+
+      pushEventLinks(lines, outRels);
+
+      lines.push('');
+    }
+  }
+
+  // 4b. Event Channels
+  const channelIds = Object.keys(map.eventChannels).sort();
+  if (channelIds.length > 0) {
+    lines.push('## Event Channels');
+    lines.push('');
+
+    for (const channelId of channelIds) {
+      const channel = map.eventChannels[channelId];
+      lines.push(`### ${channelId}`);
+      lines.push('');
+      lines.push(`Event: ${channel?.name ?? channelId}`);
+      if (channel?.scope) lines.push(`Scope: ${channel.scope}`);
+
+      const inRels = incomingMap.get(channelId) ?? [];
+      for (const [type, label] of EVENT_INCOMING) {
+        const sources = dedupe(
+          inRels
+            .filter((r) => r.type === type)
+            .map((r) => `${r.from}${annotate(r)}`)
+            .sort(),
+        );
+        if (sources.length === 0) continue;
+        lines.push(`${label}:`);
+        for (const source of sources) {
           lines.push(`  ← ${source}`);
         }
       }
@@ -266,6 +307,46 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
     }
   }
 
+  // 5b. Unresolved Observations
+  const unresolvedIds = Object.keys(map.unresolved).sort();
+  if (unresolvedIds.length > 0) {
+    lines.push('## Unresolved Observations');
+    lines.push('');
+
+    for (const unresolvedId of unresolvedIds) {
+      const node = map.unresolved[unresolvedId];
+      lines.push(`### ${unresolvedId}`);
+      lines.push('');
+
+      if (node) {
+        lines.push(`Reason: ${node.reason}`);
+        lines.push(`Subject: ${node.subject}`);
+        lines.push(`Attempted: ${node.attempted}`);
+        lines.push(
+          `Location: ${node.location.filePath}:${node.location.startLine}:${node.location.startColumn}`,
+        );
+        if (node.candidates && node.candidates.length > 0) {
+          lines.push('Candidates:');
+          for (const candidate of node.candidates) {
+            lines.push(`  - ${candidate}`);
+          }
+        }
+      }
+
+      const observedFrom = dedupe(
+        (incomingMap.get(unresolvedId) ?? []).map((r) => `${r.from} (${r.type})`).sort(),
+      );
+      if (observedFrom.length > 0) {
+        lines.push('Observed from:');
+        for (const source of observedFrom) {
+          lines.push(`  ← ${source}`);
+        }
+      }
+
+      lines.push('');
+    }
+  }
+
   // 6. Connection Paths
   const paths = findConnectionPaths(map, options?.pathOptions);
   if (paths.length > 0) {
@@ -289,6 +370,48 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
   lines.push('');
 
   return lines.join('\n');
+}
+
+const EVENT_OUTGOING: ReadonlyArray<readonly [EventRelationship, string]> = [
+  ['emits', 'Emits'],
+  ['dispatches', 'Dispatches'],
+  ['subscribes', 'Subscribes to'],
+  ['unsubscribes', 'Unsubscribes from'],
+];
+
+const EVENT_INCOMING: ReadonlyArray<readonly [EventRelationship, string]> = [
+  ['emits', 'Emitted by'],
+  ['dispatches', 'Dispatched by'],
+  ['subscribes', 'Subscribed by'],
+  ['unsubscribes', 'Unsubscribed by'],
+];
+
+/** Annotate only what changes interpretation: reduced confidence and one-time listeners. */
+function annotate(rel: Relationship): string {
+  const notes: string[] = [];
+  if (rel.confidence !== 'high') notes.push(`${rel.confidence} confidence`);
+  if (rel.metadata?.['once'] === true) notes.push('once');
+  return notes.length > 0 ? ` (${notes.join(', ')})` : '';
+}
+
+/** Event relationships that start at this node, grouped by mechanism. */
+function pushEventLinks(lines: string[], outgoing: readonly Relationship[]): void {
+  for (const [type, label] of EVENT_OUTGOING) {
+    const targets = dedupe(annotatedTargets(outgoing, type));
+    if (targets.length === 0) continue;
+    lines.push(`${label}:`);
+    for (const target of targets) {
+      lines.push(`  → ${target}`);
+    }
+  }
+}
+
+/** Sorted targets of outgoing relationships of one type, annotated where confidence is reduced. */
+function annotatedTargets(outgoing: readonly Relationship[], type: Relationship['type']): string[] {
+  return outgoing
+    .filter((r) => r.type === type)
+    .map((r) => `${r.to}${annotate(r)}`)
+    .sort();
 }
 
 /** Sorted targets of a node's outgoing relationships of one type. */

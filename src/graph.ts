@@ -4,11 +4,15 @@ import type {
   SymbolType,
   ArtifactNode,
   ArtifactFormat,
+  EventChannelNode,
+  UnresolvedReferenceNode,
   Relationship,
+  RelationshipDetail,
   RelationshipType,
   Confidence,
   ConnectionMap,
   RepositoryMetadata,
+  SourceSpan,
 } from './types.js';
 
 /**
@@ -24,6 +28,8 @@ export class ConnectionGraph {
   private readonly files = new Map<string, FileNode>();
   private readonly symbols = new Map<string, SymbolNode>();
   private readonly artifacts = new Map<string, ArtifactNode>();
+  private readonly eventChannels = new Map<string, EventChannelNode>();
+  private readonly unresolved = new Map<string, UnresolvedReferenceNode>();
   private readonly relationships: Relationship[] = [];
   private readonly relationshipIndex = new Map<string, number>();
 
@@ -61,31 +67,77 @@ export class ConnectionGraph {
   }
 
   /**
+   * Add an event channel node. The id is `event:<name>`, or `event:<scope>#<name>` when the
+   * channel is scoped by a resolved emitter/receiver identity. Adding it again is a no-op.
+   */
+  addEventChannel(name: string, scope?: string): EventChannelNode {
+    const id = eventChannelId(name, scope);
+    const existing = this.eventChannels.get(id);
+    if (existing) return existing;
+
+    const node: EventChannelNode = {
+      kind: 'event-channel',
+      id,
+      name,
+      ...(scope ? { scope: normalizePath(scope) } : {}),
+    };
+    this.eventChannels.set(id, node);
+    return node;
+  }
+
+  /**
+   * Add a diagnostic node for code that looks like a connection but could not be resolved.
+   * The id is derived from the reason and source location, so re-adding is a no-op.
+   */
+  addUnresolved(input: Omit<UnresolvedReferenceNode, 'kind' | 'id'>): UnresolvedReferenceNode {
+    const { location } = input;
+    const id = unresolvedId(input.reason, location);
+    const existing = this.unresolved.get(id);
+    if (existing) return existing;
+
+    const node: UnresolvedReferenceNode = {
+      kind: 'unresolved-reference',
+      id,
+      reason: input.reason,
+      attempted: input.attempted,
+      subject: input.subject,
+      location: { ...location, filePath: normalizePath(location.filePath) },
+      ...(input.candidates ? { candidates: [...input.candidates].sort(compareStrings) } : {}),
+    };
+    this.unresolved.set(id, node);
+    return node;
+  }
+
+  /**
    * Add a typed relationship to the graph.
    * The from/to identifiers are normalized. A relationship is identified by
-   * (type, from, to): adding it again is a no-op, except that a higher confidence
-   * replaces a lower one. Returns the relationship that is kept.
+   * (type, from, to): adding it again merges into the existing one — the higher confidence
+   * (and its evidence) wins, source spans are combined, and existing metadata takes
+   * precedence. Returns the relationship that is kept.
    */
   addRelationship(
     type: RelationshipType,
     from: string,
     to: string,
     confidence: Confidence = 'high',
+    detail: RelationshipDetail = {},
   ): Relationship {
     const rel: Relationship = {
       type,
       from: normalizePath(from),
       to: normalizePath(to),
       confidence,
+      ...(detail.evidence ? { evidence: detail.evidence } : {}),
+      ...(detail.spans && detail.spans.length > 0 ? { spans: sortSpans(detail.spans) } : {}),
+      ...(detail.metadata ? { metadata: detail.metadata } : {}),
     };
 
     const key = `${rel.type}\u0000${rel.from}\u0000${rel.to}`;
     const existingIndex = this.relationshipIndex.get(key);
     if (existingIndex !== undefined) {
-      const existing = this.relationships[existingIndex] as Relationship;
-      if (CONFIDENCE_RANK[confidence] <= CONFIDENCE_RANK[existing.confidence]) return existing;
-      this.relationships[existingIndex] = rel;
-      return rel;
+      const merged = mergeRelationships(this.relationships[existingIndex] as Relationship, rel);
+      this.relationships[existingIndex] = merged;
+      return merged;
     }
 
     this.relationshipIndex.set(key, this.relationships.length);
@@ -106,6 +158,16 @@ export class ConnectionGraph {
   /** Returns true if an artifact node exists for the given path. */
   hasArtifact(path: string): boolean {
     return this.artifacts.has(normalizePath(path));
+  }
+
+  /** Returns true if an event channel node exists for the given id. */
+  hasEventChannel(id: string): boolean {
+    return this.eventChannels.has(id);
+  }
+
+  /** Returns true if an unresolved-reference node exists for the given id. */
+  hasUnresolved(id: string): boolean {
+    return this.unresolved.has(id);
   }
 
   /** Returns the file node for the given path, or undefined. */
@@ -132,7 +194,13 @@ export class ConnectionGraph {
 
   /** Returns the count of all nodes in the graph. */
   get nodeCount(): number {
-    return this.files.size + this.symbols.size + this.artifacts.size;
+    return (
+      this.files.size +
+      this.symbols.size +
+      this.artifacts.size +
+      this.eventChannels.size +
+      this.unresolved.size
+    );
   }
 
   /** Returns the count of all relationships in the graph. */
@@ -148,11 +216,13 @@ export class ConnectionGraph {
    */
   build(metadata: RepositoryMetadata): ConnectionMap {
     return {
-      version: 1,
+      version: 2,
       repository: metadata,
       files: sortedRecord(this.files),
       symbols: sortedRecord(this.symbols),
       artifacts: sortedRecord(this.artifacts),
+      eventChannels: sortedRecord(this.eventChannels),
+      unresolved: sortedRecord(this.unresolved),
       relationships: [...this.relationships].sort(compareRelationships),
     };
   }
@@ -166,6 +236,59 @@ export function normalizePath(p: string): string {
 }
 
 const CONFIDENCE_RANK: Record<Confidence, number> = { low: 0, medium: 1, high: 2 };
+
+/** Id of an event channel node; shared with analyzers that need to name channels. */
+export function eventChannelId(name: string, scope?: string): string {
+  return scope ? `event:${normalizePath(scope)}#${name}` : `event:${name}`;
+}
+
+function unresolvedId(reason: string, location: SourceSpan): string {
+  return `unresolved:${reason}:${normalizePath(location.filePath)}:${location.startLine}:${location.startColumn}`;
+}
+
+function compareSpans(a: SourceSpan, b: SourceSpan): number {
+  return (
+    compareStrings(a.filePath, b.filePath) ||
+    a.startLine - b.startLine ||
+    a.startColumn - b.startColumn ||
+    a.endLine - b.endLine ||
+    a.endColumn - b.endColumn
+  );
+}
+
+function sortSpans(spans: readonly SourceSpan[]): SourceSpan[] {
+  const unique = new Map(
+    spans.map((span) => [
+      `${span.filePath}\u0000${span.startLine}:${span.startColumn}-${span.endLine}:${span.endColumn}`,
+      { ...span, filePath: normalizePath(span.filePath) },
+    ]),
+  );
+  return [...unique.values()].sort(compareSpans);
+}
+
+/** Combine two observations of the same (type, from, to). */
+function mergeRelationships(existing: Relationship, incoming: Relationship): Relationship {
+  const stronger =
+    CONFIDENCE_RANK[incoming.confidence] > CONFIDENCE_RANK[existing.confidence]
+      ? incoming
+      : existing;
+  const evidence = stronger.evidence ?? existing.evidence ?? incoming.evidence;
+  const spans = sortSpans([...(existing.spans ?? []), ...(incoming.spans ?? [])]);
+  const metadata =
+    existing.metadata || incoming.metadata
+      ? { ...incoming.metadata, ...existing.metadata }
+      : undefined;
+
+  return {
+    type: existing.type,
+    from: existing.from,
+    to: existing.to,
+    confidence: stronger.confidence,
+    ...(evidence ? { evidence } : {}),
+    ...(spans.length > 0 ? { spans } : {}),
+    ...(metadata ? { metadata } : {}),
+  };
+}
 
 /**
  * Ordinal (UTF-16 code unit) comparison. `localeCompare` depends on the host's ICU data and

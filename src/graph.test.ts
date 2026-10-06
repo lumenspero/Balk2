@@ -170,7 +170,7 @@ describe('ConnectionGraph', () => {
 
       const map = graph.build({ generatedAt: '2026-01-01T00:00:00Z' });
 
-      expect(map.version).toBe(1);
+      expect(map.version).toBe(2);
       expect(map.repository.generatedAt).toBe('2026-01-01T00:00:00Z');
       expect(Object.keys(map.files)).toEqual(['src/main.ts', 'src/util.ts']);
       expect(Object.keys(map.symbols)).toEqual(['src/main.ts:init']);

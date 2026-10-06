@@ -1,4 +1,4 @@
-import type { ConnectionMap } from './types.js';
+import type { ConnectionMap, ConnectionMapV1 } from './types.js';
 
 /**
  * Serialize a ConnectionMap to a deterministic JSON string.
@@ -11,6 +11,9 @@ export function serializeConnectionMap(map: ConnectionMap): string {
 /**
  * Deserialize a JSON string to a ConnectionMap.
  * Performs basic structural validation.
+ *
+ * Version 1 maps are accepted and converted to version 2 (see {@link convertV1ToV2}); any
+ * other version is rejected.
  */
 export function deserializeConnectionMap(json: string): ConnectionMap {
   const parsed: unknown = JSON.parse(json);
@@ -20,9 +23,10 @@ export function deserializeConnectionMap(json: string): ConnectionMap {
   }
 
   const obj = parsed as Record<string, unknown>;
+  const version = obj['version'];
 
-  if (obj['version'] !== 1) {
-    throw new Error(`Unsupported connection map version: ${String(obj['version'])}`);
+  if (version !== 1 && version !== 2) {
+    throw new Error(`Unsupported connection map version: ${String(version)}`);
   }
 
   if (!isObject(obj['repository'])) {
@@ -41,11 +45,41 @@ export function deserializeConnectionMap(json: string): ConnectionMap {
     throw new Error('Invalid connection map: missing artifacts');
   }
 
+  if (version === 2) {
+    if (!isObject(obj['eventChannels'])) {
+      throw new Error('Invalid connection map: missing eventChannels');
+    }
+
+    if (!isObject(obj['unresolved'])) {
+      throw new Error('Invalid connection map: missing unresolved');
+    }
+  }
+
   if (!Array.isArray(obj['relationships'])) {
     throw new Error('Invalid connection map: missing relationships');
   }
 
-  return parsed as unknown as ConnectionMap;
+  return version === 1
+    ? convertV1ToV2(parsed as unknown as ConnectionMapV1)
+    : (parsed as unknown as ConnectionMap);
+}
+
+/**
+ * Upgrade a version 1 map. Every v1 node and relationship is valid in v2 unchanged; the
+ * new virtual-node tables start empty. Key order matches `ConnectionGraph.build` so a
+ * converted map serializes the same way as a freshly built one.
+ */
+export function convertV1ToV2(map: ConnectionMapV1): ConnectionMap {
+  return {
+    version: 2,
+    repository: map.repository,
+    files: map.files,
+    symbols: map.symbols,
+    artifacts: map.artifacts,
+    eventChannels: {},
+    unresolved: {},
+    relationships: map.relationships,
+  };
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
