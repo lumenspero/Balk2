@@ -70,6 +70,7 @@ export {
 
 export {
   loadBalk2Config,
+  loadBalk2ConfigDetailed,
   applyExplicitLineage,
   filterFilesWithConfig,
   matchPattern,
@@ -77,4 +78,15 @@ export {
   type DataConfig,
   type DataLineageEntry,
   type GlobalsConfig,
+  type ProtocolsConfig,
+  type EventProtocolsConfig,
+  type ConfigProblem,
+  type LoadedBalk2Config,
 } from './config/index.js';
+
+export type {
+  EventProtocol,
+  EventDirection,
+  EventArgKind,
+  ReceiverRule,
+} from './analyzer/event-protocols.js';

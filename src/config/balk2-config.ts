@@ -1,5 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import type { ConfigProblem } from './config-problem.js';
+import { normalizeProtocolsConfig, type ProtocolsConfig } from './protocols-config.js';
 
 export interface DataLineageEntry {
   /** Source code script/file that produces data output */
@@ -45,37 +47,78 @@ export interface Balk2Config {
   readonly data?: DataConfig;
   /** Global-symbol analysis configuration */
   readonly globals?: GlobalsConfig;
+  /** Project conventions for indirect connections (event protocols) */
+  readonly protocols?: ProtocolsConfig;
+}
+
+/** The loaded configuration plus everything in the file that was ignored or unusable. */
+export interface LoadedBalk2Config {
+  /** Undefined when there is no file, or it is not a JSON object */
+  readonly config?: Balk2Config;
+  readonly problems: readonly ConfigProblem[];
 }
 
 /**
  * Load and parse .balk2.json configuration file if present.
+ *
+ * Unusable content is ignored silently; use {@link loadBalk2ConfigDetailed} to learn what.
  */
 export function loadBalk2Config(
   cwd: string = process.cwd(),
   customPath?: string,
 ): Balk2Config | undefined {
+  return loadBalk2ConfigDetailed(cwd, customPath).config;
+}
+
+/**
+ * Like {@link loadBalk2Config}, but also reports every entry that was dropped, so a mistyped
+ * setting is visible instead of silently doing nothing.
+ */
+export function loadBalk2ConfigDetailed(
+  cwd: string = process.cwd(),
+  customPath?: string,
+): LoadedBalk2Config {
   const configPath = customPath
     ? path.resolve(cwd, customPath)
     : path.join(path.resolve(cwd), '.balk2.json');
 
   if (!fs.existsSync(configPath)) {
-    return undefined;
+    return { problems: [] };
   }
 
+  let parsed: unknown;
   try {
-    const content = fs.readFileSync(configPath, 'utf8');
-    const parsed: unknown = JSON.parse(content);
-    if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
-      const config: Record<string, unknown> = { ...(parsed as Record<string, unknown>) };
-      delete config.globals;
-      const globals = normalizeGlobalsConfig((parsed as Record<string, unknown>).globals);
-      if (globals) config.globals = globals;
-      return config as Balk2Config;
-    }
-    return undefined;
-  } catch {
-    return undefined;
+    parsed = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    return {
+      problems: [{ path: '', message: `could not read or parse configuration: ${reason}` }],
+    };
   }
+
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    return { problems: [{ path: '', message: 'configuration must be a JSON object' }] };
+  }
+
+  const raw = parsed as Record<string, unknown>;
+  const problems: ConfigProblem[] = [];
+  const config: Record<string, unknown> = { ...raw };
+  delete config.globals;
+  delete config.protocols;
+
+  if ('globals' in raw) {
+    problems.push(...validateGlobalsConfig(raw.globals));
+    const globals = normalizeGlobalsConfig(raw.globals);
+    if (globals) config.globals = globals;
+  }
+
+  if ('protocols' in raw) {
+    const protocols = normalizeProtocolsConfig(raw.protocols);
+    problems.push(...protocols.problems);
+    if (protocols.config) config.protocols = protocols.config;
+  }
+
+  return { config: config as Balk2Config, problems };
 }
 
 const IDENTIFIER_PATTERN = /^[A-Za-z_$][\w$]*$/;
@@ -108,4 +151,62 @@ export function normalizeGlobalsConfig(value: unknown): GlobalsConfig | undefine
 
   if (!roots && !targets) return undefined;
   return { ...(roots ? { roots } : {}), ...(targets ? { targets } : {}) };
+}
+
+/** What {@link normalizeGlobalsConfig} would drop from this `globals` value. */
+export function validateGlobalsConfig(value: unknown): ConfigProblem[] {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return [{ path: 'globals', message: 'must be an object' }];
+  }
+
+  const raw = value as Record<string, unknown>;
+  const problems: ConfigProblem[] = [];
+
+  for (const key of Object.keys(raw)) {
+    if (key !== 'roots' && key !== 'targets') {
+      problems.push({ path: `globals.${key}`, message: 'unknown key ignored' });
+    }
+  }
+
+  if ('roots' in raw) {
+    const roots = raw.roots;
+    if (!Array.isArray(roots)) {
+      problems.push({ path: 'globals.roots', message: 'must be an array of identifiers' });
+    } else {
+      let valid = 0;
+      roots.forEach((entry: unknown, index) => {
+        if (typeof entry === 'string' && IDENTIFIER_PATTERN.test(entry)) {
+          valid++;
+        } else {
+          problems.push({ path: `globals.roots[${index}]`, message: 'must be an identifier' });
+        }
+      });
+      if (roots.length > 0 && valid === 0) {
+        problems.push({
+          path: 'globals.roots',
+          message: 'has no valid identifiers; the default roots are kept',
+        });
+      }
+    }
+  }
+
+  if ('targets' in raw) {
+    const targets = raw.targets;
+    if (typeof targets !== 'object' || targets === null || Array.isArray(targets)) {
+      problems.push({ path: 'globals.targets', message: 'must be an object of name to file path' });
+    } else {
+      for (const [name, file] of Object.entries(targets)) {
+        if (name.length === 0) {
+          problems.push({ path: 'globals.targets', message: 'a target name must not be empty' });
+        } else if (typeof file !== 'string' || file.length === 0) {
+          problems.push({
+            path: `globals.targets.${name}`,
+            message: 'must be a non-empty file path',
+          });
+        }
+      }
+    }
+  }
+
+  return problems;
 }
