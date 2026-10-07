@@ -8,6 +8,7 @@ import {
   type GlobalSymbol,
   type GlobalSymbolIndex,
 } from './global-symbols.js';
+import { ownerOf } from './owner.js';
 import type { RepositoryProgram } from './repository-program.js';
 
 type UseKind = 'read' | 'write' | 'delete';
@@ -116,32 +117,6 @@ export function collectGlobalReferences(
       a.location.column - b.location.column ||
       (a.kind < b.kind ? -1 : a.kind > b.kind ? 1 : 0),
   );
-}
-
-/** The symbol id that owns code inside `node`, when `node` starts a new owner. */
-function ownerOf(node: ts.Node, fromFile: string): string | undefined {
-  if (ts.isFunctionDeclaration(node) && node.name) return `${fromFile}:${node.name.text}`;
-  if (ts.isClassDeclaration(node) && node.name) return `${fromFile}:${node.name.text}`;
-  if (ts.isMethodDeclaration(node) && ts.isIdentifier(node.name)) {
-    const className = getParentClassName(node);
-    if (className) return `${fromFile}:${className}.${node.name.text}`;
-  }
-  if (
-    ts.isVariableDeclaration(node) &&
-    ts.isIdentifier(node.name) &&
-    node.initializer &&
-    (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))
-  ) {
-    return `${fromFile}:${node.name.text}`;
-  }
-  return undefined;
-}
-
-function getParentClassName(node: ts.MethodDeclaration): string | undefined {
-  if (node.parent && ts.isClassDeclaration(node.parent) && node.parent.name) {
-    return node.parent.name.text;
-  }
-  return undefined;
 }
 
 function getGlobalReferenceName(
