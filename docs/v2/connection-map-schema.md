@@ -49,6 +49,37 @@ publisher or listener owner **to** the channel; reverse links are derived when r
 querying and are never stored. Existing families (`imports`/`importedBy`, `calls`/`calledBy`, ...)
 still store both directions in this version.
 
+## Reading the graph
+
+A relationship is stored once, from the thing that acts to the thing it acts on. Version 1 maps also
+stored a reverse link for some families (`importedBy`, `calledBy`, `generatedBy`, `consumedBy`);
+that is being phased out, and event relationships never have one. Code that reads the JSON
+should not depend on reverse links. These helpers answer the same questions either way:
+
+```ts
+import { getIncoming, getOutgoing, forwardRelationships } from '@lumenspero/balk2';
+
+getIncoming(map, 'src/util.ts:help', 'calls'); // who calls help?
+getOutgoing(map, 'src/main.ts:run', 'calls'); // what does run call?
+getIncoming(map, 'src/util.ts', 'imports'); // who imports util.ts?
+```
+
+`forwardRelationships(map)` returns every relationship in forward form: stored reverse links are
+turned around, repeated facts are merged at their highest confidence, and the result is sorted. The
+generated `connection-map.md` derives its "Imported by" and "Called by" lists the same way.
+
+For event channels there are two direct questions:
+
+```ts
+import { getEventReactions, getEventTriggers } from '@lumenspero/balk2';
+
+getEventReactions(map, 'src/net.ts:connect'); // what reacts when this emits?
+getEventTriggers(map, 'src/ui.ts:onReady'); // what can make this listener run?
+```
+
+Both return the channel and the nodes on the other side of it, sorted. Unresolved observations are
+not channels and are never included.
+
 ## Reading older maps
 
 `deserializeConnectionMap` accepts version 1 and version 2.

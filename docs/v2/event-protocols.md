@@ -193,6 +193,34 @@ Some calls are skipped without a note, because noting them would be noise: an ar
 cannot be an event name (a Redux action object), a dynamic name on a receiver that is not an
 emitter, and a receiver that a configured `names`/`types` rule deliberately excludes.
 
+## Following events
+
+The `Event Channels` section of `connection-map.md` lists every channel with its publishers and
+subscribers together. To follow events programmatically, use `getEventReactions` (what reacts when
+a node emits) and `getEventTriggers` (what can make a listener run); see the schema document.
+
+`Connection Paths` also traces events. A path runs from a publisher into the channel and out to a
+subscriber, and continues when that subscriber publishes in turn, so a cascade reads as one path:
+
+```
+src/net.ts:connect
+→ emits →
+event:src/bus.ts:bus#ready
+← subscribed by ←
+src/ui.ts:onReady
+→ emits →
+event:src/bus.ts:bus#loaded
+← subscribed by ←
+src/view.ts:render
+```
+
+Data artifacts are traced the same way, so a multi-stage pipeline (collect, build, load) is one path
+instead of separate hops. A channel or artifact with only publishers or only consumers shows single
+hops. Unsubscriptions, unresolved observations and code relationships are not part of paths.
+Artifacts are traced before event channels, and a path that is only a stretch of a longer one is
+not repeated. The limits are `maxDepth` (relationships per path, default 4),
+`maxPathsPerTarget` (3) and `maxTotalPaths` (10); `includeEventChannels: false` leaves events out.
+
 ## Invalid configuration
 
 Nothing in `.balk2.json` aborts a run. Unusable content is dropped and described by

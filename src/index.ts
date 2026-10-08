@@ -33,6 +33,15 @@ export type {
 
 export { ConnectionGraph, normalizePath, eventChannelId } from './graph.js';
 export { serializeConnectionMap, deserializeConnectionMap } from './serialize.js';
+export {
+  forwardRelationships,
+  getOutgoing,
+  getIncoming,
+  getEventReactions,
+  getEventTriggers,
+  type EventReaction,
+  type EventTrigger,
+} from './graph-queries.js';
 export type { Analyzer, AnalyzerOptions } from './analyzer/index.js';
 export { JsTsAnalyzer, PythonAnalyzer, resolveImportPath } from './analyzer/index.js';
 

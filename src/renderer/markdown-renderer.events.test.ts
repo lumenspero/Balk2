@@ -163,3 +163,32 @@ describe('unresolved observation detail', () => {
     ]);
   });
 });
+
+describe('connection paths through event channels', () => {
+  const markdown = renderMarkdown(eventMap());
+  const paths = markdown.slice(markdown.indexOf('## Connection Paths'));
+
+  it('traces a publisher to its subscriber through the shared channel', () => {
+    expect(section(paths, 'event:src/net.ts:socket#ready')).toEqual([
+      '  src/net.ts:connect',
+      '  → emits →',
+      '  event:src/net.ts:socket#ready',
+      '  ← subscribed by ←',
+      '  src/ui.ts:onReady',
+    ]);
+  });
+
+  it('shows a channel with only a publisher as a single hop', () => {
+    expect(section(paths, 'event:global:document#ready')).toEqual([
+      '  src/ui.ts',
+      '  → dispatches →',
+      '  event:global:document#ready',
+    ]);
+  });
+
+  it('can leave event channels out of the paths', () => {
+    const without = renderMarkdown(eventMap(), { pathOptions: { includeEventChannels: false } });
+    expect(without).not.toContain('## Connection Paths');
+    expect(without).toContain('## Event Channels');
+  });
+});
