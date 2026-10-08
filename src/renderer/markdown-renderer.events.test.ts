@@ -138,3 +138,28 @@ describe('unresolved observations', () => {
     );
   });
 });
+
+describe('unresolved observation detail', () => {
+  const graph = new ConnectionGraph();
+  const node = graph.addUnresolved({
+    reason: 'dynamic-event-name',
+    attempted: 'emits',
+    subject: 'bus.emit(name)',
+    location: { filePath: 'src/a.ts', startLine: 3, startColumn: 5, endLine: 3, endColumn: 19 },
+    detail: '"name" is not a constant',
+  });
+  graph.addRelationship('emits', 'src/a.ts:run', node.id, 'low');
+  const markdown = renderMarkdown(graph.build(METADATA));
+
+  it('explains why the code could not be resolved', () => {
+    expect(section(markdown, node.id)).toEqual([
+      'Reason: dynamic-event-name',
+      'Subject: bus.emit(name)',
+      'Detail: "name" is not a constant',
+      'Attempted: emits',
+      'Location: src/a.ts:3:5',
+      'Observed from:',
+      '  ← src/a.ts:run (emits)',
+    ]);
+  });
+});

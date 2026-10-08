@@ -6,6 +6,8 @@ import {
   type GlobalFact,
   type GlobalSymbolOptions,
 } from './global-symbols.js';
+import { collectEventRelationships } from './event-channels.js';
+import type { EventProtocolOptions } from './event-protocols.js';
 import { collectGlobalReferences } from './global-references.js';
 import { resolveImportPath } from './resolver.js';
 import type { ConnectionGraph } from '../graph.js';
@@ -17,6 +19,8 @@ import { inferDataRelationshipType, addDataRelationship } from '../data/data-ana
 export interface RepositoryAnalysisOptions {
   /** Global-symbol behavior from `.balk2.json`. */
   readonly globals?: GlobalSymbolOptions;
+  /** Event protocol customization from `protocols.events` in `.balk2.json`. */
+  readonly events?: EventProtocolOptions;
 }
 
 export interface RepositoryAnalysis {
@@ -84,6 +88,8 @@ export class JsTsAnalyzer implements Analyzer {
         ...collectGlobalReferences(sourceFile, filePath, repository, globalSymbols, graph),
       );
     }
+
+    collectEventRelationships(repository, graph, options.events);
 
     return { globalFacts };
   }

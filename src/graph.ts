@@ -103,6 +103,7 @@ export class ConnectionGraph {
       subject: input.subject,
       location: { ...location, filePath: normalizePath(location.filePath) },
       ...(input.candidates ? { candidates: [...input.candidates].sort(compareStrings) } : {}),
+      ...(input.detail ? { detail: input.detail } : {}),
     };
     this.unresolved.set(id, node);
     return node;

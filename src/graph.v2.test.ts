@@ -60,6 +60,26 @@ describe('unresolved-reference nodes', () => {
     expect(node.kind).toBe('unresolved-reference');
   });
 
+  it('keeps a detail sentence when given and omits it otherwise', () => {
+    const graph = new ConnectionGraph();
+    const withDetail = graph.addUnresolved({
+      reason: 'unknown-event-receiver',
+      attempted: 'emits',
+      subject: 'getBus().emit(x)',
+      location: span('src/use.ts', 12),
+      detail: 'receiver is a computed expression',
+    });
+    const without = graph.addUnresolved({
+      reason: 'dynamic-event-name',
+      attempted: 'emits',
+      subject: 'bus.emit(name)',
+      location: span('src/use.ts', 13),
+    });
+
+    expect(withDetail.detail).toBe('receiver is a computed expression');
+    expect('detail' in without).toBe(false);
+  });
+
   it('is idempotent and omits absent candidates', () => {
     const graph = new ConnectionGraph();
     graph.addUnresolved(input);

@@ -321,6 +321,7 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
       if (node) {
         lines.push(`Reason: ${node.reason}`);
         lines.push(`Subject: ${node.subject}`);
+        if (node.detail) lines.push(`Detail: ${node.detail}`);
         lines.push(`Attempted: ${node.attempted}`);
         lines.push(
           `Location: ${node.location.filePath}:${node.location.startLine}:${node.location.startColumn}`,

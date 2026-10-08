@@ -29,7 +29,8 @@ produce different channels. Fields: `kind`, `id`, `name`, optional `scope`.
 like a connection but cannot be resolved without guessing. Fields: `kind`, `id`, `reason`
 (`ambiguous-global`, `dynamic-event-name`, `unknown-event-receiver`), `attempted` (the
 relationship type that would have been created), `subject`, `location` (a source span), and
-`candidates` when the problem is ambiguity. The owning symbol or file links to it with a
+`candidates` when the problem is ambiguity, and an optional one-sentence `detail` saying why it
+could not be resolved. The owning symbol or file links to it with a
 `low`-confidence relationship of the attempted type.
 
 ## Relationships

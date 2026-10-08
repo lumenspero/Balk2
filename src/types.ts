@@ -96,6 +96,8 @@ export interface UnresolvedReferenceNode {
   readonly location: SourceSpan;
   /** Possible targets, when the problem is ambiguity rather than dynamism */
   readonly candidates?: readonly string[];
+  /** Why it could not be resolved, in a sentence (for example "receiver type is not known") */
+  readonly detail?: string;
 }
 
 export type GraphNode =

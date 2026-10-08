@@ -137,6 +137,62 @@ Known limits:
 - Properties of an interface type are scoped by the path that reaches them (`use.a.bus`), not by
   the interface, so two values of one interface type stay separate.
 
+## What the map contains
+
+For each protocol call whose event name and receiver both resolve, the map gets an event channel
+(`event:<scope>#<name>`) and one relationship to it:
+
+| Call                             | Relationship   | From                                                                                             |
+| -------------------------------- | -------------- | ------------------------------------------------------------------------------------------------ |
+| `emit`                           | `emits`        | The function or file that contains the call                                                      |
+| `dispatch`, `dispatchEvent`      | `dispatches`   | The function or file that contains the call                                                      |
+| `on`, `once`, `addEventListener` | `subscribes`   | The listener itself when it is a named function or method; otherwise the code that registered it |
+| `off`, `removeEventListener`     | `unsubscribes` | The function or file that performs the removal                                                   |
+
+A listener is recognized when the argument is a named function, a function-valued variable, a
+method (`this.onReady`), a class property holding a function, or any of these with `.bind(...)`.
+Inline callbacks and parameters are attributed to the code that registered them.
+
+Relationship metadata:
+
+- `once: true` for `once`-style subscriptions.
+- `registeredBy`: on a `subscribes` edge attributed to a listener, the symbol that registered it.
+- `listener`: on an `unsubscribes` edge, the listener being removed, when it can be identified.
+
+Every relationship records the call site (`spans`), how it was found (`evidence`) and a
+confidence:
+
+| Evidence     | Meaning                                                                     |
+| ------------ | --------------------------------------------------------------------------- |
+| `ts-program` | Resolved by the compiler: a built-in protocol on a typed or global receiver |
+| `config`     | The protocol, or its receiver rule, comes from `.balk2.json`                |
+| `heuristic`  | The receiver was accepted by usage (see below)                              |
+
+Confidence is `high` for module-level and global receivers and `medium` for approximate ones
+(parameters, locals, class-level `this`) and for heuristic acceptance.
+
+### Usage evidence
+
+Untyped JavaScript gives the compiler nothing to check `on` and `emit` against. A receiver that
+is used with **both** a subscribe method and an emit or dispatch method somewhere in the
+repository is therefore accepted as an emitter, with `heuristic` evidence and medium confidence. A
+receiver that only listens, or only publishes, is not accepted.
+
+### Unresolved observations
+
+Code that looks like an event call but cannot be connected without guessing is recorded, linked
+from its owner by a low-confidence relationship of the type it would have had, with a one-sentence
+`detail`:
+
+| Reason                   | Raised when                                                                                                                                                      |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `dynamic-event-name`     | The receiver qualifies but the event name is not static                                                                                                          |
+| `unknown-event-receiver` | The name is static but the receiver cannot be identified, or a generic method name (`on`, `emit`, ...) is called on something that does not look like an emitter |
+
+Some calls are skipped without a note, because noting them would be noise: an argument that
+cannot be an event name (a Redux action object), a dynamic name on a receiver that is not an
+emitter, and a receiver that a configured `names`/`types` rule deliberately excludes.
+
 ## Invalid configuration
 
 Nothing in `.balk2.json` aborts a run. Unusable content is dropped and described by
