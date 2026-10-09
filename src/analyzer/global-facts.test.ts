@@ -157,7 +157,9 @@ describe.each(TSCONFIGS)('Phase 3: global facts and policy [%s]', (_label, compi
     it('records an ambiguous low-confidence observation with candidate origins and no edge', () => {
       const { references, factsIn } = analyze(files);
 
-      expect(references.filter((r) => r.from === 'use.js:f')).toEqual([]);
+      expect(
+        references.filter((r) => r.from === 'use.js:f' && !r.to.startsWith('unresolved:')),
+      ).toEqual([]);
       expect(factsIn('use.js')).toEqual([
         expect.objectContaining({
           kind: 'read',
@@ -195,7 +197,87 @@ describe.each(TSCONFIGS)('Phase 3: global facts and policy [%s]', (_label, compi
 
     it('ignores a configured target that matches no candidate', () => {
       const { references } = analyze(files, { globals: { targets: { shared: 'nowhere.js' } } });
-      expect(references.filter((r) => r.from === 'use.js:f')).toEqual([]);
+      expect(
+        references.filter((r) => r.from === 'use.js:f' && !r.to.startsWith('unresolved:')),
+      ).toEqual([]);
+    });
+
+    it('records an observation linked from the using symbol, with the candidates and the fix', () => {
+      const { graph } = analyze(files);
+      const map = graph.build({ generatedAt: '2026-01-01T00:00:00Z' });
+      const nodes = Object.values(map.unresolved);
+
+      expect(nodes).toHaveLength(1);
+      expect(nodes[0]).toMatchObject({
+        kind: 'unresolved-reference',
+        reason: 'ambiguous-global',
+        attempted: 'references',
+        subject: 'shared',
+        candidates: ['one.js:shared', 'two.js:shared'],
+        detail: '"shared" is declared in one.js and two.js; choose one with globals.targets',
+        location: { filePath: 'use.js', startLine: 1, startColumn: 30 },
+      });
+      const link = map.relationships.find((r) => r.to === nodes[0]?.id);
+      expect(link).toMatchObject({ type: 'references', from: 'use.js:f', confidence: 'low' });
+      expect(link?.spans).toHaveLength(1);
+    });
+
+    it('records no observation once a configured target settles the name', () => {
+      const { graph } = analyze(files, { globals: { targets: { shared: 'two.js' } } });
+      const map = graph.build({ generatedAt: '2026-01-01T00:00:00Z' });
+
+      expect(map.unresolved).toEqual({});
+      expect(
+        map.relationships.find(
+          (r) => r.type === 'references' && r.from === 'use.js:f' && r.to === 'two.js:shared',
+        ),
+      ).toMatchObject({ confidence: 'high', evidence: 'config' });
+    });
+
+    it('does not turn an ambiguous write into an observation, as writes never make edges', () => {
+      const { graph } = analyze({
+        'one.js': 'window.shared = 1;',
+        'two.js': 'window.shared = 2;',
+        'w.js': 'export function g() { window.shared = 3; }',
+      });
+
+      expect(graph.build({ generatedAt: '2026-01-01T00:00:00Z' }).unresolved).toEqual({});
+    });
+
+    it('describes a property read the way it is written', () => {
+      const { graph } = analyze({
+        'one.js': 'window.shared = 1;',
+        'two.js': 'window.shared = 2;',
+        'prop.js': 'export function h() { return window.shared; }',
+      });
+      const nodes = Object.values(graph.build({ generatedAt: '2026-01-01T00:00:00Z' }).unresolved);
+
+      expect(nodes.map((node) => node.subject)).toEqual(['window.shared']);
+    });
+
+    it('records every use site as its own observation', () => {
+      const { graph } = analyze({
+        'one.js': 'window.shared = 1;',
+        'two.js': 'window.shared = 2;',
+        'twice.js': 'export function k() { shared; return shared; }',
+      });
+      const map = graph.build({ generatedAt: '2026-01-01T00:00:00Z' });
+
+      expect(Object.keys(map.unresolved)).toHaveLength(2);
+      expect(map.relationships.filter((r) => r.from === 'twice.js:k')).toHaveLength(2);
+    });
+
+    it('names the files, shortening a long list', () => {
+      const many: Record<string, string> = {
+        'use.js': 'export function f() { return shared; }',
+      };
+      for (const name of ['a', 'b', 'c', 'd', 'e']) many[`${name}.js`] = 'window.shared = 1;';
+      const { graph } = analyze(many);
+      const [node] = Object.values(graph.build({ generatedAt: '2026-01-01T00:00:00Z' }).unresolved);
+
+      expect(node?.detail).toBe(
+        '"shared" is declared in a.js, b.js, c.js and 2 more; choose one with globals.targets',
+      );
     });
   });
 
@@ -249,6 +331,23 @@ describe.each(TSCONFIGS)('Phase 3: global facts and policy [%s]', (_label, compi
         exported: false,
         location: { filePath: 's.ts', line: 1, column: 10 },
       });
+    });
+  });
+  describe('call sites on resolved references', () => {
+    it('records each use as a span, and how the name was matched', () => {
+      const { graph } = analyze({
+        'lib.js': 'window.Engine = function () {};',
+        'use.js': 'export function a() { Engine(); Engine(); }',
+      });
+      const map = graph.build({ generatedAt: '2026-01-01T00:00:00Z' });
+      const find = (from: string, to: string): Relationship | undefined =>
+        map.relationships.find((r) => r.type === 'references' && r.from === from && r.to === to);
+
+      const symbolEdge = find('use.js:a', 'lib.js:Engine');
+      expect(symbolEdge).toMatchObject({ confidence: 'high', evidence: 'ast' });
+      expect(symbolEdge?.spans?.map((span) => span.startColumn)).toEqual([23, 33]);
+      // The file-level edge is a summary and carries no spans of its own.
+      expect(find('use.js', 'lib.js')?.spans).toBeUndefined();
     });
   });
 });

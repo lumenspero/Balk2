@@ -1,5 +1,6 @@
 import * as ts from 'typescript';
 import type { ConnectionGraph } from '../graph.js';
+import type { Evidence, SourceSpan } from '../types.js';
 import {
   getStaticPropertyChain,
   locationOf,
@@ -10,6 +11,7 @@ import {
 } from './global-symbols.js';
 import { ownerOf } from './owner.js';
 import type { RepositoryProgram } from './repository-program.js';
+import { snippetOf, spanOf } from './spans.js';
 
 type UseKind = 'read' | 'write' | 'delete';
 
@@ -18,8 +20,10 @@ type UseKind = 'read' | 'write' | 'delete';
  *
  * Reads and deletes of a unique target become `references` edges (symbol-level and
  * file-level). Every use, including writes and ambiguous ones, is also returned as an
- * independent {@link GlobalFact}; ambiguous uses carry their candidate origins at low
- * confidence and never produce an edge.
+ * independent {@link GlobalFact}. A read or delete of a name with several candidate origins
+ * never produces an edge to any of them: it becomes an `ambiguous-global` unresolved
+ * observation, linked from the using symbol by a low-confidence `references` edge. A write
+ * stays a fact only, as writes never produce edges.
  */
 export function collectGlobalReferences(
   sourceFile: ts.SourceFile,
@@ -29,28 +33,58 @@ export function collectGlobalReferences(
   graph: ConnectionGraph,
 ): GlobalFact[] {
   const facts: GlobalFact[] = [];
-  const emitted = new Set<string>();
 
-  const addReference = (owner: string, target: GlobalSymbol): void => {
+  const addReference = (
+    owner: string,
+    target: GlobalSymbol,
+    span: SourceSpan,
+    evidence: Evidence,
+  ): void => {
     if (target.filePath === fromFile) return;
 
-    const symbolKey = `references:${owner}:${target.symbolId}`;
-    if (!emitted.has(symbolKey)) {
-      graph.addRelationship('references', owner, target.symbolId);
-      emitted.add(symbolKey);
-    }
-
-    const fileKey = `references:${fromFile}:${target.filePath}`;
-    if (!emitted.has(fileKey)) {
-      graph.addRelationship('references', fromFile, target.filePath);
-      emitted.add(fileKey);
-    }
+    // Repeated uses merge in the graph, which keeps every call site.
+    graph.addRelationship('references', owner, target.symbolId, 'high', {
+      evidence,
+      spans: [span],
+    });
+    graph.addRelationship('references', fromFile, target.filePath);
   };
 
-  const record = (name: string, node: ts.Expression, owner: string, lookup: GlobalLookup): void => {
+  const observeAmbiguity = (
+    name: string,
+    node: ts.Expression,
+    owner: string,
+    candidates: readonly GlobalSymbol[],
+    span: SourceSpan,
+    evidence: Evidence,
+  ): void => {
+    const observation = graph.addUnresolved({
+      reason: 'ambiguous-global',
+      attempted: 'references',
+      subject: snippetOf(node),
+      location: span,
+      candidates: candidates.map((candidate) => candidate.symbolId),
+      detail: `"${name}" is declared in ${describeFiles(candidates)}; choose one with globals.targets`,
+    });
+    graph.addRelationship('references', owner, observation.id, 'low', {
+      evidence,
+      spans: [span],
+    });
+  };
+
+  const record = (
+    name: string,
+    node: ts.Expression,
+    owner: string,
+    lookup: GlobalLookup,
+    viaSymbol: boolean,
+  ): void => {
     if (lookup.kind === 'none') return;
 
     const location = locationOf(node, fromFile);
+    const span = spanOf(node, fromFile);
+    const found: Evidence = viaSymbol ? 'ts-program' : 'ast';
+
     for (const use of classifyUse(node)) {
       if (lookup.kind === 'ambiguous') {
         facts.push({
@@ -62,6 +96,9 @@ export function collectGlobalReferences(
           confidence: 'low',
           candidates: lookup.candidates.map((candidate) => candidate.symbolId).sort(),
         });
+        if (use !== 'write') {
+          observeAmbiguity(name, node, owner, lookup.candidates, span, found);
+        }
         continue;
       }
 
@@ -74,7 +111,9 @@ export function collectGlobalReferences(
         confidence: 'high',
         targetSymbolId: lookup.symbol.symbolId,
       });
-      if (use !== 'write') addReference(owner, lookup.symbol);
+      if (use !== 'write') {
+        addReference(owner, lookup.symbol, span, lookup.kind === 'selected' ? 'config' : found);
+      }
     }
   };
 
@@ -96,14 +135,14 @@ export function collectGlobalReferences(
         });
       } else {
         const name = getGlobalReferenceName(node, repository, globalSymbols);
-        if (name) record(name, node, owner ?? fromFile, globalSymbols.lookup(name));
+        if (name) record(name, node, owner ?? fromFile, globalSymbols.lookup(name), false);
       }
     } else if (ts.isIdentifier(node) && isIdentifierPosition(node)) {
       const symbol = repository.checker.getSymbolAtLocation(node);
       const lookup = symbol
         ? globalSymbols.lookupTypeScriptSymbol(symbol)
         : globalSymbols.lookup(node.text);
-      record(node.text, node, owner ?? fromFile, lookup);
+      record(node.text, node, owner ?? fromFile, lookup, symbol !== undefined);
     }
 
     ts.forEachChild(node, (child) => visit(child, owner));
@@ -194,4 +233,12 @@ function isIdentifierPosition(node: ts.Identifier): boolean {
     return false;
   }
   return true;
+}
+
+/** `a.js`, `a.js and b.js`, or `a.js, b.js, c.js and 2 more`. */
+function describeFiles(candidates: readonly GlobalSymbol[]): string {
+  const files = [...new Set(candidates.map((candidate) => candidate.filePath))].sort();
+  if (files.length <= 2) return files.join(' and ');
+  if (files.length === 3) return `${files[0]}, ${files[1]} and ${files[2]}`;
+  return `${files.slice(0, 3).join(', ')} and ${files.length - 3} more`;
 }

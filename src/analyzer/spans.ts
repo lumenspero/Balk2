@@ -14,3 +14,9 @@ export function spanOf(node: ts.Node, filePath: string): SourceSpan {
     endColumn: end.character + 1,
   };
 }
+
+/** The source text of a node on one line, shortened for use as an observation's subject. */
+export function snippetOf(node: ts.Node, maxLength = 80): string {
+  const text = node.getText(node.getSourceFile()).replace(/\s+/g, ' ');
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
+}

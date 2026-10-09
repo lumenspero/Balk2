@@ -223,7 +223,10 @@ describe.each(TSCONFIGS)('Phase 3: global symbol traversal [%s]', (_label, compi
         'two.ts': 'function init() {}',
         'main.ts': 'export function run() { init(); }',
       });
-      expect(references.filter((r) => r.from === 'main.ts:run')).toEqual([]);
+      // No edge to either candidate; the only link is to the unresolved observation.
+      expect(
+        references.filter((r) => r.from === 'main.ts:run' && !r.to.startsWith('unresolved:')),
+      ).toEqual([]);
     });
 
     it('does not create references for a global declared in the same file', () => {
