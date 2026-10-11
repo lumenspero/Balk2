@@ -25,11 +25,11 @@ An _event object_ argument is a constructed event such as `new Event('ready')` o
 
 ## Receiver rules
 
-| Rule                                 | Meaning                                                                                                                                                                                                                                     |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `"any"`                              | The method name alone is enough.                                                                                                                                                                                                            |
-| `"event-like"`                       | The receiver's type declares at least one subscribe method and at least one emit or dispatch method from the active catalog. `EventEmitter`, `EventTarget` and `mitt` qualify; a Redux store (no subscribe method in the catalog) does not. |
-| `{ "names": [...], "types": [...] }` | The receiver expression's last name is in `names`, or its type's name is in `types`.                                                                                                                                                        |
+| Rule                                 | Meaning                                                                                                                                                                                                                                                                                                     |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `"any"`                              | The method name alone is enough.                                                                                                                                                                                                                                                                            |
+| `"event-like"`                       | The receiver's type declares at least one subscribe method and at least one emit or dispatch method that Balk2 knows: the built-in methods (including any you disable) plus configured ones. `EventEmitter`, `EventTarget` and `mitt` qualify; a Redux store (no subscribe method in the catalog) does not. |
+| `{ "names": [...], "types": [...] }` | The receiver expression's last name is in `names`, or its type's name is in `types`.                                                                                                                                                                                                                        |
 
 A call whose receiver cannot be shown to qualify is reported as an unresolved observation; it is
 never connected to every other use of the same string.
@@ -68,7 +68,7 @@ Add project conventions under `protocols.events` in `.balk2.json`, without chang
 | Field                                 | Meaning                                                                                                   |
 | ------------------------------------- | --------------------------------------------------------------------------------------------------------- |
 | `builtIns`                            | Use the built-in catalog (default `true`).                                                                |
-| `disable`                             | Built-in methods to switch off.                                                                           |
+| `disable`                             | Built-in methods to stop mapping. They still count as evidence that a receiver is an emitter.             |
 | `methods[].method`                    | Method name matched on a receiver.                                                                        |
 | `methods[].direction`                 | `subscribe`, `unsubscribe`, `emit` or `dispatch`.                                                         |
 | `methods[].eventArg`                  | Zero-based index of the event name (or event object).                                                     |
@@ -155,9 +155,24 @@ Inline callbacks and parameters are attributed to the code that registered them.
 
 Relationship metadata:
 
-- `once: true` for `once`-style subscriptions.
+- `once: true`: the listener runs at most once (a `once` call, or `{ once: true }`).
+- `capture: true`: registered for the capture phase (`{ capture: true }`, or the legacy `true`
+  third argument). On an unsubscription it records which registration is removed.
+- `passive: true`: `{ passive: true }`.
+- `abortable: true`: the registration has a `signal`, so it is removed when that signal aborts.
 - `registeredBy`: on a `subscribes` edge attributed to a listener, the symbol that registered it.
 - `listener`: on an `unsubscribes` edge, the listener being removed, when it can be identified.
+
+Flags are only recorded when they are statically known to be set. They are read from an options
+object literal, an options object held in a `const`, or a boolean third argument, and a value may be
+a literal, a `const`, or a declared literal type. A missing flag means "not known to be set", never
+"known to be off": `{ once: someBoolean }`, a `let` variable, or a spread of unknown content records
+nothing. A mutable binding is not trusted even when the code just assigned it, because it can change
+elsewhere.
+
+When the same listener is registered more than once on one channel, the relationship keeps only the
+metadata that holds for every registration. A handler registered once with `{ once: true }` and once
+without is not reported as `once`; its `spans` locate both registrations.
 
 Every relationship records the call site (`spans`), how it was found (`evidence`) and a
 confidence:

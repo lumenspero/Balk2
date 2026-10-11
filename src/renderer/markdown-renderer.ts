@@ -387,11 +387,12 @@ const EVENT_INCOMING: ReadonlyArray<readonly [EventRelationship, string]> = [
   ['unsubscribes', 'Unsubscribed by'],
 ];
 
-/** Annotate only what changes interpretation: reduced confidence and one-time listeners. */
+/** Annotate only what changes interpretation: reduced confidence, one-time and abortable listeners. */
 function annotate(rel: Relationship): string {
   const notes: string[] = [];
   if (rel.confidence !== 'high') notes.push(`${rel.confidence} confidence`);
   if (rel.metadata?.['once'] === true) notes.push('once');
+  if (rel.metadata?.['abortable'] === true) notes.push('abortable');
   return notes.length > 0 ? ` (${notes.join(', ')})` : '';
 }
 

@@ -51,7 +51,10 @@ export interface EventProtocol {
 export interface EventProtocolOptions {
   /** Use the built-in catalog (default `true`) */
   readonly builtIns?: boolean;
-  /** Built-in methods to switch off, e.g. when `dispatch` means something else in a project */
+  /**
+   * Built-in methods to stop mapping, e.g. when `dispatch` means something else in a project.
+   * They still count as evidence that a receiver is an emitter.
+   */
   readonly disable?: readonly string[];
   /** Project-specific protocols; one for an existing method name replaces that entry */
   readonly methods?: readonly EventProtocol[];
@@ -134,24 +137,30 @@ export function relationshipOf(direction: EventDirection): EventRelationship {
  */
 export class EventProtocolCatalog {
   private readonly byMethod: ReadonlyMap<string, ResolvedEventProtocol>;
+  private readonly evidence: ReadonlyMap<string, ResolvedEventProtocol>;
 
   constructor(options: EventProtocolOptions = {}) {
     const protocols = new Map<string, ResolvedEventProtocol>();
+    const evidence = new Map<string, ResolvedEventProtocol>();
 
     if (options.builtIns !== false) {
       const disabled = new Set(options.disable ?? []);
       for (const protocol of BUILT_IN_EVENT_PROTOCOLS) {
-        if (!disabled.has(protocol.method)) {
-          protocols.set(protocol.method, resolve(protocol, 'built-in'));
-        }
+        const resolved = resolve(protocol, 'built-in');
+        // A disabled method is no longer mapped, but it still says what an emitter looks like.
+        evidence.set(protocol.method, resolved);
+        if (!disabled.has(protocol.method)) protocols.set(protocol.method, resolved);
       }
     }
 
     for (const protocol of options.methods ?? []) {
-      protocols.set(protocol.method, resolve(protocol, 'config'));
+      const resolved = resolve(protocol, 'config');
+      protocols.set(protocol.method, resolved);
+      evidence.set(protocol.method, resolved);
     }
 
     this.byMethod = protocols;
+    this.evidence = evidence;
   }
 
   /** The protocol for a method name, if any. */
@@ -171,6 +180,18 @@ export class EventProtocolCatalog {
     return this.all()
       .filter((protocol) => directions.includes(protocol.direction))
       .map((protocol) => protocol.method);
+  }
+
+  /**
+   * Sorted method names that count as evidence a receiver is an emitter: the built-ins (unless
+   * switched off) and the configured methods, whether or not a built-in was disabled. Disabling
+   * stops a call being mapped; it does not change what an emitter looks like.
+   */
+  evidenceMethodsFor(...directions: readonly EventDirection[]): readonly string[] {
+    return [...this.evidence.values()]
+      .filter((protocol) => directions.includes(protocol.direction))
+      .map((protocol) => protocol.method)
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
   }
 }
 

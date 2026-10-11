@@ -150,6 +150,36 @@ describe('configured catalog', () => {
     expect(new EventProtocolCatalog({ builtIns: false }).all()).toEqual([]);
   });
 
+  it('still counts a disabled built-in as evidence of what an emitter looks like', () => {
+    const catalog = new EventProtocolCatalog({ disable: ['emit', 'on'] });
+
+    expect(catalog.methodsFor('emit', 'dispatch')).toEqual(['dispatch', 'dispatchEvent']);
+    expect(catalog.evidenceMethodsFor('emit', 'dispatch')).toEqual([
+      'dispatch',
+      'dispatchEvent',
+      'emit',
+    ]);
+    expect(catalog.evidenceMethodsFor('subscribe')).toEqual(['addEventListener', 'on', 'once']);
+  });
+
+  it('takes evidence from configured methods, and from no built-in once they are switched off', () => {
+    const publish: EventProtocol = { method: 'publish', direction: 'emit', eventArg: 0 };
+
+    expect(new EventProtocolCatalog({ methods: [publish] }).evidenceMethodsFor('emit')).toEqual([
+      'emit',
+      'publish',
+    ]);
+    expect(
+      new EventProtocolCatalog({ builtIns: false, methods: [publish] }).evidenceMethodsFor(
+        'emit',
+        'dispatch',
+      ),
+    ).toEqual(['publish']);
+    expect(new EventProtocolCatalog({ builtIns: false }).evidenceMethodsFor('subscribe')).toEqual(
+      [],
+    );
+  });
+
   it('keeps a configured method even if its name was disabled', () => {
     const catalog = new EventProtocolCatalog({
       disable: ['emit'],

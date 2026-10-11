@@ -350,6 +350,22 @@ probe(maybe); probe(child); probe(bare); probe(holder.bus);
     ]);
   });
 
+  it('keeps recognizing emitters when a built-in method is disabled', () => {
+    expect(qualifying(run('event-like', new EventProtocolCatalog({ disable: ['emit'] })))).toEqual([
+      'emitter',
+      'target',
+      'maybe',
+      'child',
+      'holder.bus',
+    ]);
+  });
+
+  it('recognizes no emitter by structure once the built-ins are switched off', () => {
+    expect(qualifying(run('event-like', new EventProtocolCatalog({ builtIns: false })))).toEqual(
+      [],
+    );
+  });
+
   it('matches a names rule against the receiver expression, recording config evidence', () => {
     const results = run({ names: ['emitter', 'bus'] });
 

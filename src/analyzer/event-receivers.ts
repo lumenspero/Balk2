@@ -231,8 +231,12 @@ export function qualifyReceiver(
     const members = new Set(
       checker.getPropertiesOfType(type).map((property) => property.getName()),
     );
-    const subscribes = catalog.methodsFor('subscribe').some((method) => members.has(method));
-    const publishes = catalog.methodsFor('emit', 'dispatch').some((method) => members.has(method));
+    const subscribes = catalog
+      .evidenceMethodsFor('subscribe')
+      .some((method) => members.has(method));
+    const publishes = catalog
+      .evidenceMethodsFor('emit', 'dispatch')
+      .some((method) => members.has(method));
     if (subscribes && publishes) return { qualifies: true, evidence: 'ts-program' };
     return {
       qualifies: false,

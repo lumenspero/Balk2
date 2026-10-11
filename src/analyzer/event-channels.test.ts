@@ -431,3 +431,86 @@ describe('merging and determinism', () => {
     expect(JSON.stringify(analyze(files))).toBe(JSON.stringify(analyze(files)));
   });
 });
+
+describe('listener options and lifecycle', () => {
+  let map: ConnectionMap;
+
+  beforeAll(() => {
+    map = analyze({
+      'bus.ts': EMITTER,
+      'x.ts': [
+        "import { bus } from './bus.js';",
+        'declare const controller: AbortController;',
+        'const ONCE = true;',
+        'function onClick(): void {}',
+        'function onScroll(): void {}',
+        'function onPlain(): void {}',
+        'function onShared(): void {}',
+        'function onRepeat(): void {}',
+        'export function wire(): void {',
+        "  document.addEventListener('click', onClick, { once: true, capture: true });",
+        "  window.addEventListener('scroll', onScroll, { passive: true, signal: controller.signal });",
+        "  document.addEventListener('plain', onPlain);",
+        "  bus.once('ready', onShared);",
+        '}',
+        'export function teardown(): void {',
+        "  document.removeEventListener('click', onClick, true);",
+        "  document.removeEventListener('plain', onPlain, { once: true, passive: true });",
+        '}',
+        "export function a(): void { document.addEventListener('k', onShared, { once: ONCE }); }",
+        "export function b(): void { document.addEventListener('k', onShared); }",
+        'export function c(): void {',
+        "  document.addEventListener('r', onRepeat, { once: true });",
+        "  document.addEventListener('r', onRepeat, { once: true });",
+        '}',
+      ].join('\n'),
+    });
+  });
+
+  it('records the options a listener was registered with', () => {
+    expect(edge(map, 'subscribes', 'x.ts:onClick', 'event:global:document#click').metadata).toEqual(
+      { registeredBy: 'x.ts:wire', once: true, capture: true },
+    );
+    expect(edge(map, 'subscribes', 'x.ts:onScroll', 'event:global:window#scroll').metadata).toEqual(
+      { registeredBy: 'x.ts:wire', passive: true, abortable: true },
+    );
+  });
+
+  it('records nothing extra when no option is set', () => {
+    expect(edge(map, 'subscribes', 'x.ts:onPlain', 'event:global:document#plain').metadata).toEqual(
+      {
+        registeredBy: 'x.ts:wire',
+      },
+    );
+  });
+
+  it('keeps once from the method name and the options together', () => {
+    expect(edge(map, 'subscribes', 'x.ts:onShared', 'event:bus.ts:bus#ready').metadata).toEqual({
+      registeredBy: 'x.ts:wire',
+      once: true,
+    });
+  });
+
+  it('records only capture on an unsubscription, which is what decides what it removes', () => {
+    expect(
+      edge(map, 'unsubscribes', 'x.ts:teardown', 'event:global:document#click').metadata,
+    ).toEqual({ listener: 'x.ts:onClick', capture: true });
+    expect(
+      edge(map, 'unsubscribes', 'x.ts:teardown', 'event:global:document#plain').metadata,
+    ).toEqual({ listener: 'x.ts:onPlain' });
+  });
+
+  it('does not claim once for a listener that is also registered without it', () => {
+    const merged = edge(map, 'subscribes', 'x.ts:onShared', 'event:global:document#k');
+
+    expect(merged.metadata).toBeUndefined();
+    expect(merged.spans).toHaveLength(2);
+  });
+
+  it('keeps once when every registration sets it', () => {
+    expect(edge(map, 'subscribes', 'x.ts:onRepeat', 'event:global:document#r').metadata).toEqual({
+      registeredBy: 'x.ts:c',
+      once: true,
+    });
+  });
+});

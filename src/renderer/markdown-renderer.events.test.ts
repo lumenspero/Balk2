@@ -192,3 +192,29 @@ describe('connection paths through event channels', () => {
     expect(without).toContain('## Event Channels');
   });
 });
+
+describe('listener lifecycle notes', () => {
+  const graph = new ConnectionGraph();
+  const channel = graph.addEventChannel('click', 'global:document').id;
+  graph.addRelationship('subscribes', 'src/a.ts:once', channel, 'high', {
+    metadata: { once: true },
+  });
+  graph.addRelationship('subscribes', 'src/a.ts:both', channel, 'medium', {
+    metadata: { once: true, abortable: true, capture: true, passive: true },
+  });
+  graph.addRelationship('subscribes', 'src/a.ts:plain', channel, 'high', {
+    metadata: { capture: true, passive: true },
+  });
+  const markdown = renderMarkdown(graph.build(METADATA));
+
+  it('shows once and abortable, which change what a listener does', () => {
+    expect(section(markdown, channel)).toEqual([
+      'Event: click',
+      'Scope: global:document',
+      'Subscribed by:',
+      '  ← src/a.ts:both (medium confidence, once, abortable)',
+      '  ← src/a.ts:once (once)',
+      '  ← src/a.ts:plain',
+    ]);
+  });
+});

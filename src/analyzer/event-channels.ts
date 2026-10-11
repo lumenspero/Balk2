@@ -2,6 +2,7 @@ import * as ts from 'typescript';
 import type { ConnectionGraph } from '../graph.js';
 import type { Evidence, RelationshipMetadata, UnresolvedReason } from '../types.js';
 import { ListenerResolver } from './event-listeners.js';
+import { readListenerOptions } from './event-options.js';
 import { resolveEventName, resolveEventObject, unwrapExpression } from './event-names.js';
 import {
   EventProtocolCatalog,
@@ -152,6 +153,13 @@ export function collectEventRelationships(
         if (listener !== owner) metadata['registeredBy'] = owner;
       } else if (listener) {
         metadata['listener'] = listener;
+      }
+
+      if (protocol.optionsArg !== undefined) {
+        Object.assign(
+          metadata,
+          readListenerOptions(call.arguments[protocol.optionsArg], checker, protocol.direction),
+        );
       }
     }
 

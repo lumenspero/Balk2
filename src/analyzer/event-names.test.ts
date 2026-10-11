@@ -156,6 +156,11 @@ const TS_CASES: readonly Case[] = [
   },
 
   { label: 'a mutable let binding', code: 'probe(mutableName);', expected: { kind: 'dynamic' } },
+  {
+    label: 'a mutable binding narrowed to one literal by its initializer',
+    code: "let kind: 'a' | 'b' = 'a'; probe(kind);",
+    expected: { kind: 'dynamic' },
+  },
   { label: 'a mutable class property', code: 'probe(Bus.mutable);', expected: { kind: 'dynamic' } },
   { label: 'a string-typed value', code: 'probe(wide);', expected: { kind: 'dynamic' } },
   { label: 'a call result', code: 'probe(compute());', expected: { kind: 'dynamic' } },

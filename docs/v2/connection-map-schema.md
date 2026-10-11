@@ -42,7 +42,9 @@ could not be resolved. The owning symbol or file links to it with a
 - `metadata`: mechanism details, for example `{ "once": true }` on a `subscribes` edge.
 
 A relationship is identified by `(type, from, to)`. Repeated observations are merged: the
-highest confidence (and its evidence) wins and spans are combined.
+highest confidence (and its evidence) wins, spans are combined, and `metadata` keeps only the keys
+that carry the same value in every observation, so a flag seen on one registration is never claimed
+for them all.
 
 Event relationships are `emits`, `dispatches`, `subscribes` and `unsubscribes`. They point from the
 publisher or listener owner **to** the channel; reverse links are derived when rendering or

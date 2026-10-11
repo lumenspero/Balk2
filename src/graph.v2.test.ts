@@ -144,16 +144,39 @@ describe('relationship detail', () => {
     });
   });
 
-  it('keeps existing metadata on conflict and fills in new keys', () => {
+  it('keeps only the metadata that holds for every observation', () => {
     const graph = new ConnectionGraph();
     graph.addRelationship('subscribes', 'a.ts:f', 'event:go', 'high', {
-      metadata: { once: true },
+      metadata: { once: true, capture: true, registeredBy: 'a.ts:setup' },
     });
     graph.addRelationship('subscribes', 'a.ts:f', 'event:go', 'high', {
-      metadata: { once: false, capture: true },
+      metadata: { once: true, registeredBy: 'a.ts:reset' },
     });
 
-    expect(graph.getRelationships()[0]?.metadata).toEqual({ once: true, capture: true });
+    // `once` holds for both; `capture` is on one only; `registeredBy` differs.
+    expect(graph.getRelationships()[0]?.metadata).toEqual({ once: true });
+  });
+
+  it('claims no metadata when any observation has none', () => {
+    const graph = new ConnectionGraph();
+    graph.addRelationship('subscribes', 'a.ts:f', 'event:go', 'high', { metadata: { once: true } });
+    graph.addRelationship('subscribes', 'a.ts:f', 'event:go');
+
+    expect(graph.getRelationships()[0]).not.toHaveProperty('metadata');
+  });
+
+  it('keeps identical metadata from repeated observations', () => {
+    const graph = new ConnectionGraph();
+    for (let i = 0; i < 2; i++) {
+      graph.addRelationship('subscribes', 'a.ts:f', 'event:go', 'high', {
+        metadata: { once: true, registeredBy: 'a.ts:setup' },
+      });
+    }
+
+    expect(graph.getRelationships()[0]?.metadata).toEqual({
+      once: true,
+      registeredBy: 'a.ts:setup',
+    });
   });
 });
 

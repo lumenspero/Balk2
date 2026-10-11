@@ -217,10 +217,11 @@ function evaluateReference(
     if (followed.ok || followed.circular) return followed;
   }
 
-  // A literal type is a compiler-checked guarantee, e.g. `declare const X: 'ready'` or a
-  // parameter typed `'ready'`.
-  const type = checker.getTypeAtLocation(node);
-  if (type.isStringLiteral()) {
+  // A *declared* literal type is a compiler-checked guarantee, e.g. `declare const X: 'ready'`
+  // or a parameter typed `'ready'`. The type at the point of use is not: `let k: 'a' | 'b' = 'a'`
+  // is narrowed to `'a'` right after the assignment, yet the binding is mutable.
+  const type = declaredTypeOf(node, checker);
+  if (type?.isStringLiteral()) {
     return {
       ok: true,
       value: type.value,
@@ -336,6 +337,22 @@ function declarationOf(
 
   if (symbol && symbol.flags & ts.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
   return symbol?.valueDeclaration ?? symbol?.declarations?.[0];
+}
+
+/** The type a binding or property is declared with, ignoring narrowing at the use site. */
+function declaredTypeOf(
+  node: ts.Identifier | ts.PropertyAccessExpression | ts.ElementAccessExpression,
+  checker: ts.TypeChecker,
+): ts.Type | undefined {
+  let symbol = ts.isIdentifier(node)
+    ? checker.getSymbolAtLocation(node)
+    : ts.isPropertyAccessExpression(node)
+      ? checker.getSymbolAtLocation(node.name)
+      : checker.getSymbolAtLocation(node.argumentExpression);
+  if (symbol && symbol.flags & ts.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
+
+  const declaration = symbol?.valueDeclaration ?? symbol?.declarations?.[0];
+  return symbol && declaration ? checker.getTypeOfSymbolAtLocation(symbol, declaration) : undefined;
 }
 
 function describeReference(node: ts.Expression): string {

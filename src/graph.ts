@@ -8,6 +8,7 @@ import type {
   UnresolvedReferenceNode,
   Relationship,
   RelationshipDetail,
+  RelationshipMetadata,
   RelationshipType,
   Confidence,
   ConnectionMap,
@@ -113,8 +114,8 @@ export class ConnectionGraph {
    * Add a typed relationship to the graph.
    * The from/to identifiers are normalized. A relationship is identified by
    * (type, from, to): adding it again merges into the existing one — the higher confidence
-   * (and its evidence) wins, source spans are combined, and existing metadata takes
-   * precedence. Returns the relationship that is kept.
+   * (and its evidence) wins, source spans are combined, and only metadata that holds for every
+   * observation is kept. Returns the relationship that is kept.
    */
   addRelationship(
     type: RelationshipType,
@@ -267,6 +268,22 @@ function sortSpans(spans: readonly SourceSpan[]): SourceSpan[] {
   return [...unique.values()].sort(compareSpans);
 }
 
+/**
+ * Metadata that holds for every observation of a relationship: the keys both carry with the same
+ * value. A flag seen on only one registration (`once` on one of two) is dropped rather than
+ * claimed for all of them; the merged spans still locate each observation.
+ */
+function commonMetadata(
+  first: RelationshipMetadata | undefined,
+  second: RelationshipMetadata | undefined,
+): RelationshipMetadata | undefined {
+  if (!first || !second) return undefined;
+  const common = Object.fromEntries(
+    Object.entries(first).filter(([key, value]) => second[key] === value),
+  );
+  return Object.keys(common).length > 0 ? common : undefined;
+}
+
 /** Combine two observations of the same (type, from, to). */
 function mergeRelationships(existing: Relationship, incoming: Relationship): Relationship {
   const stronger =
@@ -275,10 +292,7 @@ function mergeRelationships(existing: Relationship, incoming: Relationship): Rel
       : existing;
   const evidence = stronger.evidence ?? existing.evidence ?? incoming.evidence;
   const spans = sortSpans([...(existing.spans ?? []), ...(incoming.spans ?? [])]);
-  const metadata =
-    existing.metadata || incoming.metadata
-      ? { ...incoming.metadata, ...existing.metadata }
-      : undefined;
+  const metadata = commonMetadata(existing.metadata, incoming.metadata);
 
   return {
     type: existing.type,
