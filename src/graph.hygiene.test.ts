@@ -17,7 +17,7 @@ describe('ConnectionGraph relationship identity', () => {
   it('keeps distinct types and directions apart', () => {
     const graph = new ConnectionGraph();
     graph.addRelationship('calls', 'a.ts:f', 'b.ts:g');
-    graph.addRelationship('calledBy', 'b.ts:g', 'a.ts:f');
+    graph.addRelationship('references', 'a.ts:f', 'b.ts:g');
     graph.addRelationship('calls', 'b.ts:g', 'a.ts:f');
 
     expect(graph.relationshipCount).toBe(3);

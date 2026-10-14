@@ -11,6 +11,44 @@ export interface RepositoryFixture {
   cleanup(): void;
 }
 
+/** Parsed standard-library files, kept for the life of the test process. */
+const parsedLibraries = new Map<string, ts.SourceFile>();
+const LIBRARY_FILE = /[\\/]typescript[\\/]lib[\\/]lib\.[^\\/]*\.d\.ts$/;
+
+/**
+ * A compiler host that parses each standard-library file once per process.
+ *
+ * Every fixture is a tiny program, and parsing TypeScript's own typings dominates its cost. A
+ * source file keyed by name and the settings that affect parsing is safe to share between
+ * programs; it is what the TypeScript language service does between edits. The host itself does
+ * not depend on the compiler options (the program passes them to each call), so it is created
+ * without them.
+ */
+function sharedLibraryHost(): ts.CompilerHost {
+  const host = ts.createCompilerHost({});
+  const original = host.getSourceFile.bind(host);
+
+  host.getSourceFile = (fileName, languageVersionOrOptions, onError, shouldCreate) => {
+    if (!LIBRARY_FILE.test(fileName)) {
+      return original(fileName, languageVersionOrOptions, onError, shouldCreate);
+    }
+
+    const settings =
+      typeof languageVersionOrOptions === 'number'
+        ? `${languageVersionOrOptions}`
+        : `${languageVersionOrOptions.languageVersion}@${languageVersionOrOptions.impliedNodeFormat}`;
+    const key = `${fileName}@${settings}`;
+    const cached = parsedLibraries.get(key);
+    if (cached) return cached;
+
+    const created = original(fileName, languageVersionOrOptions, onError, shouldCreate);
+    if (created) parsedLibraries.set(key, created);
+    return created;
+  };
+
+  return host;
+}
+
 /**
  * Write `files` (repository-relative path to content) into a temporary directory and open
  * them as a repository. `compilerOptions`, when given, becomes the fixture's tsconfig.
@@ -31,7 +69,11 @@ export function createRepositoryFixture(
   }
 
   return {
-    repository: createRepositoryProgram({ rootDir, filePaths: Object.keys(files).sort() }),
+    repository: createRepositoryProgram({
+      rootDir,
+      filePaths: Object.keys(files).sort(),
+      host: sharedLibraryHost(),
+    }),
     cleanup: (): void => fs.rmSync(rootDir, { recursive: true, force: true }),
   };
 }

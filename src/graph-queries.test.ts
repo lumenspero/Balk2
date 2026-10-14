@@ -7,29 +7,24 @@ import {
   getIncoming,
   getOutgoing,
 } from './graph-queries.js';
+import { withReverseLinksOnly, withStoredReverseLinks } from './testing/legacy-maps.js';
 import type { ConnectionMap } from './types.js';
 
 const META = { generatedAt: '2026-01-01T00:00:00Z' };
 
-/** A map storing both directions, as version 1 did. */
-function storedBothWays(): ConnectionMap {
+/** The facts, stored once in their forward direction. */
+function storedForwardOnly(): ConnectionMap {
   const graph = new ConnectionGraph();
   graph.addRelationship('imports', 'src/main.ts', 'src/util.ts');
-  graph.addRelationship('importedBy', 'src/util.ts', 'src/main.ts');
   graph.addRelationship('calls', 'src/main.ts:run', 'src/util.ts:help');
-  graph.addRelationship('calledBy', 'src/util.ts:help', 'src/main.ts:run');
   graph.addRelationship('generates', 'scripts/build.js', 'data/out.json');
-  graph.addRelationship('generatedBy', 'data/out.json', 'scripts/build.js');
   graph.addRelationship('consumes', 'src/load.ts', 'data/out.json');
-  graph.addRelationship('consumedBy', 'data/out.json', 'src/load.ts');
   return graph.build(META);
 }
 
-/** The same facts with reverse links derived, as later versions store them. */
-function storedForwardOnly(): ConnectionMap {
-  const both = storedBothWays();
-  const reverse = new Set(['importedBy', 'calledBy', 'generatedBy', 'consumedBy']);
-  return { ...both, relationships: both.relationships.filter((rel) => !reverse.has(rel.type)) };
+/** The same facts stored the way version 1 did: both directions. */
+function storedBothWays(): ConnectionMap {
+  return withStoredReverseLinks(storedForwardOnly());
 }
 
 describe('forwardRelationships', () => {
@@ -41,11 +36,15 @@ describe('forwardRelationships', () => {
 
   it('turns stored reverse links around into their forward relationship', () => {
     const graph = new ConnectionGraph();
-    graph.addRelationship('calledBy', 'src/util.ts:help', 'src/main.ts:run', 'medium', {
+    graph.addRelationship('calls', 'src/main.ts:run', 'src/util.ts:help', 'medium', {
       evidence: 'ts-program',
     });
+    const forwardOnly = graph.build(META);
 
-    expect(forwardRelationships(graph.build(META))).toEqual([
+    expect(forwardRelationships(withReverseLinksOnly(forwardOnly))).toEqual(
+      forwardRelationships(forwardOnly),
+    );
+    expect(forwardRelationships(withReverseLinksOnly(forwardOnly))).toEqual([
       {
         type: 'calls',
         from: 'src/main.ts:run',
@@ -57,11 +56,15 @@ describe('forwardRelationships', () => {
   });
 
   it('merges a fact stored in both directions, keeping the higher confidence', () => {
-    const graph = new ConnectionGraph();
-    graph.addRelationship('imports', 'a.ts', 'b.ts', 'low');
-    graph.addRelationship('importedBy', 'b.ts', 'a.ts', 'high');
+    const map: ConnectionMap = {
+      ...new ConnectionGraph().build(META),
+      relationships: [
+        { type: 'imports', from: 'a.ts', to: 'b.ts', confidence: 'low' },
+        { type: 'importedBy', from: 'b.ts', to: 'a.ts', confidence: 'high' },
+      ],
+    };
 
-    expect(forwardRelationships(graph.build(META))).toEqual([
+    expect(forwardRelationships(map)).toEqual([
       { type: 'imports', from: 'a.ts', to: 'b.ts', confidence: 'high' },
     ]);
   });

@@ -1,3 +1,4 @@
+import { canonicalRelationships } from './relationship-types.js';
 import type { ConnectionMap, ConnectionMapV1 } from './types.js';
 
 /**
@@ -13,7 +14,8 @@ export function serializeConnectionMap(map: ConnectionMap): string {
  * Performs basic structural validation.
  *
  * Version 1 maps are accepted and converted to version 2 (see {@link convertV1ToV2}); any
- * other version is rejected.
+ * other version is rejected. Relationships are returned in canonical form for either version:
+ * reverse links turned around, repeated facts merged, sorted.
  */
 export function deserializeConnectionMap(json: string): ConnectionMap {
   const parsed: unknown = JSON.parse(json);
@@ -59,15 +61,17 @@ export function deserializeConnectionMap(json: string): ConnectionMap {
     throw new Error('Invalid connection map: missing relationships');
   }
 
-  return version === 1
-    ? convertV1ToV2(parsed as unknown as ConnectionMapV1)
-    : (parsed as unknown as ConnectionMap);
+  if (version === 1) return convertV1ToV2(parsed as unknown as ConnectionMapV1);
+
+  const map = parsed as unknown as ConnectionMap;
+  return { ...map, relationships: canonicalRelationships(map.relationships) };
 }
 
 /**
- * Upgrade a version 1 map. Every v1 node and relationship is valid in v2 unchanged; the
- * new virtual-node tables start empty. Key order matches `ConnectionGraph.build` so a
- * converted map serializes the same way as a freshly built one.
+ * Upgrade a version 1 map. Every v1 node is valid in v2 unchanged and the new virtual-node tables
+ * start empty. Stored reverse links (`importedBy`, `calledBy`, ...) are turned into the forward
+ * relationship they repeat, so the result holds each fact once. Key order matches
+ * `ConnectionGraph.build` so a converted map serializes the same way as a freshly built one.
  */
 export function convertV1ToV2(map: ConnectionMapV1): ConnectionMap {
   return {
@@ -78,7 +82,7 @@ export function convertV1ToV2(map: ConnectionMapV1): ConnectionMap {
     artifacts: map.artifacts,
     eventChannels: {},
     unresolved: {},
-    relationships: map.relationships,
+    relationships: canonicalRelationships(map.relationships),
   };
 }
 

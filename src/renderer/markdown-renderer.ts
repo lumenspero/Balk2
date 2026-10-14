@@ -1,3 +1,4 @@
+import { forwardRelationships } from '../graph-queries.js';
 import type { ConnectionMap, EventRelationship, Relationship } from '../types.js';
 import { findConnectionPaths, type PathFinderOptions } from './path-finder.js';
 
@@ -27,7 +28,9 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
   const fileCount = Object.keys(map.files).length;
   const symbolCount = Object.keys(map.symbols).length;
   const artifactCount = Object.keys(map.artifacts).length;
-  const relationshipCount = map.relationships.length;
+  // Read the canonical relationships, so the output is the same whether or not a map stores reverse links.
+  const relationships = forwardRelationships(map);
+  const relationshipCount = relationships.length;
   const channelCount = Object.keys(map.eventChannels).length;
   const unresolvedCount = Object.keys(map.unresolved).length;
 
@@ -45,7 +48,7 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
   const outgoingMap = new Map<string, Relationship[]>();
   const incomingMap = new Map<string, Relationship[]>();
 
-  for (const rel of map.relationships) {
+  for (const rel of relationships) {
     if (!outgoingMap.has(rel.from)) outgoingMap.set(rel.from, []);
     outgoingMap.get(rel.from)?.push(rel);
 
@@ -72,7 +75,7 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
         .filter((r) => r.type === 'imports')
         .map((r) => r.to)
         .sort();
-      const importedBy = reverseSources(inRels, outRels, 'imports', 'importedBy');
+      const importedBy = sourcesOf(inRels, 'imports');
       const references = annotatedTargets(outRels, 'references');
       const referencedBy = sourcesOf(inRels, 'references');
 
@@ -117,7 +120,7 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
   // 4. Symbol Connections
   const virtualIds = new Set([...Object.keys(map.eventChannels), ...Object.keys(map.unresolved)]);
   const symbolKeySet = new Set(Object.keys(map.symbols));
-  for (const rel of map.relationships) {
+  for (const rel of relationships) {
     if (rel.from.includes(':') && !virtualIds.has(rel.from)) symbolKeySet.add(rel.from);
     if (rel.to.includes(':') && !virtualIds.has(rel.to)) symbolKeySet.add(rel.to);
   }
@@ -140,7 +143,7 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
         .filter((r) => r.type === 'calls')
         .map((r) => r.to)
         .sort();
-      const calledBy = reverseSources(inRels, outRels, 'calls', 'calledBy');
+      const calledBy = sourcesOf(inRels, 'calls');
       const symbolReferences = annotatedTargets(outRels, 'references');
       const symbolReferencedBy = sourcesOf(inRels, 'references');
       const extendsRels = outRels
@@ -248,11 +251,11 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
       const inRels = incomingMap.get(artPath) ?? [];
 
       const generatedBy = inRels
-        .filter((r) => r.type === 'generates' || r.type === 'generatedBy')
+        .filter((r) => r.type === 'generates')
         .map((r) => r.from)
         .sort();
       const consumedBy = inRels
-        .filter((r) => r.type === 'consumes' || r.type === 'consumedBy')
+        .filter((r) => r.type === 'consumes')
         .map((r) => r.from)
         .sort();
       const readBy = inRels
@@ -416,34 +419,12 @@ function annotatedTargets(outgoing: readonly Relationship[], type: Relationship[
     .sort();
 }
 
-/** Sorted targets of a node's outgoing relationships of one type. */
-function targetsOf(outgoing: readonly Relationship[], type: Relationship['type']): string[] {
-  return outgoing
-    .filter((r) => r.type === type)
-    .map((r) => r.to)
-    .sort();
-}
-
 /** Sorted sources of a node's incoming relationships of one type. */
 function sourcesOf(incoming: readonly Relationship[], type: Relationship['type']): string[] {
   return incoming
     .filter((r) => r.type === type)
     .map((r) => r.from)
     .sort();
-}
-
-/**
- * Nodes on the other side of a forward relationship (`calls`, `imports`), seen from its
- * target. The stored reverse type (`calledBy`, `importedBy`) points from the target back
- * to the source, so it is read from the node's *outgoing* edges.
- */
-function reverseSources(
-  incoming: readonly Relationship[],
-  outgoing: readonly Relationship[],
-  forward: Relationship['type'],
-  reverse: Relationship['type'],
-): string[] {
-  return [...sourcesOf(incoming, forward), ...targetsOf(outgoing, reverse)].sort();
 }
 
 function dedupe(items: readonly string[]): string[] {

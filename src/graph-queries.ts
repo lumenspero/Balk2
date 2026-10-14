@@ -1,22 +1,14 @@
+import { canonicalRelationships, compareStrings } from './relationship-types.js';
 import type { ConnectionMap, Relationship, RelationshipType } from './types.js';
 
 /**
  * Reading the graph without caring how it was stored.
  *
- * Version 1 maps store both directions of some relationships (`imports` and `importedBy`).
- * Later versions derive reverse links instead. These helpers give the same answer for both: they
- * normalize every stored reverse link to its forward relationship, so "who calls X?" is always
- * `getIncoming(map, X, 'calls')`.
+ * A relationship is stored once, in its forward direction. Version 1 maps also stored a reverse
+ * link for some families (`imports` and `importedBy`). These helpers give the same answer for
+ * both: they normalize any stored reverse link to its forward relationship, so "who calls X?" is
+ * always `getIncoming(map, X, 'calls')`.
  */
-
-const REVERSE_TO_FORWARD: Readonly<Partial<Record<RelationshipType, RelationshipType>>> = {
-  importedBy: 'imports',
-  calledBy: 'calls',
-  generatedBy: 'generates',
-  consumedBy: 'consumes',
-};
-
-const CONFIDENCE_RANK = { low: 0, medium: 1, high: 2 } as const;
 
 interface ForwardIndex {
   readonly all: readonly Relationship[];
@@ -102,26 +94,7 @@ function forwardIndex(map: ConnectionMap): ForwardIndex {
   const cached = indexes.get(map);
   if (cached) return cached;
 
-  const merged = new Map<string, Relationship>();
-  for (const stored of map.relationships) {
-    const forwardType = REVERSE_TO_FORWARD[stored.type];
-    const rel: Relationship = forwardType
-      ? { ...stored, type: forwardType, from: stored.to, to: stored.from }
-      : stored;
-
-    const key = `${rel.type}\u0000${rel.from}\u0000${rel.to}`;
-    const existing = merged.get(key);
-    if (!existing || CONFIDENCE_RANK[rel.confidence] > CONFIDENCE_RANK[existing.confidence]) {
-      merged.set(key, rel);
-    }
-  }
-
-  const all = [...merged.values()].sort(
-    (a, b) =>
-      compareStrings(a.type, b.type) ||
-      compareStrings(a.from, b.from) ||
-      compareStrings(a.to, b.to),
-  );
+  const all = canonicalRelationships(map.relationships);
 
   const outgoing = new Map<string, Relationship[]>();
   const incoming = new Map<string, Relationship[]>();
@@ -147,8 +120,4 @@ function filterByType(
 
 function distinctSources(relationships: readonly Relationship[]): string[] {
   return [...new Set(relationships.map((rel) => rel.from))].sort(compareStrings);
-}
-
-function compareStrings(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0;
 }

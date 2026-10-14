@@ -286,7 +286,6 @@ function handleImportDeclaration(
   if (!targetFile) return;
 
   graph.addRelationship('imports', fromFile, targetFile);
-  graph.addRelationship('importedBy', targetFile, fromFile);
 
   if (node.importClause) {
     if (node.importClause.name) {
@@ -320,7 +319,6 @@ function handleExportDeclaration(
     const targetFile = resolveInternalModule(fromFile, specifier, options);
     if (targetFile) {
       graph.addRelationship('imports', fromFile, targetFile);
-      graph.addRelationship('importedBy', targetFile, fromFile);
     }
   }
 }
@@ -346,7 +344,6 @@ function handleRequireCall(
     const targetFile = resolveInternalModule(fromFile, specifier, options);
     if (targetFile) {
       graph.addRelationship('imports', fromFile, targetFile);
-      graph.addRelationship('importedBy', targetFile, fromFile);
 
       if (
         node.parent &&
@@ -411,13 +408,11 @@ function handleCall(
   if (imported) {
     const targetSymbolId = `${imported.targetFile}:${imported.importedName}`;
     graph.addRelationship('calls', callerId, targetSymbolId);
-    graph.addRelationship('calledBy', targetSymbolId, callerId);
     return;
   }
 
   const localSym = topLevelSymbols.get(calleeName);
   if (localSym) {
     graph.addRelationship('calls', callerId, localSym.id);
-    graph.addRelationship('calledBy', localSym.id, callerId);
   }
 }

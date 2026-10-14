@@ -114,7 +114,11 @@ export interface SourceSpan {
 
 // ── Relationship Types ──────────────────────────────────────
 
-/** Code relationships */
+/**
+ * Code relationships. `importedBy` and `calledBy` are legacy reverse links: they exist so older
+ * maps can be read, and `ConnectionGraph.addRelationship` stores their forward form (`imports`,
+ * `calls`) instead. A built map never contains them.
+ */
 export type CodeRelationship =
   | 'imports'
   | 'importedBy'
@@ -128,7 +132,7 @@ export type CodeRelationship =
 /** Event relationships. Reverse links are derived at render/query time, never stored. */
 export type EventRelationship = 'emits' | 'subscribes' | 'unsubscribes' | 'dispatches';
 
-/** Data relationships */
+/** Data relationships. `generatedBy` and `consumedBy` are legacy reverse links, as above. */
 export type DataRelationship =
   'generates' | 'generatedBy' | 'consumes' | 'consumedBy' | 'reads' | 'writes' | 'transforms';
 

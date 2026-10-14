@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { JsTsAnalyzer } from './js-ts-analyzer.js';
 import { resolveImportPath } from './resolver.js';
 import { ConnectionGraph } from '../graph.js';
+import { getIncoming } from '../graph-queries.js';
+import { storedReverseTypes } from '../testing/legacy-maps.js';
 
 describe('resolveImportPath', () => {
   const knownFiles = new Set([
@@ -101,11 +103,12 @@ describe('JsTsAnalyzer', () => {
           (r) => r.type === 'imports' && r.from === 'src/main.ts' && r.to === 'src/util.ts',
         ),
       ).toBe(true);
-      expect(
-        rels.some(
-          (r) => r.type === 'importedBy' && r.from === 'src/util.ts' && r.to === 'src/main.ts',
-        ),
-      ).toBe(true);
+      // The reverse is derived, not stored.
+      const map = graph.build({ generatedAt: '2026-01-01T00:00:00Z' });
+      expect(getIncoming(map, 'src/util.ts', 'imports').map((r) => r.from)).toEqual([
+        'src/main.ts',
+      ]);
+      expect(storedReverseTypes(map)).toEqual([]);
     });
 
     it('extracts CommonJS require statements', () => {
@@ -160,7 +163,7 @@ describe('JsTsAnalyzer', () => {
   });
 
   describe('inheritance and call relationships', () => {
-    it('extracts extends, implements, calls, and calledBy', () => {
+    it('extracts extends, implements, and calls, with callers derived', () => {
       const graph = new ConnectionGraph();
       const knownFiles = ['src/app.ts', 'src/base.ts'];
 
@@ -197,14 +200,12 @@ describe('JsTsAnalyzer', () => {
             r.to === 'src/base.ts:stepSimulation',
         ),
       ).toBe(true);
-      expect(
-        rels.some(
-          (r) =>
-            r.type === 'calledBy' &&
-            r.from === 'src/base.ts:stepSimulation' &&
-            r.to === 'src/app.ts:AppService.run',
-        ),
-      ).toBe(true);
+      // The reverse is derived, not stored.
+      const map = graph.build({ generatedAt: '2026-01-01T00:00:00Z' });
+      expect(getIncoming(map, 'src/base.ts:stepSimulation', 'calls').map((r) => r.from)).toEqual([
+        'src/app.ts:AppService.run',
+      ]);
+      expect(storedReverseTypes(map)).toEqual([]);
     });
   });
 

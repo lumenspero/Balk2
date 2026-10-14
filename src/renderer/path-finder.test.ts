@@ -1,32 +1,32 @@
 import { describe, expect, it } from 'vitest';
 import { ConnectionGraph } from '../graph.js';
+import { withReverseLinksOnly, withStoredReverseLinks } from '../testing/legacy-maps.js';
+import type { ConnectionMap } from '../types.js';
 import { findConnectionPaths, type PathFinderOptions } from './path-finder.js';
 
 const META = { generatedAt: '2026-01-01T00:00:00Z' };
 
-/** `[target] step | step | ...` for each path. */
-function pathsOf(build: (graph: ConnectionGraph) => void, options?: PathFinderOptions): string[] {
+/** `[target] step | step | ...` for each path. `store` reshapes the map before paths are found. */
+function pathsOf(
+  build: (graph: ConnectionGraph) => void,
+  options?: PathFinderOptions,
+  store: (map: ConnectionMap) => ConnectionMap = (map) => map,
+): string[] {
   const graph = new ConnectionGraph();
   build(graph);
-  return findConnectionPaths(graph.build(META), options).map(
+  return findConnectionPaths(store(graph.build(META)), options).map(
     (path) => `[${path.target}] ${path.steps.join(' | ')}`,
   );
 }
 
 /** raw.json is produced by collect.js; build.js turns it into titles.parquet; load.ts reads that. */
-function pipeline(graph: ConnectionGraph, storeReverse = false): void {
+function pipeline(graph: ConnectionGraph): void {
   graph.addArtifact('data/raw.json', 'json');
   graph.addArtifact('data/titles.parquet', 'parquet');
-  const edges = [
-    ['collect.js', 'data/raw.json', 'generates', 'generatedBy'],
-    ['build.js', 'data/raw.json', 'consumes', 'consumedBy'],
-    ['build.js', 'data/titles.parquet', 'generates', 'generatedBy'],
-    ['load.ts', 'data/titles.parquet', 'consumes', 'consumedBy'],
-  ] as const;
-  for (const [from, to, forward, reverse] of edges) {
-    graph.addRelationship(forward, from, to);
-    if (storeReverse) graph.addRelationship(reverse, to, from);
-  }
+  graph.addRelationship('generates', 'collect.js', 'data/raw.json');
+  graph.addRelationship('consumes', 'build.js', 'data/raw.json');
+  graph.addRelationship('generates', 'build.js', 'data/titles.parquet');
+  graph.addRelationship('consumes', 'load.ts', 'data/titles.parquet');
 }
 
 const FULL_CHAIN =
@@ -87,21 +87,14 @@ describe('paths through data artifacts', () => {
   });
 
   it('gives the same paths whether or not reverse links are stored', () => {
-    expect(pathsOf((g) => pipeline(g, true))).toEqual(pathsOf((g) => pipeline(g, false)));
-    expect(pathsOf((g) => pipeline(g, true))).toEqual([FULL_CHAIN]);
+    const forwardOnly = pathsOf(pipeline);
+
+    expect(pathsOf(pipeline, undefined, withStoredReverseLinks)).toEqual(forwardOnly);
+    expect(forwardOnly).toEqual([FULL_CHAIN]);
   });
 
   it('derives the same paths from reverse links alone', () => {
-    expect(
-      pathsOf((g) => {
-        g.addArtifact('data/raw.json', 'json');
-        g.addArtifact('data/titles.parquet', 'parquet');
-        g.addRelationship('generatedBy', 'data/raw.json', 'collect.js');
-        g.addRelationship('consumedBy', 'data/raw.json', 'build.js');
-        g.addRelationship('generatedBy', 'data/titles.parquet', 'build.js');
-        g.addRelationship('consumedBy', 'data/titles.parquet', 'load.ts');
-      }),
-    ).toEqual([FULL_CHAIN]);
+    expect(pathsOf(pipeline, undefined, withReverseLinksOnly)).toEqual([FULL_CHAIN]);
   });
 
   it('stops at maxDepth and then shows the rest as its own path', () => {

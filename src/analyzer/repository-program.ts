@@ -18,6 +18,11 @@ export interface RepositoryProgramOptions {
   readonly rootDir: string;
   /** Repository-relative JS/TS paths that belong to the analysis session. */
   readonly filePaths: readonly string[];
+  /**
+   * A compiler host to read files through. Production leaves this unset; tests pass one that keeps
+   * the parsed standard library between programs.
+   */
+  readonly host?: ts.CompilerHost;
 }
 
 /**
@@ -41,7 +46,11 @@ export class RepositoryProgram {
     this.host = ts.sys;
 
     const rootNames = [...this.knownFiles].map((filePath) => path.resolve(this.rootDir, filePath));
-    const program = ts.createProgram({ rootNames, options: this.compilerOptions });
+    const program = ts.createProgram({
+      rootNames,
+      options: this.compilerOptions,
+      ...(options.host ? { host: options.host } : {}),
+    });
     this.checker = program.getTypeChecker();
     const sourceFiles = new Map<string, ts.SourceFile>();
 

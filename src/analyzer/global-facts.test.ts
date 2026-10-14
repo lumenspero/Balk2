@@ -1,12 +1,10 @@
-import * as fs from 'node:fs';
-import * as os from 'node:os';
-import * as path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ConnectionGraph } from '../graph.js';
+import { createRepositoryFixture, type RepositoryFixture } from '../testing/repository-fixture.js';
 import type { Relationship } from '../types.js';
 import { collectGlobalSymbols, type GlobalFact, type GlobalSymbol } from './global-symbols.js';
 import { JsTsAnalyzer, type RepositoryAnalysisOptions } from './js-ts-analyzer.js';
-import { createRepositoryProgram, type RepositoryProgram } from './repository-program.js';
+import type { RepositoryProgram } from './repository-program.js';
 
 // Each case builds one or two TypeScript programs; the default 5s limit is too tight when the
 // whole suite runs in parallel on a busy machine.
@@ -18,30 +16,16 @@ const TSCONFIGS: ReadonlyArray<readonly [string, Record<string, unknown> | undef
 ];
 
 describe.each(TSCONFIGS)('Phase 3: global facts and policy [%s]', (_label, compilerOptions) => {
-  let rootDir: string;
-
-  beforeEach(() => {
-    rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'balk2-facts-test-'));
-    if (compilerOptions) {
-      fs.writeFileSync(
-        path.join(rootDir, 'tsconfig.json'),
-        JSON.stringify({ compilerOptions }),
-        'utf8',
-      );
-    }
-  });
+  const fixtures: RepositoryFixture[] = [];
 
   afterEach(() => {
-    fs.rmSync(rootDir, { recursive: true, force: true });
+    for (const fixture of fixtures.splice(0)) fixture.cleanup();
   });
 
   function open(files: Record<string, string>): RepositoryProgram {
-    for (const [name, content] of Object.entries(files)) {
-      const full = path.join(rootDir, name);
-      fs.mkdirSync(path.dirname(full), { recursive: true });
-      fs.writeFileSync(full, content, 'utf8');
-    }
-    return createRepositoryProgram({ rootDir, filePaths: Object.keys(files).sort() });
+    const fixture = createRepositoryFixture(files, compilerOptions);
+    fixtures.push(fixture);
+    return fixture.repository;
   }
 
   interface AnalysisResult {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ConnectionGraph } from './graph.js';
+import { storedReverseTypes, withStoredReverseLinks } from './testing/legacy-maps.js';
 import { convertV1ToV2, deserializeConnectionMap, serializeConnectionMap } from './serialize.js';
 import type { ConnectionMapV1 } from './types.js';
 
@@ -101,5 +102,47 @@ describe('version 2 maps', () => {
     expect(() => deserializeConnectionMap(JSON.stringify({ version: 3 }))).toThrow(
       'Unsupported connection map version: 3',
     );
+  });
+});
+
+describe('reading maps that store reverse links', () => {
+  function forwardMap(): ReturnType<ConnectionGraph['build']> {
+    const graph = new ConnectionGraph();
+    graph.addFile('src/a.ts', 'typescript');
+    graph.addFile('src/b.ts', 'typescript');
+    graph.addRelationship('imports', 'src/a.ts', 'src/b.ts');
+    graph.addRelationship('calls', 'src/a.ts:run', 'src/b.ts:help');
+    return graph.build(METADATA);
+  }
+
+  it('holds each fact once when it reads a version 1 map that stored both directions', () => {
+    const both = withStoredReverseLinks(forwardMap());
+    const v1Shape = {
+      version: 1,
+      repository: both.repository,
+      files: both.files,
+      symbols: both.symbols,
+      artifacts: both.artifacts,
+      relationships: both.relationships,
+    };
+    expect(storedReverseTypes(v1Shape)).toEqual(['calledBy', 'importedBy']);
+
+    const read = deserializeConnectionMap(JSON.stringify(v1Shape));
+
+    expect(storedReverseTypes(read)).toEqual([]);
+    expect(read.relationships).toEqual(forwardMap().relationships);
+  });
+
+  it('cleans a version 2 map written before reverse links were dropped', () => {
+    const written = serializeConnectionMap(withStoredReverseLinks(forwardMap()));
+    const read = deserializeConnectionMap(written);
+
+    expect(storedReverseTypes(read)).toEqual([]);
+    expect(serializeConnectionMap(read)).toBe(serializeConnectionMap(forwardMap()));
+  });
+
+  it('leaves a map that is already forward-only exactly as it is', () => {
+    const json = serializeConnectionMap(forwardMap());
+    expect(serializeConnectionMap(deserializeConnectionMap(json))).toBe(json);
   });
 });

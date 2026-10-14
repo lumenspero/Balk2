@@ -8,13 +8,22 @@ import type {
   UnresolvedReferenceNode,
   Relationship,
   RelationshipDetail,
-  RelationshipMetadata,
   RelationshipType,
   Confidence,
   ConnectionMap,
   RepositoryMetadata,
   SourceSpan,
 } from './types.js';
+import { normalizePath } from './path-utils.js';
+import {
+  compareRelationships,
+  compareStrings,
+  mergeRelationships,
+  sortSpans,
+  toForward,
+} from './relationship-types.js';
+
+export { normalizePath };
 
 /**
  * Mutable graph builder for constructing a ConnectionMap.
@@ -112,7 +121,10 @@ export class ConnectionGraph {
 
   /**
    * Add a typed relationship to the graph.
-   * The from/to identifiers are normalized. A relationship is identified by
+   * The from/to identifiers are normalized. A relationship is stored once, in its forward
+   * direction: a reverse type (`importedBy`, `calledBy`, `generatedBy`, `consumedBy`) is accepted
+   * and stored as the forward relationship, so callers that still pass one cannot put a duplicate
+   * pair in the map. A relationship is identified by
    * (type, from, to): adding it again merges into the existing one — the higher confidence
    * (and its evidence) wins, source spans are combined, and only metadata that holds for every
    * observation is kept. Returns the relationship that is kept.
@@ -124,7 +136,7 @@ export class ConnectionGraph {
     confidence: Confidence = 'high',
     detail: RelationshipDetail = {},
   ): Relationship {
-    const rel: Relationship = {
+    const rel = toForward({
       type,
       from: normalizePath(from),
       to: normalizePath(to),
@@ -132,7 +144,7 @@ export class ConnectionGraph {
       ...(detail.evidence ? { evidence: detail.evidence } : {}),
       ...(detail.spans && detail.spans.length > 0 ? { spans: sortSpans(detail.spans) } : {}),
       ...(detail.metadata ? { metadata: detail.metadata } : {}),
-    };
+    });
 
     const key = `${rel.type}\u0000${rel.from}\u0000${rel.to}`;
     const existingIndex = this.relationshipIndex.get(key);
@@ -232,13 +244,6 @@ export class ConnectionGraph {
 
 // ── Helpers ─────────────────────────────────────────────────
 
-/** Normalize a path to forward slashes and remove leading ./ */
-export function normalizePath(p: string): string {
-  return p.replace(/\\/g, '/').replace(/^\.\//, '');
-}
-
-const CONFIDENCE_RANK: Record<Confidence, number> = { low: 0, medium: 1, high: 2 };
-
 /** Id of an event channel node; shared with analyzers that need to name channels. */
 export function eventChannelId(name: string, scope?: string): string {
   return scope ? `event:${normalizePath(scope)}#${name}` : `event:${name}`;
@@ -248,80 +253,8 @@ function unresolvedId(reason: string, location: SourceSpan): string {
   return `unresolved:${reason}:${normalizePath(location.filePath)}:${location.startLine}:${location.startColumn}`;
 }
 
-function compareSpans(a: SourceSpan, b: SourceSpan): number {
-  return (
-    compareStrings(a.filePath, b.filePath) ||
-    a.startLine - b.startLine ||
-    a.startColumn - b.startColumn ||
-    a.endLine - b.endLine ||
-    a.endColumn - b.endColumn
-  );
-}
-
-function sortSpans(spans: readonly SourceSpan[]): SourceSpan[] {
-  const unique = new Map(
-    spans.map((span) => [
-      `${span.filePath}\u0000${span.startLine}:${span.startColumn}-${span.endLine}:${span.endColumn}`,
-      { ...span, filePath: normalizePath(span.filePath) },
-    ]),
-  );
-  return [...unique.values()].sort(compareSpans);
-}
-
-/**
- * Metadata that holds for every observation of a relationship: the keys both carry with the same
- * value. A flag seen on only one registration (`once` on one of two) is dropped rather than
- * claimed for all of them; the merged spans still locate each observation.
- */
-function commonMetadata(
-  first: RelationshipMetadata | undefined,
-  second: RelationshipMetadata | undefined,
-): RelationshipMetadata | undefined {
-  if (!first || !second) return undefined;
-  const common = Object.fromEntries(
-    Object.entries(first).filter(([key, value]) => second[key] === value),
-  );
-  return Object.keys(common).length > 0 ? common : undefined;
-}
-
-/** Combine two observations of the same (type, from, to). */
-function mergeRelationships(existing: Relationship, incoming: Relationship): Relationship {
-  const stronger =
-    CONFIDENCE_RANK[incoming.confidence] > CONFIDENCE_RANK[existing.confidence]
-      ? incoming
-      : existing;
-  const evidence = stronger.evidence ?? existing.evidence ?? incoming.evidence;
-  const spans = sortSpans([...(existing.spans ?? []), ...(incoming.spans ?? [])]);
-  const metadata = commonMetadata(existing.metadata, incoming.metadata);
-
-  return {
-    type: existing.type,
-    from: existing.from,
-    to: existing.to,
-    confidence: stronger.confidence,
-    ...(evidence ? { evidence } : {}),
-    ...(spans.length > 0 ? { spans } : {}),
-    ...(metadata ? { metadata } : {}),
-  };
-}
-
-/**
- * Ordinal (UTF-16 code unit) comparison. `localeCompare` depends on the host's ICU data and
- * locale, which would make the generated map differ between machines.
- */
-function compareStrings(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0;
-}
-
 /** Sort a Map's entries by key and return a plain object. */
 function sortedRecord<T>(map: Map<string, T>): Record<string, T> {
   const entries = [...map.entries()].sort(([a], [b]) => compareStrings(a, b));
   return Object.fromEntries(entries) as Record<string, T>;
-}
-
-/** Comparator for deterministic relationship ordering. */
-function compareRelationships(a: Relationship, b: Relationship): number {
-  return (
-    compareStrings(a.type, b.type) || compareStrings(a.from, b.from) || compareStrings(a.to, b.to)
-  );
 }

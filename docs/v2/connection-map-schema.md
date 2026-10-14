@@ -47,16 +47,20 @@ that carry the same value in every observation, so a flag seen on one registrati
 for them all.
 
 Event relationships are `emits`, `dispatches`, `subscribes` and `unsubscribes`. They point from the
-publisher or listener owner **to** the channel; reverse links are derived when rendering or
-querying and are never stored. Existing families (`imports`/`importedBy`, `calls`/`calledBy`, ...)
-still store both directions in this version.
+publisher or listener owner **to** the channel.
+
+**Every relationship is stored once, in its forward direction.** There is no `importedBy`,
+`calledBy`, `generatedBy` or `consumedBy` in a generated map: who imports a file, who calls a
+function and what consumes a data file are derived when reading (see "Reading the graph"). Those
+four names remain in the type definitions only so older maps can be read, and
+`ConnectionGraph.addRelationship` stores the forward relationship when it is given one.
 
 ## Reading the graph
 
 A relationship is stored once, from the thing that acts to the thing it acts on. Version 1 maps also
-stored a reverse link for some families (`importedBy`, `calledBy`, `generatedBy`, `consumedBy`);
-that is being phased out, and event relationships never have one. Code that reads the JSON
-should not depend on reverse links. These helpers answer the same questions either way:
+stored a reverse link for some families (`importedBy`, `calledBy`, `generatedBy`, `consumedBy`), so
+a fact appeared twice. Maps no longer do, and code that reads the JSON should not look for them.
+These helpers answer the same questions for any map, old or new:
 
 ```ts
 import { getIncoming, getOutgoing, forwardRelationships } from '@lumenspero/balk2';
@@ -66,9 +70,10 @@ getOutgoing(map, 'src/main.ts:run', 'calls'); // what does run call?
 getIncoming(map, 'src/util.ts', 'imports'); // who imports util.ts?
 ```
 
-`forwardRelationships(map)` returns every relationship in forward form: stored reverse links are
+`forwardRelationships(map)` returns every relationship in forward form: any stored reverse link is
 turned around, repeated facts are merged at their highest confidence, and the result is sorted. The
-generated `connection-map.md` derives its "Imported by" and "Called by" lists the same way.
+generated `connection-map.md` derives its "Imported by" and "Called by" lists the same way, so
+it reads identically for a map that stores reverse links and one that does not.
 
 For event channels there are two direct questions:
 
@@ -86,11 +91,15 @@ not channels and are never included.
 
 `deserializeConnectionMap` accepts version 1 and version 2.
 
-- A version 1 map is converted on read: its nodes and relationships are valid in version 2
-  unchanged, and `eventChannels` and `unresolved` start empty.
+- A version 1 map is converted on read: its nodes are valid in version 2 unchanged,
+  `eventChannels` and `unresolved` start empty, and stored reverse links are turned into the
+  forward relationship they repeat, so each fact is held once.
+- A version 2 map written while reverse links were still stored is cleaned the same way, so
+  `deserializeConnectionMap` always returns relationships in canonical form.
 - Any other version is rejected with `Unsupported connection map version`.
-- `balk2 check` compares the on-disk file with a freshly generated one, so a version 1 file is
-  reported as out of date until it is regenerated.
+- `balk2 check` compares the on-disk file with a freshly generated one, so a version 1 file, or a
+  version 2 file that still contains reverse links, is reported as out of date until it is
+  regenerated.
 
 ## Compatibility
 
