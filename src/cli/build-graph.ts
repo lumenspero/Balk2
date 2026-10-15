@@ -55,6 +55,7 @@ export function buildConnectionGraph(rootDir: string, config?: Balk2Config): Con
     jsTsAnalyzer.analyzeRepository(repository, graph, {
       globals: config?.globals,
       events: config?.protocols?.events,
+      registries: config?.protocols?.registries,
     });
   }
 

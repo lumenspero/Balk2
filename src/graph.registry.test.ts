@@ -21,6 +21,7 @@ describe('registry-key nodes', () => {
       id: 'registry:src/container.ts:container#user',
       key: 'user',
       scope: 'src/container.ts:container',
+      keyType: 'string',
     });
     expect(graph.hasRegistryKey(first.id)).toBe(true);
     expect(graph.build(METADATA).registryKeys).toEqual({ [first.id]: first });

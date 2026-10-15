@@ -26,9 +26,11 @@ comparison, so output is identical across machines for identical input.
 is resolved. `socket.emit('ready')` and `document.dispatchEvent(new Event('ready'))` therefore
 produce different channels. Fields: `kind`, `id`, `name`, optional `scope`.
 
-**Registry key** — `registry:<scope>#<key>`. A string key scoped to the resolved identity of the
-registry it belongs to, so the same key in two containers stays two nodes. Fields: `kind`, `id`,
-`key`, `scope`.
+**Registry key** — `registry:<scope>#<key>`. A key scoped to the resolved identity of the registry
+it belongs to, so the same key in two containers stays two nodes. A numeric key in a typed registry
+(Map, Set, class) is `registry:<scope>#number:<key>`, so `404` and `'404'` stay apart there; in a
+dictionary a number is stored as its string form. Fields: `kind`, `id`, `key`, `scope`, `keyType`
+(`string` or `number`).
 
 **Unresolved reference** — `unresolved:<reason>:<file>:<line>:<column>`. Records code that looks
 like a connection but cannot be resolved without guessing. Fields: `kind`, `id`, `reason`

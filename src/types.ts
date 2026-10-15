@@ -76,23 +76,36 @@ export interface EventChannelNode {
 }
 
 /**
- * A virtual node for a string key scoped to a resolved registry identity, such as a key used to
- * look up a factory, a route or a plugin.
+ * How a key is typed in its registry. A dictionary stores `1` and `'1'` as one key, so its keys
+ * are `string`. A Map, Set or class keeps `1` and `'1'` apart, so a numeric key is `number`.
+ */
+export type RegistryKeyType = 'string' | 'number';
+
+/**
+ * A virtual node for a key scoped to a resolved registry identity, such as a key used to look up
+ * a factory, a route or a plugin.
  *
- * Examples: registry:src/container.ts:container#user, registry:global:window#app
+ * Examples: registry:src/container.ts:container#user, registry:src/cache.ts:store#number:404
  */
 export interface RegistryKeyNode {
   readonly kind: 'registry-key';
-  /** Unique identifier: "registry:<scope>#<key>" */
+  /** Unique identifier: "registry:<scope>#<key>", or "registry:<scope>#number:<key>" */
   readonly id: string;
   /** The key, as a string */
   readonly key: string;
   /** Resolved identity of the registry the key belongs to */
   readonly scope: string;
+  /** Whether the key is a string or a number; numeric keys appear only in typed registries */
+  readonly keyType: RegistryKeyType;
 }
 
 /** Why a relationship could not be resolved to a concrete target. */
-export type UnresolvedReason = 'ambiguous-global' | 'dynamic-event-name' | 'unknown-event-receiver';
+export type UnresolvedReason =
+  | 'ambiguous-global'
+  | 'dynamic-event-name'
+  | 'unknown-event-receiver'
+  | 'dynamic-registry-key'
+  | 'unknown-registry-receiver';
 
 /**
  * A diagnostic-only node recording code that looks like a connection but could not be

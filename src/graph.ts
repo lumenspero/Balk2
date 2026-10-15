@@ -6,6 +6,7 @@ import type {
   ArtifactFormat,
   EventChannelNode,
   RegistryKeyNode,
+  RegistryKeyType,
   UnresolvedReferenceNode,
   Relationship,
   RelationshipDetail,
@@ -98,17 +99,23 @@ export class ConnectionGraph {
   }
 
   /**
-   * Add a registry-key node: a string key scoped to a resolved registry identity. The id is
-   * `registry:<scope>#<key>`, so the same key in two registries is two nodes. Adding it again is a
-   * no-op.
+   * Add a registry-key node: a key scoped to a resolved registry identity. The id is
+   * `registry:<scope>#<key>`, or `registry:<scope>#number:<key>` for a numeric key in a typed
+   * registry, so the same key in two registries is two nodes. Adding it again is a no-op.
    */
-  addRegistryKey(key: string, scope: string): RegistryKeyNode {
+  addRegistryKey(key: string, scope: string, keyType: RegistryKeyType = 'string'): RegistryKeyNode {
     const normalizedScope = normalizePath(scope);
-    const id = registryKeyId(key, normalizedScope);
+    const id = registryKeyId(key, normalizedScope, keyType);
     const existing = this.registryKeys.get(id);
     if (existing) return existing;
 
-    const node: RegistryKeyNode = { kind: 'registry-key', id, key, scope: normalizedScope };
+    const node: RegistryKeyNode = {
+      kind: 'registry-key',
+      id,
+      key,
+      scope: normalizedScope,
+      keyType,
+    };
     this.registryKeys.set(id, node);
     return node;
   }
@@ -274,9 +281,17 @@ export function eventChannelId(name: string, scope?: string): string {
   return scope ? `event:${normalizePath(scope)}#${name}` : `event:${name}`;
 }
 
-/** Id of a registry-key node; shared with analyzers that need to name keys. */
-export function registryKeyId(key: string, scope: string): string {
-  return `registry:${normalizePath(scope)}#${key}`;
+/**
+ * Id of a registry-key node; shared with analyzers that need to name keys. A numeric key in a
+ * typed registry is tagged, so `1` and `'1'` stay apart there.
+ */
+export function registryKeyId(
+  key: string,
+  scope: string,
+  keyType: RegistryKeyType = 'string',
+): string {
+  const tag = keyType === 'number' ? 'number:' : '';
+  return `registry:${normalizePath(scope)}#${tag}${key}`;
 }
 
 function unresolvedId(reason: string, location: SourceSpan): string {

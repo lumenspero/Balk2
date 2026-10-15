@@ -7,6 +7,8 @@ import {
   type GlobalSymbolOptions,
 } from './global-symbols.js';
 import { collectEventRelationships } from './event-channels.js';
+import { collectRegistryRelationships } from './registry-detection.js';
+import type { RegistryProtocolOptions } from './registry-protocols.js';
 import type { EventProtocolOptions } from './event-protocols.js';
 import { collectGlobalReferences } from './global-references.js';
 import { resolveImportPath } from './resolver.js';
@@ -21,6 +23,8 @@ export interface RepositoryAnalysisOptions {
   readonly globals?: GlobalSymbolOptions;
   /** Event protocol customization from `protocols.events` in `.balk2.json`. */
   readonly events?: EventProtocolOptions;
+  /** Registry protocol customization from `protocols.registries` in `.balk2.json`. */
+  readonly registries?: RegistryProtocolOptions;
 }
 
 export interface RepositoryAnalysis {
@@ -90,6 +94,7 @@ export class JsTsAnalyzer implements Analyzer {
     }
 
     collectEventRelationships(repository, graph, options.events);
+    collectRegistryRelationships(repository, graph, options.registries);
 
     return { globalFacts };
   }
