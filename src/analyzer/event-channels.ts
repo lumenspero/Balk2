@@ -40,6 +40,7 @@ export function collectEventRelationships(
   repository: RepositoryProgram,
   graph: ConnectionGraph,
   options: EventProtocolOptions = {},
+  claimed: ReadonlySet<ts.Node> = new Set(),
 ): void {
   const catalog = new EventProtocolCatalog(options);
   const receivers = new ReceiverResolver(repository);
@@ -76,6 +77,8 @@ export function collectEventRelationships(
   };
 
   for (const { filePath, call, receiver, protocol } of calls) {
+    // State takes precedence: a call on shared state is never an event.
+    if (claimed.has(call)) continue;
     const eventArgument = call.arguments[protocol.eventArg];
     if (!eventArgument) continue;
 

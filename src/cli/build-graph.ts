@@ -56,6 +56,7 @@ export function buildConnectionGraph(rootDir: string, config?: Balk2Config): Con
       globals: config?.globals,
       events: config?.protocols?.events,
       registries: config?.protocols?.registries,
+      state: config?.state,
     });
   }
 

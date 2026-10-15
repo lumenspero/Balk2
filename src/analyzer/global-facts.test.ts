@@ -248,7 +248,15 @@ describe.each(TSCONFIGS)('Phase 3: global facts and policy [%s]', (_label, compi
       const map = graph.build({ generatedAt: '2026-01-01T00:00:00Z' });
 
       expect(Object.keys(map.unresolved)).toHaveLength(2);
-      expect(map.relationships.filter((r) => r.from === 'twice.js:k')).toHaveLength(2);
+      expect(
+        map.relationships.filter((r) => r.from === 'twice.js:k' && r.type === 'references'),
+      ).toHaveLength(2);
+      // Both reads are one runtime slot, so they are one shared-state edge with two spans.
+      const state = map.relationships.find(
+        (r) => r.from === 'twice.js:k' && r.type === 'readsState',
+      );
+      expect(state?.to).toBe('state:global#shared');
+      expect(state?.spans).toHaveLength(2);
     });
 
     it('names the files, shortening a long list', () => {

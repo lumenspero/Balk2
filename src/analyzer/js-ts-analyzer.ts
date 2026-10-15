@@ -11,6 +11,9 @@ import { collectRegistryRelationships } from './registry-detection.js';
 import type { RegistryProtocolOptions } from './registry-protocols.js';
 import type { EventProtocolOptions } from './event-protocols.js';
 import { collectGlobalReferences } from './global-references.js';
+import { collectStateRelationships } from './state-relationships.js';
+import type { ConfigProblem } from '../config/config-problem.js';
+import type { StateConfig } from '../config/state-config.js';
 import { resolveImportPath } from './resolver.js';
 import type { ConnectionGraph } from '../graph.js';
 import { normalizePath } from '../graph.js';
@@ -25,6 +28,8 @@ export interface RepositoryAnalysisOptions {
   readonly events?: EventProtocolOptions;
   /** Registry protocol customization from `protocols.registries` in `.balk2.json`. */
   readonly registries?: RegistryProtocolOptions;
+  /** Shared-state behavior from the `state` section of `.balk2.json`. */
+  readonly state?: StateConfig;
 }
 
 export interface RepositoryAnalysis {
@@ -33,6 +38,8 @@ export interface RepositoryAnalysis {
    * ambiguous ones. They are not part of the v1 graph schema yet.
    */
   readonly globalFacts: readonly GlobalFact[];
+  /** Configured state singletons that matched no export; not written into the graph. */
+  readonly stateProblems: readonly ConfigProblem[];
 }
 
 export class JsTsAnalyzer implements Analyzer {
@@ -93,10 +100,12 @@ export class JsTsAnalyzer implements Analyzer {
       );
     }
 
-    collectEventRelationships(repository, graph, options.events);
-    collectRegistryRelationships(repository, graph, options.registries);
+    // State first: a call on shared state is state, so event and registry detection skip it.
+    const state = collectStateRelationships(repository, graph, globalSymbols, options.state);
+    collectEventRelationships(repository, graph, options.events, state.claimed);
+    collectRegistryRelationships(repository, graph, options.registries, state.claimed);
 
-    return { globalFacts };
+    return { globalFacts, stateProblems: state.problems };
   }
 
   private analyzeSourceFile(

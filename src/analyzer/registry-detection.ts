@@ -70,6 +70,7 @@ export function collectRegistryRelationships(
   repository: RepositoryProgram,
   graph: ConnectionGraph,
   options: RegistryProtocolOptions = {},
+  claimed: ReadonlySet<ts.Node> = new Set(),
 ): void {
   const catalog = new RegistryProtocolCatalog(options);
   const receivers = new ReceiverResolver(repository);
@@ -82,6 +83,8 @@ export function collectRegistryRelationships(
 
   for (const call of collectRegistryCalls(repository, catalog)) {
     const { filePath, node, receiver, protocol } = call;
+    // State takes precedence: a call on shared state is never a registry lookup.
+    if (claimed.has(node)) continue;
 
     // A registration by assignment needs a known value. Otherwise `env['X'] = 'y'` on any
     // dictionary would become a key.
