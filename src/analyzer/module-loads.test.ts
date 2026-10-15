@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createRepositoryFixture, type RepositoryFixture } from '../testing/repository-fixture.js';
 import { collectModuleLoads, type ModuleLoad } from './module-loads.js';
+import type { LoaderProtocol } from './loader-protocols.js';
 
 const lines = (...rows: string[]): string => rows.join('\n');
 
@@ -89,5 +90,36 @@ describe('collectModuleLoads', () => {
       loadKind: 'url',
       target: 'util.ts',
     });
+  });
+});
+
+describe('collectModuleLoads: loader receiver rules', () => {
+  // A loader whose receiver is a string ('any' or 'event-like') is not a valid loader rule.
+  // It must never match, or one malformed entry would widen to every method call of that name.
+  const stringReceiver = {
+    function: 'load',
+    specifierArg: 0,
+    receiver: 'any',
+  } as unknown as LoaderProtocol;
+
+  let fixture: RepositoryFixture | undefined;
+
+  beforeAll(() => {
+    fixture = createRepositoryFixture(
+      {
+        'util.ts': 'export const u = 1;',
+        'main.ts': lines(
+          'declare const anything: { load(specifier: string): unknown };',
+          "export const viaAny = () => anything.load('./util.js');",
+        ),
+      },
+      { target: 'ES2022', module: 'ESNext', moduleResolution: 'Bundler' },
+    );
+  });
+  afterAll(() => fixture?.cleanup());
+
+  it('does not match a method call when the receiver rule is a string', () => {
+    const loads = collectModuleLoads(fixture!.repository, [stringReceiver]);
+    expect(loads).toHaveLength(0);
   });
 });
