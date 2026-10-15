@@ -26,6 +26,10 @@ export interface StateReference {
   readonly dynamicReason?: string;
 }
 
+/** A property key: its name, or `null` with the reason it is not statically known. */
+export type KeySegment =
+  { readonly name: string } | { readonly name: null; readonly reason: string };
+
 const MAX_DEPTH = 6;
 
 /** What a sub-expression turned out to be while walking a property chain. */
@@ -195,19 +199,21 @@ export class StateRootResolver {
   }
 
   /** A property name, or `null` with the reason it is not statically known. */
-  private segmentOf(
-    node: ts.PropertyAccessExpression | ts.ElementAccessExpression,
-  ): { readonly name: string } | { readonly name: null; readonly reason: string } {
+  private segmentOf(node: ts.PropertyAccessExpression | ts.ElementAccessExpression): KeySegment {
     if (ts.isPropertyAccessExpression(node)) return { name: node.name.text };
+    return this.keySegment(node.argumentExpression);
+  }
 
-    const argument = unwrapExpression(node.argumentExpression);
-    if (ts.isNumericLiteral(argument)) return { name: String(Number(argument.text)) };
+  /** A key read from an expression used as a property name or a state method's key argument. */
+  keySegment(argument: ts.Expression): KeySegment {
+    const key = unwrapExpression(argument);
+    if (ts.isNumericLiteral(key)) return { name: String(Number(key.text)) };
 
-    const key = resolveStaticKey(argument, this.checker);
-    if (key.kind === 'static') return { name: key.name };
+    const resolved = resolveStaticKey(key, this.checker);
+    if (resolved.kind === 'static') return { name: resolved.name };
     return {
       name: null,
-      reason: key.kind === 'dynamic' ? key.reason : 'property key is not a string',
+      reason: resolved.kind === 'dynamic' ? resolved.reason : 'property key is not a string',
     };
   }
 
