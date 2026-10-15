@@ -10,6 +10,9 @@ import { collectEventRelationships } from './event-channels.js';
 import { collectRegistryRelationships } from './registry-detection.js';
 import type { RegistryProtocolOptions } from './registry-protocols.js';
 import type { EventProtocolOptions } from './event-protocols.js';
+import type { LoaderProtocol } from './loader-protocols.js';
+import { collectModuleLoads, type ModuleLoad } from './module-loads.js';
+import { recordDynamicLoads } from './module-load-observations.js';
 import { collectGlobalReferences } from './global-references.js';
 import { collectStateRelationships } from './state-relationships.js';
 import type { ConfigProblem } from '../config/config-problem.js';
@@ -28,6 +31,8 @@ export interface RepositoryAnalysisOptions {
   readonly events?: EventProtocolOptions;
   /** Registry protocol customization from `protocols.registries` in `.balk2.json`. */
   readonly registries?: RegistryProtocolOptions;
+  /** Loader functions from `protocols.loaders` in `.balk2.json`. */
+  readonly loaders?: readonly LoaderProtocol[];
   /** Shared-state behavior from the `state` section of `.balk2.json`. */
   readonly state?: StateConfig;
 }
@@ -86,6 +91,12 @@ export class JsTsAnalyzer implements Analyzer {
         repository,
       });
     }
+
+    // Dynamic module loads. Internal and loader loads add edges; `require` edges from the
+    // per-file pass are not restamped, so an existing static import keeps its edge unchanged.
+    const loads = collectModuleLoads(repository, options.loaders ?? []);
+    recordModuleLoadEdges(loads, graph);
+    recordDynamicLoads(loads, graph);
 
     for (const globalSymbol of globalSymbols.effective()) {
       if (!graph.hasSymbol(globalSymbol.symbolId)) {
@@ -268,6 +279,32 @@ export class JsTsAnalyzer implements Analyzer {
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────
+
+/**
+ * Add an `imports` edge for each internal dynamic load (`import()`, worker, URL, loader).
+ *
+ * A load whose owner already has an `imports` edge to the same file keeps that edge exactly as it
+ * was; the dynamic load is not merged into it, so no existing edge gains `loadKind`. Otherwise the
+ * load creates one, carrying its `loadKind`.
+ */
+function recordModuleLoadEdges(loads: readonly ModuleLoad[], graph: ConnectionGraph): void {
+  for (const load of loads) {
+    if (load.status !== 'internal') continue;
+
+    const alreadyLinked = graph
+      .getRelationships(load.owner)
+      .some(
+        (rel) => rel.type === 'imports' && rel.from === load.owner && rel.to === load.target,
+      );
+    if (alreadyLinked) continue;
+
+    graph.addRelationship('imports', load.owner, load.target, 'high', {
+      evidence: 'ts-program',
+      spans: [load.span],
+      metadata: { loadKind: load.loadKind },
+    });
+  }
+}
 
 function isTypeScript(path: string): boolean {
   const p = path.toLowerCase();

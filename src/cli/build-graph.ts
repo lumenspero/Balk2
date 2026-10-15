@@ -65,6 +65,7 @@ export function buildConnectionGraphDetailed(rootDir: string, config?: Balk2Conf
       globals: config?.globals,
       events: config?.protocols?.events,
       registries: config?.protocols?.registries,
+      loaders: config?.protocols?.loaders,
       state: config?.state,
     }).stateProblems;
   }
