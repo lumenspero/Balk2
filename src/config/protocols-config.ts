@@ -6,7 +6,9 @@ import {
   type EventProtocolOptions,
   type ReceiverRule,
 } from '../analyzer/event-protocols.js';
+import type { LoaderProtocol } from '../analyzer/loader-protocols.js';
 import type { ConfigProblem } from './config-problem.js';
+import { normalizeLoaders } from './loaders-config.js';
 import { normalizeRegistries, type RegistryProtocolsConfig } from './registry-protocols-config.js';
 import {
   argField,
@@ -21,10 +23,11 @@ import {
 /** Event conventions for a repository; see `protocols.events` in `.balk2.json`. */
 export type EventProtocolsConfig = EventProtocolOptions;
 
-/** The `protocols` section of `.balk2.json`: event and registry conventions. */
+/** The `protocols` section of `.balk2.json`: event, registry and loader conventions. */
 export interface ProtocolsConfig {
   readonly events?: EventProtocolsConfig;
   readonly registries?: RegistryProtocolsConfig;
+  readonly loaders?: readonly LoaderProtocol[];
 }
 
 export interface NormalizedProtocolsConfig {
@@ -65,15 +68,19 @@ export function normalizeProtocolsConfig(value: unknown): NormalizedProtocolsCon
 
   let events: EventProtocolsConfig | undefined;
   let registries: RegistryProtocolsConfig | undefined;
+  let loaders: readonly LoaderProtocol[] | undefined;
   for (const [key, entry] of Object.entries(value)) {
     if (key === 'events') {
       events = normalizeEvents(entry, problems);
     } else if (key === 'registries') {
       registries = normalizeRegistries(entry, problems);
+    } else if (key === 'loaders') {
+      loaders = normalizeLoaders(entry, problems);
     } else {
       problems.push({
         path: `protocols.${key}`,
-        message: 'unknown protocol family ignored; only "events" and "registries" are supported',
+        message:
+          'unknown protocol family ignored; only "events", "registries" and "loaders" are supported',
       });
     }
   }
@@ -81,6 +88,7 @@ export function normalizeProtocolsConfig(value: unknown): NormalizedProtocolsCon
   const config: ProtocolsConfig = {
     ...(events ? { events } : {}),
     ...(registries ? { registries } : {}),
+    ...(loaders ? { loaders } : {}),
   };
   return { ...(Object.keys(config).length > 0 ? { config } : {}), problems };
 }

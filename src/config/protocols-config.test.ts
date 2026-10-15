@@ -69,7 +69,7 @@ describe('normalizeProtocolsConfig: structure', () => {
 
     expect(result.config).toEqual({ events: { builtIns: false } });
     expect(problemsOf(result)).toEqual([
-      'protocols.bogus: unknown protocol family ignored; only "events" and "registries" are supported',
+      'protocols.bogus: unknown protocol family ignored; only "events", "registries" and "loaders" are supported',
     ]);
   });
 
