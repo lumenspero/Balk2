@@ -64,6 +64,12 @@ interface RegistryCall {
  * so the same name in two registries stays two keys. A dynamic key, or a receiver whose identity
  * cannot be read, becomes an unresolved observation rather than a guessed edge.
  *
+ * A receiver that is only shaped like a registry (a Map or Set) is trusted as a registry only when
+ * there is evidence it holds repository symbols: a declared key, a symbol-valued registration into
+ * the same registry, or a configured name or type. For an untrusted receiver, a dynamic key or an
+ * unknown identity produces no observation, so a private index does not report noise. A static key
+ * on an untrusted receiver still forms its edge, as a lookup into a registry nobody declares.
+ *
  * Runs after the per-file pass, so the symbols a registration maps to already exist in the graph.
  */
 export function collectRegistryRelationships(
@@ -81,27 +87,49 @@ export function collectRegistryRelationships(
   const lookups: Lookup[] = [];
   declareRegistrations(repository, graph, catalog, options, declared);
 
-  for (const call of collectRegistryCalls(repository, catalog)) {
+  // Pass 1: read every candidate once, and note each registry that receives a symbol or file.
+  const candidates = collectRegistryCalls(repository, catalog)
+    .filter((call) => !claimed.has(call.node))
+    .map((call) => ({
+      call,
+      identity: receivers.resolve(call.receiver),
+      target: call.valueExpression
+        ? symbolTargetOf(call.valueExpression, checker, graph, pathOf)
+        : undefined,
+    }));
+
+  // A registry is one that already has a declared key or receives a symbol-valued registration.
+  const registryScopes = new Set<string>([...declared.values()].map((node) => node.scope));
+  for (const { call, identity, target } of candidates) {
+    if (call.protocol.relationship === 'registers' && target !== undefined) {
+      if (identity.kind !== 'unknown') registryScopes.add(identity.scope);
+    }
+  }
+
+  // Pass 2: qualify, gate observations, and record.
+  for (const { call, identity, target } of candidates) {
     const { filePath, node, receiver, protocol } = call;
-    // State takes precedence: a call on shared state is never a registry lookup.
-    if (claimed.has(node)) continue;
 
     // A registration by assignment needs a known value. Otherwise `env['X'] = 'y'` on any
     // dictionary would become a key.
-    const target = call.valueExpression
-      ? symbolTargetOf(call.valueExpression, checker, graph, pathOf)
-      : undefined;
     if (call.assignment && target === undefined) continue;
 
     const qualification = qualifyRegistryReceiver(protocol.receiver, receiver, catalog, checker);
     if (!qualification.qualifies) continue;
+
+    // Trusted: a configured rule, a registry with evidence of repository symbols, or any receiver
+    // whose type was not shaped by a Map or Set alone. Untrusted receivers may still form edges
+    // from static keys, but they produce no observations.
+    const trusted =
+      protocol.receiver !== 'registry-like' ||
+      qualification.evidence === 'config' ||
+      (identity.kind !== 'unknown' && registryScopes.has(identity.scope));
 
     const key = resolveRegistryKey(call.keyExpression, checker, qualification.container);
     if (key.kind === 'not-a-name') continue;
 
     const span = spanOf(node, filePath);
     const owner = enclosingOwner(node, filePath);
-    const identity = receivers.resolve(receiver);
 
     const observe = (reason: UnresolvedReason, detail: string): void => {
       const unresolved = graph.addUnresolved({
@@ -118,12 +146,12 @@ export function collectRegistryRelationships(
     };
 
     if (key.kind === 'dynamic') {
-      observe('dynamic-registry-key', key.reason);
+      if (trusted) observe('dynamic-registry-key', key.reason);
       continue;
     }
 
     if (identity.kind === 'unknown') {
-      observe('unknown-registry-receiver', identity.reason);
+      if (trusted) observe('unknown-registry-receiver', identity.reason);
       continue;
     }
 

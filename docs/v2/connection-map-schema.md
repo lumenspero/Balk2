@@ -33,6 +33,13 @@ it belongs to, so the same key in two containers stays two nodes. A numeric key 
 dictionary a number is stored as its string form. Fields: `kind`, `id`, `key`, `scope`, `keyType`
 (`string` or `number`).
 
+A registry key is created only for a registry the analysis trusts. A dictionary, a configured name
+or type, or a Map or Set with evidence of repository symbols (a declared key, or a registration
+whose value resolves to a symbol or file in the same registry) counts. A Map or Set that holds only
+runtime values does not, so its dynamic-key calls produce no observations. A static-key lookup on
+such a receiver still forms its `resolves` edge and key node, since it names a key the graph can
+show.
+
 **State path** — `state:<root>` for a state container, `state:<root>#<path>` for a property under
 it, so reading a whole store and reading one field of it are different nodes. The root is the
 resolved identity of the shared object:

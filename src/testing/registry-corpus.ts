@@ -179,6 +179,34 @@ export const REGISTRY_CORPUS: readonly RegistryFixture[] = [
     observations: [],
   },
   {
+    name: 'a private index keyed by runtime values is not a registry',
+    files: {
+      'graph.ts': lines(
+        'export class Graph {',
+        '  private readonly files = new Map<string, number>();',
+        '  add(path: string, size: number): void { this.files.set(path, size); }',
+        '  sizeOf(path: string): number | undefined { return this.files.get(path); }',
+        '}',
+      ),
+    },
+    pairs: [],
+    observations: [],
+  },
+  {
+    name: 'a set of runtime values is not a registry',
+    files: {
+      'session.ts': lines(
+        'export class Session {',
+        '  private readonly seen = new Set<number>();',
+        '  mark(n: number): void { this.seen.add(n); }',
+        '  has(n: number): boolean { return this.seen.has(n); }',
+        '}',
+      ),
+    },
+    pairs: [],
+    observations: [],
+  },
+  {
     name: 'a manifest supplies a registration the code does not show',
     files: {
       'settings.ts': 'export class Settings {}',
