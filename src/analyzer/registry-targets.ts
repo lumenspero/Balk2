@@ -4,12 +4,16 @@ import { ownerOf } from './owner.js';
 import type { PathLookup } from './repository-files.js';
 import { unwrapExpression } from './static-keys.js';
 
-export /**
- * The graph symbol a registered value names (`User`, `this.handler`, a function): the same
- * ownership rule the listener pass uses, so the id matches the symbol node. Classes are valid
- * targets here, unlike listeners. Anything else (a parameter, a literal, a call) is `undefined`.
+/**
+ * The graph symbol a registered value names (`User`, `this.handler`, a top-level function), or
+ * `undefined` when it names nothing the graph can point at.
+ *
+ * A value must be declared at the top level of a repository file, or as a class member. A local
+ * variable, a parameter, or a function nested inside another function has no symbol of its own,
+ * so it is not a target. Without this rule a local would be given a symbol id built from its
+ * name, which could match an unrelated top-level symbol or the enclosing function.
  */
-function symbolTargetOf(
+export function symbolTargetOf(
   expression: ts.Expression,
   checker: ts.TypeChecker,
   graph: ConnectionGraph,
@@ -34,7 +38,31 @@ function symbolTargetOf(
   const sourceFile = declaration.getSourceFile();
   const filePath = pathOf(sourceFile);
   if (filePath === undefined || sourceFile.isDeclarationFile) return undefined;
+  if (isNestedInFunction(declaration)) return undefined;
 
   const id = ownerOf(declaration, filePath);
   return id !== undefined && graph.hasSymbol(id) ? id : undefined;
+}
+
+/**
+ * True when a declaration sits inside a function body or parameter list before reaching the file
+ * or a class. Class members and top-level declarations are not nested; locals, parameters and
+ * nested functions are.
+ */
+function isNestedInFunction(declaration: ts.Declaration): boolean {
+  for (let current = declaration.parent; current; current = current.parent) {
+    if (ts.isSourceFile(current) || ts.isClassLike(current)) return false;
+    if (
+      ts.isFunctionDeclaration(current) ||
+      ts.isFunctionExpression(current) ||
+      ts.isArrowFunction(current) ||
+      ts.isMethodDeclaration(current) ||
+      ts.isConstructorDeclaration(current) ||
+      ts.isGetAccessorDeclaration(current) ||
+      ts.isSetAccessorDeclaration(current)
+    ) {
+      return true;
+    }
+  }
+  return false;
 }

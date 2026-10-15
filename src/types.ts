@@ -157,7 +157,8 @@ export type UnresolvedReason =
   | 'unknown-registry-receiver'
   | 'ambiguous-registry'
   | 'dynamic-state-path'
-  | 'dynamic-module-specifier';
+  | 'dynamic-module-specifier'
+  | 'unresolved-callback';
 
 /**
  * A diagnostic-only node recording code that looks like a connection but could not be
@@ -206,12 +207,17 @@ export interface SourceSpan {
  * Code relationships. `importedBy` and `calledBy` are legacy reverse links: they exist so older
  * maps can be read, and `ConnectionGraph.addRelationship` stores their forward form (`imports`,
  * `calls`) instead. A built map never contains them.
+ *
+ * `passesCallback` runs from the function that passes a callback to the callback's symbol. An
+ * inline callback has no symbol of its own, so its target is the enclosing symbol and the edge
+ * carries `metadata.inline`.
  */
 export type CodeRelationship =
   | 'imports'
   | 'importedBy'
   | 'calls'
   | 'calledBy'
+  | 'passesCallback'
   | 'extends'
   | 'implements'
   | 'references'

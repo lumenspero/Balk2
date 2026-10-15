@@ -62,6 +62,20 @@ export interface RegistryDecoratorRule {
   readonly keyArg?: number;
 }
 
+/**
+ * A decorator on a constructor parameter that declares a dependency: `constructor(@Inject(Repo) r)`.
+ * It does not register anything. It makes the enclosing class look up the key, so the class
+ * depends on whatever is registered under it.
+ */
+export interface RegistryParameterDecoratorRule {
+  /** The decorator's identifier, as written at the use site */
+  readonly name: string;
+  /** Explicit registry identity the dependency is looked up in */
+  readonly registry: string;
+  /** Zero-based index of the key argument; default 0 */
+  readonly keyArg?: number;
+}
+
 /** One explicit registration: `key` in `registry` maps to `target`. */
 export interface RegistryManifestEntry {
   readonly registry: string;
@@ -86,6 +100,11 @@ export interface RegistryProtocolOptions {
    * maps `@register('user') class User` to the key `user` of `registry`.
    */
   readonly decorators?: readonly RegistryDecoratorRule[];
+  /**
+   * Parameter decorators that declare a dependency on a key: `{ name: 'Inject', registry }` makes
+   * `constructor(@Inject(UserRepo) r)` a lookup of `UserRepo` from the enclosing class.
+   */
+  readonly parameterDecorators?: readonly RegistryParameterDecoratorRule[];
   /** Explicit registrations, such as for generated code that no call site shows */
   readonly manifest?: readonly RegistryManifestEntry[];
   /** Files that register themselves under their name, found by glob */

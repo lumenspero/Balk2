@@ -26,6 +26,7 @@ import { snippetOf, spanOf } from './spans.js';
 import { symbolTargetOf } from './registry-targets.js';
 import { declareRegistrations } from './registry-sources.js';
 import { unwrapExpression } from './static-keys.js';
+import { collectParameterInjections } from './registry-injection.js';
 
 /** `registry[key] = value`: a registration by assignment, on a dictionary only. */
 const ASSIGNMENT: ResolvedRegistryProtocol = {
@@ -93,6 +94,7 @@ export function collectRegistryRelationships(
   const declared = new Map<string, RegistryKeyNode>();
   const lookups: Lookup[] = [];
   declareRegistrations(repository, graph, catalog, options, declared);
+  collectParameterInjections(repository, graph, options.parameterDecorators ?? []);
 
   // Pass 1: read every candidate once, and note each registry that receives a symbol or file.
   const candidates = collectRegistryCalls(repository, catalog)

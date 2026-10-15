@@ -118,6 +118,7 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
         }
       }
 
+      pushCallbackLinks(lines, outRels, inRels);
       pushEventLinks(lines, outRels);
       pushRegistryLinks(lines, outRels);
 
@@ -219,6 +220,7 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
         }
       }
 
+      pushCallbackLinks(lines, outRels, inRels);
       pushEventLinks(lines, outRels);
       pushRegistryLinks(lines, outRels);
 
@@ -553,6 +555,50 @@ function importsOf(rels: readonly Relationship[], end: 'to' | 'from' = 'to'): st
     .filter((r) => r.type === 'imports')
     .map((r) => `${end === 'to' ? r.to : r.from}${loadSuffix(r)}${annotate(r)}`)
     .sort();
+}
+
+/**
+ * Callbacks passed by this node (`Passes callback to`) and passed to this node
+ * (`Passed as callback by`). An inline callback targets its own enclosing symbol, so it is marked
+ * `(inline)` to make the self-link readable.
+ */
+function pushCallbackLinks(
+  lines: string[],
+  outgoing: readonly Relationship[],
+  incoming: readonly Relationship[],
+): void {
+  const passes = dedupe(
+    outgoing
+      .filter((r) => r.type === 'passesCallback')
+      .map((r) => `${r.to}${callbackNote(r)}`)
+      .sort(),
+  );
+  if (passes.length > 0) {
+    lines.push('Passes callback to:');
+    for (const target of passes) {
+      lines.push(`  → ${target}`);
+    }
+  }
+
+  const passedBy = dedupe(
+    incoming
+      .filter((r) => r.type === 'passesCallback')
+      .map((r) => `${r.from}${callbackNote(r)}`)
+      .sort(),
+  );
+  if (passedBy.length > 0) {
+    lines.push('Passed as callback by:');
+    for (const source of passedBy) {
+      lines.push(`  ← ${source}`);
+    }
+  }
+}
+
+/** The annotation for a callback edge: the usual notes, plus `inline` for an inline callback. */
+function callbackNote(rel: Relationship): string {
+  const base = annotate(rel);
+  if (rel.metadata?.['inline'] !== true) return base;
+  return base ? base.replace(/\)$/, ', inline)') : ' (inline)';
 }
 
 /** Event relationships that start at this node, grouped by mechanism. */

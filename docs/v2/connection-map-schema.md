@@ -52,6 +52,10 @@ runtime values does not, so its dynamic-key calls produce no observations. A sta
 such a receiver still forms its `resolves` edge and key node, since it names a key the graph can
 show.
 
+A registration's target must be declared at the top level of a repository file, or be a class
+member. A local variable, a parameter, or a function nested in another function is not a target,
+so a value stored from inside a function does not register that function.
+
 **State path** — `state:<root>` for a state container, `state:<root>#<path>` for a property under
 it, so reading a whole store and reading one field of it are different nodes. The root is the
 resolved identity of the shared object:
@@ -73,11 +77,11 @@ for a wildcard).
 **Unresolved reference** — `unresolved:<reason>:<file>:<line>:<column>`. Records code that looks
 like a connection but cannot be resolved without guessing. Fields: `kind`, `id`, `reason`
 (`ambiguous-global`, `dynamic-event-name`, `unknown-event-receiver`, `dynamic-registry-key`,
-`unknown-registry-receiver`, `ambiguous-registry`, `dynamic-state-path`, `dynamic-module-specifier`),
-`attempted` (the relationship type that would have been created), `subject`, `location` (a source
-span), and `candidates` when the problem is ambiguity, and an optional one-sentence `detail` saying
-why it could not be resolved. The owning symbol or file links to it with a `low`-confidence
-relationship of the attempted type.
+`unknown-registry-receiver`, `ambiguous-registry`, `dynamic-state-path`, `dynamic-module-specifier`,
+`unresolved-callback`), `attempted` (the relationship type that would have been created), `subject`,
+`location` (a source span), and `candidates` when the problem is ambiguity, and an optional
+one-sentence `detail` saying why it could not be resolved. The owning symbol or file links to it
+with a `low`-confidence relationship of the attempted type.
 
 ## Relationships
 
@@ -85,8 +89,9 @@ relationship of the attempted type.
 
 - `evidence`: `ast`, `ts-program`, `config` or `heuristic`.
 - `spans`: source ranges (`filePath`, `startLine`, `startColumn`, `endLine`, `endColumn`, 1-based).
-- `metadata`: mechanism details, for example `{ "once": true }` on a `subscribes` edge, or
-  `{ "loadKind": "worker" }` on an `imports` edge from a dynamic load.
+- `metadata`: mechanism details, for example `{ "once": true }` on a `subscribes` edge,
+  `{ "loadKind": "worker" }` on an `imports` edge from a dynamic load, or `{ "inline": true }` on a
+  `passesCallback` edge from an inline callback.
 
 A relationship is identified by `(type, from, to)`. Repeated observations are merged: the
 highest confidence (and its evidence) wins, and spans are combined. Metadata is merged by key:
@@ -103,6 +108,9 @@ publisher or listener owner **to** the channel.
 Registry relationships are `registers`, `resolves` and `routesTo`. `registers` runs from a registry
 key to the symbol or file it maps to. `resolves` and `routesTo` run from a caller to the key it
 looks up.
+
+`passesCallback` runs from the function that passes a callback to the callback's symbol. See
+"Callbacks" below.
 
 State relationships are `readsState`, `writesState` and `deletesState`. They point from the symbol
 or file that touches the state **to** the state-path node, and record how in `metadata.operation`:
@@ -142,6 +150,23 @@ Three rules keep dynamic loads from changing existing output:
   relative specifier that names no repository file produce no edge and no observation.
 - **Computed specifiers are observations.** A specifier that is not a constant, such as
   `import(\`./${name}.js\`)`or`loadPlugin(name)`, produces a `dynamic-module-specifier`observation. The owner links to it with a`low`-confidence `imports`relationship whose`loadKind` says how it loads. No edge names a target.
+
+### Callbacks
+
+A configured function (`protocols.callbacks`) that receives a callback is recorded as a
+`passesCallback` relationship from the caller. The callback is passed, not invoked, so no `calls`
+edge is drawn for it.
+
+| Callback argument                                                                        | Edge                                                |
+| ---------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| A function or arrow function written inline                                              | caller → caller, `high`, `metadata.inline: true`    |
+| An identifier naming a top-level function or variable                                    | caller → that symbol, `high`, `ts-program` evidence |
+| Anything else from the repository (a parameter, a local, a call such as `makeHandler()`) | caller → `unresolved-callback` observation, `low`   |
+| An identifier or call from an external module                                            | none                                                |
+
+An inline callback has no symbol of its own, so its edge targets the enclosing symbol. In the
+Markdown output it is shown as `(inline)`. Locals are not linked: a local function has no symbol in
+the graph, and linking it to the function that declares it would be a guess.
 
 ## Reading the graph
 
@@ -199,3 +224,5 @@ change for TypeScript consumers; `ConnectionMapV1` is exported for code that sti
 old shape. This change ships with the next major version.
 
 `RegistryKeyType` gained `'type'`. Code that switches over `keyType` exhaustively must handle it.
+`UnresolvedReason` gained `'unresolved-callback'`, and `CodeRelationship` gained `'passesCallback'`.
+Code that switches over either exhaustively must handle the new values.

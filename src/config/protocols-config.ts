@@ -6,8 +6,10 @@ import {
   type EventProtocolOptions,
   type ReceiverRule,
 } from '../analyzer/event-protocols.js';
+import type { CallbackProtocol } from '../analyzer/callback-protocols.js';
 import type { LoaderProtocol } from '../analyzer/loader-protocols.js';
 import type { ConfigProblem } from './config-problem.js';
+import { normalizeCallbacks } from './callbacks-config.js';
 import { normalizeLoaders } from './loaders-config.js';
 import { normalizeRegistries, type RegistryProtocolsConfig } from './registry-protocols-config.js';
 import {
@@ -23,11 +25,12 @@ import {
 /** Event conventions for a repository; see `protocols.events` in `.balk2.json`. */
 export type EventProtocolsConfig = EventProtocolOptions;
 
-/** The `protocols` section of `.balk2.json`: event, registry and loader conventions. */
+/** The `protocols` section of `.balk2.json`: event, registry, loader and callback conventions. */
 export interface ProtocolsConfig {
   readonly events?: EventProtocolsConfig;
   readonly registries?: RegistryProtocolsConfig;
   readonly loaders?: readonly LoaderProtocol[];
+  readonly callbacks?: readonly CallbackProtocol[];
 }
 
 export interface NormalizedProtocolsConfig {
@@ -69,6 +72,7 @@ export function normalizeProtocolsConfig(value: unknown): NormalizedProtocolsCon
   let events: EventProtocolsConfig | undefined;
   let registries: RegistryProtocolsConfig | undefined;
   let loaders: readonly LoaderProtocol[] | undefined;
+  let callbacks: readonly CallbackProtocol[] | undefined;
   for (const [key, entry] of Object.entries(value)) {
     if (key === 'events') {
       events = normalizeEvents(entry, problems);
@@ -76,11 +80,13 @@ export function normalizeProtocolsConfig(value: unknown): NormalizedProtocolsCon
       registries = normalizeRegistries(entry, problems);
     } else if (key === 'loaders') {
       loaders = normalizeLoaders(entry, problems);
+    } else if (key === 'callbacks') {
+      callbacks = normalizeCallbacks(entry, problems);
     } else {
       problems.push({
         path: `protocols.${key}`,
         message:
-          'unknown protocol family ignored; only "events", "registries" and "loaders" are supported',
+          'unknown protocol family ignored; only "events", "registries", "loaders" and "callbacks" are supported',
       });
     }
   }
@@ -89,6 +95,7 @@ export function normalizeProtocolsConfig(value: unknown): NormalizedProtocolsCon
     ...(events ? { events } : {}),
     ...(registries ? { registries } : {}),
     ...(loaders ? { loaders } : {}),
+    ...(callbacks ? { callbacks } : {}),
   };
   return { ...(Object.keys(config).length > 0 ? { config } : {}), problems };
 }

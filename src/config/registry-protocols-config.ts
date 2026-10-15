@@ -27,6 +27,7 @@ const REGISTRY_KEYS = new Set([
   'disable',
   'methods',
   'decorators',
+  'parameterDecorators',
   'manifest',
   'discover',
 ]);
@@ -76,6 +77,13 @@ export function normalizeRegistries(
     problems,
     normalizeDecorator,
   );
+  const parameterDecorators = normalizeEntries(
+    value['parameterDecorators'],
+    'parameterDecorators' in value,
+    `${base}.parameterDecorators`,
+    problems,
+    normalizeDecorator,
+  );
   const manifest = normalizeEntries(
     value['manifest'],
     'manifest' in value,
@@ -96,6 +104,7 @@ export function normalizeRegistries(
     ...(disable.length > 0 ? { disable } : {}),
     ...(methods.length > 0 ? { methods } : {}),
     ...(decorators.length > 0 ? { decorators } : {}),
+    ...(parameterDecorators.length > 0 ? { parameterDecorators } : {}),
     ...(manifest.length > 0 ? { manifest } : {}),
     ...(discover.length > 0 ? { discover } : {}),
   };
