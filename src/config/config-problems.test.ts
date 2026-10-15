@@ -55,7 +55,6 @@ describe('loadBalk2ConfigDetailed', () => {
       'globals.bogus',
       'globals.roots[1]',
       'protocols.events.methods[0].direction',
-      'protocols.registries',
     ]);
   });
 

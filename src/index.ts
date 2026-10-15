@@ -91,6 +91,7 @@ export {
   type GlobalsConfig,
   type ProtocolsConfig,
   type EventProtocolsConfig,
+  type RegistryProtocolsConfig,
   type ConfigProblem,
   type LoadedBalk2Config,
 } from './config/index.js';
@@ -101,3 +102,9 @@ export type {
   EventArgKind,
   ReceiverRule,
 } from './analyzer/event-protocols.js';
+
+export type {
+  RegistryProtocol,
+  RegistryDirection,
+  RegistryRule,
+} from './analyzer/registry-protocols.js';

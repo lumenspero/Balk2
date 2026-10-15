@@ -7,13 +7,24 @@ import {
   type ReceiverRule,
 } from '../analyzer/event-protocols.js';
 import type { ConfigProblem } from './config-problem.js';
+import { normalizeRegistries, type RegistryProtocolsConfig } from './registry-protocols-config.js';
+import {
+  argField,
+  dropped,
+  IDENTIFIER_PATTERN,
+  isArgIndex,
+  isRecord,
+  MAX_ARG_INDEX,
+  stringList,
+} from './protocol-fields.js';
 
 /** Event conventions for a repository; see `protocols.events` in `.balk2.json`. */
 export type EventProtocolsConfig = EventProtocolOptions;
 
-/** The `protocols` section of `.balk2.json`. Only event protocols are supported so far. */
+/** The `protocols` section of `.balk2.json`: event and registry conventions. */
 export interface ProtocolsConfig {
   readonly events?: EventProtocolsConfig;
+  readonly registries?: RegistryProtocolsConfig;
 }
 
 export interface NormalizedProtocolsConfig {
@@ -21,8 +32,6 @@ export interface NormalizedProtocolsConfig {
   readonly problems: readonly ConfigProblem[];
 }
 
-const IDENTIFIER_PATTERN = /^[A-Za-z_$][\w$]*$/;
-const MAX_ARG_INDEX = 15;
 const DIRECTIONS: readonly EventDirection[] = ['subscribe', 'unsubscribe', 'emit', 'dispatch'];
 const ARG_KINDS: readonly EventArgKind[] = ['name', 'event-object'];
 const EVENTS_KEYS = new Set(['builtIns', 'disable', 'methods']);
@@ -55,18 +64,25 @@ export function normalizeProtocolsConfig(value: unknown): NormalizedProtocolsCon
   }
 
   let events: EventProtocolsConfig | undefined;
+  let registries: RegistryProtocolsConfig | undefined;
   for (const [key, entry] of Object.entries(value)) {
     if (key === 'events') {
       events = normalizeEvents(entry, problems);
+    } else if (key === 'registries') {
+      registries = normalizeRegistries(entry, problems);
     } else {
       problems.push({
         path: `protocols.${key}`,
-        message: 'unknown protocol family ignored; only "events" is supported',
+        message: 'unknown protocol family ignored; only "events" and "registries" are supported',
       });
     }
   }
 
-  return { ...(events ? { config: { events } } : {}), problems };
+  const config: ProtocolsConfig = {
+    ...(events ? { events } : {}),
+    ...(registries ? { registries } : {}),
+  };
+  return { ...(Object.keys(config).length > 0 ? { config } : {}), problems };
 }
 
 function normalizeEvents(
@@ -320,53 +336,6 @@ function normalizeReceiver(
   return { ...(names.length > 0 ? { names } : {}), ...(types.length > 0 ? { types } : {}) };
 }
 
-/** A list of non-empty strings, `[]` when absent, `null` when malformed. */
-function stringList(
-  value: unknown,
-  present: boolean,
-  path: string,
-  problems: ConfigProblem[],
-): string[] | null {
-  if (!present) return [];
-  if (!Array.isArray(value)) {
-    problems.push({ path, message: 'must be an array of strings' });
-    return null;
-  }
-
-  const list: string[] = [];
-  let valid = true;
-  value.forEach((item: unknown, index) => {
-    if (typeof item === 'string' && item.length > 0) {
-      if (!list.includes(item)) list.push(item);
-    } else {
-      problems.push({ path: `${path}[${index}]`, message: 'must be a non-empty string' });
-      valid = false;
-    }
-  });
-  return valid ? list : null;
-}
-
-function argField(
-  entry: Record<string, unknown>,
-  key: string,
-  applies: boolean,
-  appliesTo: string,
-  path: string,
-  problems: ConfigProblem[],
-): number | undefined {
-  if (!(key in entry)) return undefined;
-  const value = entry[key];
-  if (!isArgIndex(value)) {
-    problems.push({
-      path: `${path}.${key}`,
-      message: `must be an integer from 0 to ${MAX_ARG_INDEX}; field ignored`,
-    });
-    return undefined;
-  }
-  if (!applies) return dropped(`${path}.${key}`, `only applies to ${appliesTo}`, problems);
-  return value;
-}
-
 function optionalField<T>(
   entry: Record<string, unknown>,
   key: string,
@@ -382,21 +351,6 @@ function optionalField<T>(
   return parsed;
 }
 
-function dropped(path: string, reason: string, problems: ConfigProblem[]): undefined {
-  problems.push({ path, message: `${reason}; field ignored` });
-  return undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 function isDirection(value: unknown): value is EventDirection {
   return DIRECTIONS.some((direction) => direction === value);
-}
-
-function isArgIndex(value: unknown): value is number {
-  return (
-    typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= MAX_ARG_INDEX
-  );
 }

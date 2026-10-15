@@ -65,11 +65,11 @@ describe('normalizeProtocolsConfig: structure', () => {
   });
 
   it('reports unknown protocol families', () => {
-    const result = normalizeProtocolsConfig({ registries: {}, events: { builtIns: false } });
+    const result = normalizeProtocolsConfig({ bogus: {}, events: { builtIns: false } });
 
     expect(result.config).toEqual({ events: { builtIns: false } });
     expect(problemsOf(result)).toEqual([
-      'protocols.registries: unknown protocol family ignored; only "events" is supported',
+      'protocols.bogus: unknown protocol family ignored; only "events" and "registries" are supported',
     ]);
   });
 

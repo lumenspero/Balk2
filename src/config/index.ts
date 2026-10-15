@@ -9,5 +9,6 @@ export {
 } from './balk2-config.js';
 export type { ConfigProblem } from './config-problem.js';
 export type { EventProtocolsConfig, ProtocolsConfig } from './protocols-config.js';
+export type { RegistryProtocolsConfig } from './registry-protocols-config.js';
 export { applyExplicitLineage } from './lineage-processor.js';
 export { filterFilesWithConfig, matchPattern } from './file-matcher.js';
