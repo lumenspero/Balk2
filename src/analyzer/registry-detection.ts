@@ -1,6 +1,12 @@
 import * as ts from 'typescript';
 import type { ConnectionGraph } from '../graph.js';
-import type { Evidence, UnresolvedReason } from '../types.js';
+import type {
+  Evidence,
+  RegistryKeyNode,
+  RegistryRelationship,
+  SourceSpan,
+  UnresolvedReason,
+} from '../types.js';
 import { ownerOf, enclosingOwner } from './owner.js';
 import { createPathLookup, type PathLookup } from './repository-files.js';
 import type { RepositoryProgram } from './repository-program.js';
@@ -25,6 +31,15 @@ const ASSIGNMENT: ResolvedRegistryProtocol = {
   receiver: 'registry-like',
   source: 'built-in',
 };
+
+/** A lookup whose key node is known; joined to registrations once every file is read. */
+interface Lookup {
+  readonly registryKey: RegistryKeyNode;
+  readonly owner: string;
+  readonly span: SourceSpan;
+  readonly subject: string;
+  readonly relationship: RegistryRelationship;
+}
 
 interface RegistryCall {
   readonly filePath: string;
@@ -58,6 +73,9 @@ export function collectRegistryRelationships(
   const receivers = new ReceiverResolver(repository);
   const checker = repository.checker;
   const pathOf = createPathLookup(repository);
+  // Every key a registry declares (by a register call or assignment), by id.
+  const declared = new Map<string, RegistryKeyNode>();
+  const lookups: Lookup[] = [];
 
   for (const call of collectRegistryCalls(repository, catalog)) {
     const { filePath, node, receiver, protocol } = call;
@@ -108,6 +126,7 @@ export function collectRegistryRelationships(
     const confidence = identity.confidence === 'high' ? 'high' : 'medium';
 
     if (protocol.relationship === 'registers') {
+      declared.set(registryKey.id, registryKey);
       if (target !== undefined) {
         graph.addRelationship('registers', registryKey.id, target, confidence, {
           evidence,
@@ -121,7 +140,65 @@ export function collectRegistryRelationships(
       evidence,
       spans: [span],
     });
+    lookups.push({
+      registryKey,
+      owner,
+      span,
+      subject: snippetOf(node),
+      relationship: protocol.relationship,
+    });
   }
+
+  recordAmbiguousLookups(graph, lookups, declared);
+}
+
+/**
+ * Agreement: a lookup reaches a registration when its registry identity and key both match, which
+ * is what sharing one key node means, so those lookups need nothing more.
+ *
+ * A lookup that disagrees is recorded as ambiguous only when its registry is one we can see into
+ * (it declares other keys) and it does not declare this key, while another registry does. The
+ * observation lists those candidates instead of choosing one. A lookup into a registry we know
+ * nothing about is left alone, so incidental `get('user')` calls on unrelated maps are not flagged.
+ */
+function recordAmbiguousLookups(
+  graph: ConnectionGraph,
+  lookups: readonly Lookup[],
+  declared: ReadonlyMap<string, RegistryKeyNode>,
+): void {
+  const declaredScopes = new Set([...declared.values()].map((node) => node.scope));
+  const candidatesByKey = new Map<string, string[]>();
+  for (const node of declared.values()) {
+    const group = keyGroup(node);
+    candidatesByKey.set(group, [...(candidatesByKey.get(group) ?? []), node.id]);
+  }
+
+  for (const lookup of lookups) {
+    const { registryKey } = lookup;
+    if (declared.has(registryKey.id)) continue;
+    if (!declaredScopes.has(registryKey.scope)) continue;
+
+    const candidates = candidatesByKey.get(keyGroup(registryKey)) ?? [];
+    if (candidates.length === 0) continue;
+
+    const unresolved = graph.addUnresolved({
+      reason: 'ambiguous-registry',
+      attempted: lookup.relationship,
+      subject: lookup.subject,
+      location: lookup.span,
+      candidates,
+      detail: `"${registryKey.key}" is not declared in this registry, but ${candidates.length} other ${candidates.length === 1 ? 'registry declares it' : 'registries declare it'}`,
+    });
+    graph.addRelationship(lookup.relationship, lookup.owner, unresolved.id, 'low', {
+      evidence: 'ts-program',
+      spans: [lookup.span],
+    });
+  }
+}
+
+/** Keys agree only when both their type and their text agree. */
+function keyGroup(node: RegistryKeyNode): string {
+  return `${node.keyType}:${node.key}`;
 }
 
 /**

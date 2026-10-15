@@ -34,7 +34,8 @@ dictionary a number is stored as its string form. Fields: `kind`, `id`, `key`, `
 
 **Unresolved reference** — `unresolved:<reason>:<file>:<line>:<column>`. Records code that looks
 like a connection but cannot be resolved without guessing. Fields: `kind`, `id`, `reason`
-(`ambiguous-global`, `dynamic-event-name`, `unknown-event-receiver`), `attempted` (the
+(`ambiguous-global`, `dynamic-event-name`, `unknown-event-receiver`, `dynamic-registry-key`,
+`unknown-registry-receiver`, `ambiguous-registry`), `attempted` (the
 relationship type that would have been created), `subject`, `location` (a source span), and
 `candidates` when the problem is ambiguity, and an optional one-sentence `detail` saying why it
 could not be resolved. The owning symbol or file links to it with a

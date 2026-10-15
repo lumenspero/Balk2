@@ -171,3 +171,58 @@ describe('configured registry protocols', () => {
     expect(registration.evidence).toBe('config');
   });
 });
+
+describe('joining lookups to registrations', () => {
+  const map = analyze({
+    'user.ts': USER,
+    'admin.ts': 'export class Admin {}',
+    'a.ts': [
+      "import { User } from './user.js';",
+      'export const first = new Map<string, unknown>();',
+      "first.set('user', User);",
+      "export function read(): unknown { return first.get('user'); }",
+    ].join('\n'),
+    'b.ts': [
+      "import { Admin } from './admin.js';",
+      'export const second = new Map<string, unknown>();',
+      "second.set('user', Admin);",
+    ].join('\n'),
+    // Declares its own key, but not 'user', which two other registries declare.
+    'f.ts': [
+      "import { Admin } from './admin.js';",
+      'export const third = new Map<string, unknown>();',
+      "third.set('admin', Admin);",
+      "export function miss(): unknown { return third.get('user'); }",
+    ].join('\n'),
+    // Looks up a key nobody declares, and has no registrations of its own: left alone.
+    'c.ts': [
+      'export const other = new Map<string, unknown>();',
+      "export function look(): unknown { return other.get('user'); }",
+    ].join('\n'),
+  });
+
+  const ambiguous = Object.values(map.unresolved).filter(
+    (node) => node.reason === 'ambiguous-registry',
+  );
+
+  it('agrees a lookup with the registration that shares its registry and key', () => {
+    const node = keyNode(map, 'user', 'string', 'a.ts:first');
+    edge(map, 'registers', node.id, 'user.ts:User');
+    edge(map, 'resolves', 'a.ts:read', node.id);
+    expect(ambiguous.some((u) => u.location.filePath === 'a.ts')).toBe(false);
+  });
+
+  it('lists the other registries that declare the key, instead of choosing one', () => {
+    const first = keyNode(map, 'user', 'string', 'a.ts:first').id;
+    const second = keyNode(map, 'user', 'string', 'b.ts:second').id;
+
+    expect(ambiguous).toHaveLength(1);
+    expect(ambiguous[0]?.location.filePath).toBe('f.ts');
+    expect(ambiguous[0]?.candidates).toEqual([first, second].sort());
+  });
+
+  it('does not flag a lookup into a registry with no declarations of its own', () => {
+    expect(ambiguous.some((u) => u.location.filePath === 'c.ts')).toBe(false);
+    keyNode(map, 'user', 'string', 'c.ts:other');
+  });
+});

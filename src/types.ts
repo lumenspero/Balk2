@@ -105,7 +105,8 @@ export type UnresolvedReason =
   | 'dynamic-event-name'
   | 'unknown-event-receiver'
   | 'dynamic-registry-key'
-  | 'unknown-registry-receiver';
+  | 'unknown-registry-receiver'
+  | 'ambiguous-registry';
 
 /**
  * A diagnostic-only node recording code that looks like a connection but could not be

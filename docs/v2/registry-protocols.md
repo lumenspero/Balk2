@@ -98,6 +98,17 @@ Validation follows the events section. Unusable fields are dropped with a messag
 would widen matching rejects the entry: an unrecognised receiver rule, or a key and value position
 that are the same.
 
+## Joining lookups to registrations
+
+A lookup reaches a registration when its registry and its key both agree. Both sides share one
+key node (`registry:<scope>#<key>`), so that case needs nothing more: the path
+`caller -> resolves -> key -> registers -> target` is already in the map.
+
+A lookup whose registry declares other keys, but not this one, while another registry declares it,
+is recorded as `ambiguous-registry`. Its `candidates` list those other keys, and no edge chooses
+among them. A lookup into a registry that declares nothing is not flagged, so an incidental
+`get('user')` on an unrelated map stays silent.
+
 ## Limits
 
 - A `Set` registry needs `add` and `has` on its type. A custom set-like class without them needs
