@@ -7,7 +7,7 @@ import {
   collectStateCalls,
   type StateCallFact,
   type StateCallReport,
-  stateCallOptions,
+  stateProtocols,
 } from './state-calls.js';
 import { StateRootResolver } from './state-roots.js';
 
@@ -57,7 +57,7 @@ describe.each(TSCONFIGS)('Phase 6.5: state method calls [%s]', (_label, compiler
     const resolver = new StateRootResolver(repository, collectGlobalSymbols(repository), config);
     const sourceFile = repository.sourceFiles.get(probeFile);
     if (!sourceFile) throw new Error(`${probeFile} was not analyzed`);
-    return collectStateCalls(sourceFile, probeFile, resolver, stateCallOptions(config));
+    return collectStateCalls(sourceFile, probeFile, resolver, stateProtocols(config));
   }
 
   it('records the built-in methods on a singleton and on a path below it', () => {
@@ -110,7 +110,6 @@ describe.each(TSCONFIGS)('Phase 6.5: state method calls [%s]', (_label, compiler
       'src/use.ts',
     );
     expect(report.calls).toEqual([]);
-    expect(report.unresolved).toEqual([]);
     expect(report.claimed.size).toBe(0);
   });
 
@@ -204,44 +203,39 @@ describe.each(TSCONFIGS)('Phase 6.5: state method calls [%s]', (_label, compiler
   });
 
   describe('dynamic keys', () => {
-    const FILES = {
-      ...STORE,
-      'src/use.ts': [
-        "import { store } from './store.js';",
-        'declare const key: string;',
-        'declare const args: string[];',
-        'store.get(key);',
-        'store.delete(...args);',
-        'store.get();',
-      ].join('\n'),
-    };
+    // Recorded as raw references with a null segment; `applyDynamicPaths` decides at emission.
+    it('keeps a computed key as a null segment with its reason, and still claims the call', () => {
+      const report = collect(
+        {
+          ...STORE,
+          'src/use.ts': [
+            "import { store } from './store.js';",
+            'declare const key: string;',
+            'declare const args: string[];',
+            'store.get(key);',
+            'store.delete(...args);',
+            'store.get();',
+          ].join('\n'),
+        },
+        'src/use.ts',
+      );
 
-    it('reports them as unresolved observations under the default off', () => {
-      const report = collect(FILES, 'src/use.ts');
-      expect(report.calls).toEqual([]);
-      expect(report.unresolved.map((observation) => observation.method)).toEqual([
-        'get',
-        'delete',
-        'get',
-      ]);
-      expect(report.unresolved[0]?.reason).toEqual(expect.any(String));
-      expect(report.unresolved[0]?.receiver.root).toBe('src/store.ts:store');
-      // Still claimed: a dynamic key on state is state, not a registry lookup.
-      expect(report.claimed.size).toBe(3);
-    });
-
-    it('records them as a wildcard segment under wildcard', () => {
-      const report = collect(FILES, 'src/use.ts', { ...CONFIG, dynamicPaths: 'wildcard' });
-      expect(report.unresolved).toEqual([]);
       expect(report.calls.map(describeCall)).toEqual([
         'readsState get state:src/store.ts:store#[*]',
         'deletesState delete state:src/store.ts:store#[*]',
         'readsState get state:src/store.ts:store#[*]',
       ]);
-      expect(report.calls[0]?.reference.dynamicReason).toEqual(expect.any(String));
+      expect(report.calls.map((fact) => fact.reference.segments)).toEqual([[null], [null], [null]]);
+      expect(report.calls.map((fact) => fact.reference.dynamicReason)).toEqual([
+        expect.any(String),
+        'spread argument',
+        'missing key argument',
+      ]);
+      // A dynamic key on state is state, not a registry lookup.
+      expect(report.claimed.size).toBe(3);
     });
 
-    it('treats a dynamic receiver as dynamic too', () => {
+    it('carries a dynamic receiver into the call as a null segment', () => {
       const report = collect(
         {
           ...STORE,
@@ -253,10 +247,10 @@ describe.each(TSCONFIGS)('Phase 6.5: state method calls [%s]', (_label, compiler
         },
         'src/use.ts',
       );
-      expect(report.calls).toEqual([]);
-      expect(report.unresolved.map((observation) => observation.reason)).toEqual([
-        expect.any(String),
+      expect(report.calls.map(describeCall)).toEqual([
+        'readsState get state:src/store.ts:store#[*].user',
       ]);
+      expect(report.calls[0]?.reference.dynamicReason).toEqual(expect.any(String));
     });
   });
 
