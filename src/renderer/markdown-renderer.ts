@@ -1,5 +1,10 @@
 import { forwardRelationships } from '../graph-queries.js';
-import type { ConnectionMap, EventRelationship, Relationship } from '../types.js';
+import type {
+  ConnectionMap,
+  EventRelationship,
+  Relationship,
+  RegistryRelationship,
+} from '../types.js';
 import { findConnectionPaths, type PathFinderOptions } from './path-finder.js';
 
 export interface MarkdownOptions {
@@ -32,6 +37,7 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
   const relationships = forwardRelationships(map);
   const relationshipCount = relationships.length;
   const channelCount = Object.keys(map.eventChannels).length;
+  const registryCount = Object.keys(map.registryKeys).length;
   const unresolvedCount = Object.keys(map.unresolved).length;
 
   lines.push('## Repository Overview');
@@ -40,6 +46,7 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
   lines.push(`- **Symbols**: ${symbolCount}`);
   lines.push(`- **Data Artifacts**: ${artifactCount}`);
   if (channelCount > 0) lines.push(`- **Event Channels**: ${channelCount}`);
+  if (registryCount > 0) lines.push(`- **Registry Keys**: ${registryCount}`);
   if (unresolvedCount > 0) lines.push(`- **Unresolved Observations**: ${unresolvedCount}`);
   lines.push(`- **Relationships**: ${relationshipCount}`);
   lines.push('');
@@ -112,13 +119,18 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
       }
 
       pushEventLinks(lines, outRels);
+      pushRegistryLinks(lines, outRels);
 
       lines.push('');
     }
   }
 
   // 4. Symbol Connections
-  const virtualIds = new Set([...Object.keys(map.eventChannels), ...Object.keys(map.unresolved)]);
+  const virtualIds = new Set([
+    ...Object.keys(map.eventChannels),
+    ...Object.keys(map.registryKeys),
+    ...Object.keys(map.unresolved),
+  ]);
   const symbolKeySet = new Set(Object.keys(map.symbols));
   for (const rel of relationships) {
     if (rel.from.includes(':') && !virtualIds.has(rel.from)) symbolKeySet.add(rel.from);
@@ -198,6 +210,7 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
       }
 
       pushEventLinks(lines, outRels);
+      pushRegistryLinks(lines, outRels);
 
       lines.push('');
     }
@@ -218,6 +231,50 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
 
       const inRels = incomingMap.get(channelId) ?? [];
       for (const [type, label] of EVENT_INCOMING) {
+        const sources = dedupe(
+          inRels
+            .filter((r) => r.type === type)
+            .map((r) => `${r.from}${annotate(r)}`)
+            .sort(),
+        );
+        if (sources.length === 0) continue;
+        lines.push(`${label}:`);
+        for (const source of sources) {
+          lines.push(`  ← ${source}`);
+        }
+      }
+
+      lines.push('');
+    }
+  }
+
+  // 4c. Registries
+  const registryIds = Object.keys(map.registryKeys).sort();
+  if (registryIds.length > 0) {
+    lines.push('## Registries');
+    lines.push('');
+
+    for (const keyId of registryIds) {
+      const node = map.registryKeys[keyId];
+      lines.push(`### ${keyId}`);
+      lines.push('');
+      if (node) {
+        lines.push(`Key: ${node.key}`);
+        lines.push(`Registry: ${node.scope}`);
+        if (node.keyType === 'number') lines.push('Key type: number');
+      }
+
+      const outRels = outgoingMap.get(keyId) ?? [];
+      const inRels = incomingMap.get(keyId) ?? [];
+      const registeredTo = annotatedTargets(outRels, 'registers');
+      if (registeredTo.length > 0) {
+        lines.push('Registered to:');
+        for (const target of dedupe(registeredTo)) {
+          lines.push(`  → ${target}`);
+        }
+      }
+
+      for (const [type, label] of REGISTRY_INCOMING) {
         const sources = dedupe(
           inRels
             .filter((r) => r.type === type)
@@ -389,6 +446,28 @@ const EVENT_INCOMING: ReadonlyArray<readonly [EventRelationship, string]> = [
   ['subscribes', 'Subscribed by'],
   ['unsubscribes', 'Unsubscribed by'],
 ];
+
+const REGISTRY_OUTGOING: ReadonlyArray<readonly [RegistryRelationship, string]> = [
+  ['resolves', 'Resolves'],
+  ['routesTo', 'Routes to'],
+];
+
+const REGISTRY_INCOMING: ReadonlyArray<readonly [RegistryRelationship, string]> = [
+  ['resolves', 'Looked up by'],
+  ['routesTo', 'Routed to by'],
+];
+
+/** Registry lookups that start at this node: the keys it resolves or routes to. */
+function pushRegistryLinks(lines: string[], outgoing: readonly Relationship[]): void {
+  for (const [type, label] of REGISTRY_OUTGOING) {
+    const targets = dedupe(annotatedTargets(outgoing, type));
+    if (targets.length === 0) continue;
+    lines.push(`${label}:`);
+    for (const target of targets) {
+      lines.push(`  → ${target}`);
+    }
+  }
+}
 
 /** Annotate only what changes interpretation: reduced confidence, one-time and abortable listeners. */
 function annotate(rel: Relationship): string {

@@ -129,6 +129,20 @@ is recorded as `ambiguous-registry`. Its `candidates` list those other keys, and
 among them. A lookup into a registry that declares nothing is not flagged, so an incidental
 `get('user')` on an unrelated map stays silent.
 
+## In the Markdown output and queries
+
+- **Registries section.** Each key has its own entry: the key, its registry, what it is registered
+  to, and which nodes look it up. A numeric key is marked `Key type: number`. Keys are not listed as
+  symbols.
+- **Lookup lines.** A file or symbol that performs a lookup shows `Resolves:` or `Routes to:` with the
+  key it reaches.
+- **Connection paths.** A lookup, its key and the key's target form one path:
+  `caller → resolves → key → registers → target`. A key with only a registration, or only a lookup,
+  produces no path. Turn these off with `pathOptions.includeRegistryKeys: false`.
+- **Queries.** `getRegistryResolutions(map, nodeId)` gives what a node looks up and what each key
+  maps to, `getRegistrationTargets(map, keyId)` what a key is registered to, and
+  `getRegistryLookups(map, keyId)` who looks it up.
+
 ## Limits
 
 - A `Set` registry needs `add` and `has` on its type. A custom set-like class without them needs

@@ -1,4 +1,4 @@
-import { forwardRelationships } from '../graph-queries.js';
+import { forwardRelationships, getIncoming, getOutgoing } from '../graph-queries.js';
 import type { ConnectionMap, Relationship, RelationshipType } from '../types.js';
 
 export interface FormattedPath {
@@ -18,6 +18,8 @@ export interface PathFinderOptions {
   readonly maxTotalPaths?: number;
   /** Also trace paths through event channels (default: true) */
   readonly includeEventChannels?: boolean;
+  /** Also trace paths through registry keys: caller → key → target (default: true) */
+  readonly includeRegistryKeys?: boolean;
 }
 
 /** Relationships that put something into a shared node (data file or event channel). */
@@ -63,6 +65,7 @@ export function findConnectionPaths(
   const maxPaths = options?.maxPathsPerTarget ?? 3;
   const maxTotal = options?.maxTotalPaths ?? 10;
   const includeChannels = options?.includeEventChannels ?? true;
+  const includeRegistries = options?.includeRegistryKeys ?? true;
 
   const producersOf = new Map<string, Relationship[]>();
   const consumersOf = new Map<string, Relationship[]>();
@@ -86,7 +89,27 @@ export function findConnectionPaths(
   const targets = [
     ...Object.keys(map.artifacts).sort(),
     ...(includeChannels ? Object.keys(map.eventChannels).sort() : []),
+    ...(includeRegistries ? Object.keys(map.registryKeys).sort() : []),
   ];
+
+  // A registry key is reached by a lookup (`resolves` or `routesTo`) and reaches what it is
+  // registered to (`registers`). A key with only one side produces no path.
+  const registryChainsFrom = (keyId: string): string[][] => {
+    const chains: string[][] = [];
+    for (const lookup of getIncoming(map, keyId, 'resolves', 'routesTo')) {
+      for (const registration of getOutgoing(map, keyId, 'registers')) {
+        if (chains.length >= maxPaths) return chains;
+        chains.push([
+          lookup.from,
+          forwardLabel(lookup.type),
+          keyId,
+          forwardLabel('registers'),
+          registration.to,
+        ]);
+      }
+    }
+    return chains;
+  };
 
   const chainsFrom = (origin: string): string[][] => {
     const producers = producersOf.get(origin) ?? [];
@@ -160,7 +183,9 @@ export function findConnectionPaths(
   for (const target of targets) {
     if (accepted.length >= maxTotal) break;
 
-    for (const steps of chainsFrom(target)) {
+    const chains =
+      map.registryKeys[target] !== undefined ? registryChainsFrom(target) : chainsFrom(target);
+    for (const steps of chains) {
       if (accepted.length >= maxTotal) break;
       // A path that is a stretch of a longer one adds nothing: the same pipeline is already shown.
       if (accepted.some((path) => isStretchOf(steps, path.steps))) continue;

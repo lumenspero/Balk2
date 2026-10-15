@@ -90,6 +90,40 @@ export function getEventTriggers(map: ConnectionMap, nodeId: string): EventTrigg
     .sort((a, b) => compareStrings(a.channel, b.channel));
 }
 
+/** A registry key a node looks up, and the symbols or files that key is registered to. */
+export interface RegistryResolution {
+  readonly key: string;
+  readonly relationship: 'resolves' | 'routesTo';
+  /** Symbols or files the key maps to, sorted */
+  readonly targets: readonly string[];
+}
+
+/**
+ * For each registry key `nodeId` looks up, what that key is registered to: the static answer to
+ * "where does this lookup go?". A key with no registration has no targets.
+ */
+export function getRegistryResolutions(map: ConnectionMap, nodeId: string): RegistryResolution[] {
+  return getOutgoing(map, nodeId, 'resolves', 'routesTo')
+    .filter((rel) => map.registryKeys[rel.to] !== undefined)
+    .map((rel) => ({
+      key: rel.to,
+      relationship: rel.type as 'resolves' | 'routesTo',
+      targets: getRegistrationTargets(map, rel.to),
+    }))
+    .sort((a, b) => compareStrings(a.key, b.key) || compareStrings(a.relationship, b.relationship));
+}
+
+/** Symbols or files a registry key is registered to, sorted. */
+export function getRegistrationTargets(map: ConnectionMap, keyId: string): string[] {
+  const targets = getOutgoing(map, keyId, 'registers').map((rel) => rel.to);
+  return [...new Set(targets)].sort(compareStrings);
+}
+
+/** Nodes that look up a registry key with `resolves` or `routesTo`, sorted. */
+export function getRegistryLookups(map: ConnectionMap, keyId: string): string[] {
+  return distinctSources(getIncoming(map, keyId, 'resolves', 'routesTo'));
+}
+
 function forwardIndex(map: ConnectionMap): ForwardIndex {
   const cached = indexes.get(map);
   if (cached) return cached;

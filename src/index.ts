@@ -41,8 +41,12 @@ export {
   getIncoming,
   getEventReactions,
   getEventTriggers,
+  getRegistryResolutions,
+  getRegistrationTargets,
+  getRegistryLookups,
   type EventReaction,
   type EventTrigger,
+  type RegistryResolution,
 } from './graph-queries.js';
 export type { Analyzer, AnalyzerOptions } from './analyzer/index.js';
 export { JsTsAnalyzer, PythonAnalyzer, resolveImportPath } from './analyzer/index.js';
