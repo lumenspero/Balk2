@@ -101,12 +101,6 @@ def run():
             r.type === 'generates' && r.from === 'scripts/collect.py' && r.to === 'data/raw.json',
         ),
       ).toBe(true);
-      expect(
-        rels.some(
-          (r) =>
-            r.type === 'generatedBy' && r.from === 'data/raw.json' && r.to === 'scripts/collect.py',
-        ),
-      ).toBe(true);
     });
   });
 
@@ -200,9 +194,7 @@ export function TitlesPage() {
       expect(
         map.relationships.some(
           (r) =>
-            r.type === 'consumedBy' &&
-            r.from === 'data/raw.json' &&
-            r.to === 'scripts/normalize.py',
+            r.type === 'consumes' && r.from === 'scripts/normalize.py' && r.to === 'data/raw.json',
         ),
       ).toBe(true);
       expect(
@@ -216,9 +208,9 @@ export function TitlesPage() {
       expect(
         map.relationships.some(
           (r) =>
-            r.type === 'consumedBy' &&
-            r.from === 'data/normalized.json' &&
-            r.to === 'scripts/build_parquet.py',
+            r.type === 'consumes' &&
+            r.from === 'scripts/build_parquet.py' &&
+            r.to === 'data/normalized.json',
         ),
       ).toBe(true);
       expect(
@@ -232,9 +224,9 @@ export function TitlesPage() {
       expect(
         map.relationships.some(
           (r) =>
-            r.type === 'consumedBy' &&
-            r.from === 'data/titles.parquet' &&
-            r.to === 'src/data/loadTitles.ts',
+            r.type === 'consumes' &&
+            r.from === 'src/data/loadTitles.ts' &&
+            r.to === 'data/titles.parquet',
         ),
       ).toBe(true);
       expect(

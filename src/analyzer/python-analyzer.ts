@@ -56,7 +56,6 @@ export class PythonAnalyzer implements Analyzer {
         const targetFile = resolvePythonImport(normalizedPath, moduleName, knownFiles);
         if (targetFile) {
           graph.addRelationship('imports', normalizedPath, targetFile);
-          graph.addRelationship('importedBy', targetFile, normalizedPath);
           importsMap.set(alias, { targetFile, importedName: alias });
         }
         continue;
@@ -71,7 +70,6 @@ export class PythonAnalyzer implements Analyzer {
 
         if (targetFile) {
           graph.addRelationship('imports', normalizedPath, targetFile);
-          graph.addRelationship('importedBy', targetFile, normalizedPath);
 
           const items = importedItemsStr.split(',').map((s) => s.trim().split(/\s+as\s+/));
           for (const itemParts of items) {
@@ -213,12 +211,10 @@ export class PythonAnalyzer implements Analyzer {
         if (imported) {
           const targetSymbolId = `${imported.targetFile}:${imported.importedName}`;
           graph.addRelationship('calls', activeCallerId, targetSymbolId);
-          graph.addRelationship('calledBy', targetSymbolId, activeCallerId);
         } else {
           const localSym = topLevelSymbols.get(calleeName);
           if (localSym && localSym.id !== activeCallerId) {
             graph.addRelationship('calls', activeCallerId, localSym.id);
-            graph.addRelationship('calledBy', localSym.id, activeCallerId);
           }
         }
       }

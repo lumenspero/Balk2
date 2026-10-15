@@ -13,12 +13,14 @@ export type {
   ArtifactNode,
   ArtifactFormat,
   EventChannelNode,
+  RegistryKeyNode,
   UnresolvedReferenceNode,
   UnresolvedReason,
   SourceSpan,
   GraphNode,
   CodeRelationship,
   EventRelationship,
+  RegistryRelationship,
   DataRelationship,
   RelationshipType,
   Confidence,
@@ -31,7 +33,7 @@ export type {
   ConnectionMapV1,
 } from './types.js';
 
-export { ConnectionGraph, normalizePath, eventChannelId } from './graph.js';
+export { ConnectionGraph, normalizePath, eventChannelId, registryKeyId } from './graph.js';
 export { serializeConnectionMap, deserializeConnectionMap } from './serialize.js';
 export {
   forwardRelationships,

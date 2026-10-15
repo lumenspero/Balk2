@@ -28,7 +28,12 @@ function sharedLibraryHost(): ts.CompilerHost {
   const host = ts.createCompilerHost({});
   const original = host.getSourceFile.bind(host);
 
-  host.getSourceFile = (fileName, languageVersionOrOptions, onError, shouldCreate) => {
+  host.getSourceFile = (
+    fileName,
+    languageVersionOrOptions,
+    onError,
+    shouldCreate,
+  ): ts.SourceFile | undefined => {
     if (!LIBRARY_FILE.test(fileName)) {
       return original(fileName, languageVersionOrOptions, onError, shouldCreate);
     }

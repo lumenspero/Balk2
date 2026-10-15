@@ -5,6 +5,7 @@ import type {
   ArtifactNode,
   ArtifactFormat,
   EventChannelNode,
+  RegistryKeyNode,
   UnresolvedReferenceNode,
   Relationship,
   RelationshipDetail,
@@ -39,6 +40,7 @@ export class ConnectionGraph {
   private readonly symbols = new Map<string, SymbolNode>();
   private readonly artifacts = new Map<string, ArtifactNode>();
   private readonly eventChannels = new Map<string, EventChannelNode>();
+  private readonly registryKeys = new Map<string, RegistryKeyNode>();
   private readonly unresolved = new Map<string, UnresolvedReferenceNode>();
   private readonly relationships: Relationship[] = [];
   private readonly relationshipIndex = new Map<string, number>();
@@ -92,6 +94,22 @@ export class ConnectionGraph {
       ...(scope ? { scope: normalizePath(scope) } : {}),
     };
     this.eventChannels.set(id, node);
+    return node;
+  }
+
+  /**
+   * Add a registry-key node: a string key scoped to a resolved registry identity. The id is
+   * `registry:<scope>#<key>`, so the same key in two registries is two nodes. Adding it again is a
+   * no-op.
+   */
+  addRegistryKey(key: string, scope: string): RegistryKeyNode {
+    const normalizedScope = normalizePath(scope);
+    const id = registryKeyId(key, normalizedScope);
+    const existing = this.registryKeys.get(id);
+    if (existing) return existing;
+
+    const node: RegistryKeyNode = { kind: 'registry-key', id, key, scope: normalizedScope };
+    this.registryKeys.set(id, node);
     return node;
   }
 
@@ -179,6 +197,11 @@ export class ConnectionGraph {
     return this.eventChannels.has(id);
   }
 
+  /** Returns true if a registry-key node exists for the given id. */
+  hasRegistryKey(id: string): boolean {
+    return this.registryKeys.has(id);
+  }
+
   /** Returns true if an unresolved-reference node exists for the given id. */
   hasUnresolved(id: string): boolean {
     return this.unresolved.has(id);
@@ -213,6 +236,7 @@ export class ConnectionGraph {
       this.symbols.size +
       this.artifacts.size +
       this.eventChannels.size +
+      this.registryKeys.size +
       this.unresolved.size
     );
   }
@@ -236,6 +260,7 @@ export class ConnectionGraph {
       symbols: sortedRecord(this.symbols),
       artifacts: sortedRecord(this.artifacts),
       eventChannels: sortedRecord(this.eventChannels),
+      registryKeys: sortedRecord(this.registryKeys),
       unresolved: sortedRecord(this.unresolved),
       relationships: [...this.relationships].sort(compareRelationships),
     };
@@ -247,6 +272,11 @@ export class ConnectionGraph {
 /** Id of an event channel node; shared with analyzers that need to name channels. */
 export function eventChannelId(name: string, scope?: string): string {
   return scope ? `event:${normalizePath(scope)}#${name}` : `event:${name}`;
+}
+
+/** Id of a registry-key node; shared with analyzers that need to name keys. */
+export function registryKeyId(key: string, scope: string): string {
+  return `registry:${normalizePath(scope)}#${key}`;
 }
 
 function unresolvedId(reason: string, location: SourceSpan): string {

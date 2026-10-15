@@ -13,6 +13,7 @@
 | `symbols`       | `Record<id, SymbolNode>`                   | `filePath:name`                        |
 | `artifacts`     | `Record<path, ArtifactNode>`               | Data files                             |
 | `eventChannels` | `Record<id, EventChannelNode>`             | Virtual nodes for event names          |
+| `registryKeys`  | `Record<id, RegistryKeyNode>`              | Virtual nodes for string keys          |
 | `unresolved`    | `Record<id, UnresolvedReferenceNode>`      | Diagnostics for ambiguous/dynamic code |
 | `relationships` | `Relationship[]`                           | Sorted by `(type, from, to)`           |
 
@@ -24,6 +25,10 @@ comparison, so output is identical across machines for identical input.
 **Event channel** — `event:<name>`, or `event:<scope>#<name>` when the emitter/receiver identity
 is resolved. `socket.emit('ready')` and `document.dispatchEvent(new Event('ready'))` therefore
 produce different channels. Fields: `kind`, `id`, `name`, optional `scope`.
+
+**Registry key** — `registry:<scope>#<key>`. A string key scoped to the resolved identity of the
+registry it belongs to, so the same key in two containers stays two nodes. Fields: `kind`, `id`,
+`key`, `scope`.
 
 **Unresolved reference** — `unresolved:<reason>:<file>:<line>:<column>`. Records code that looks
 like a connection but cannot be resolved without guessing. Fields: `kind`, `id`, `reason`
@@ -48,6 +53,10 @@ for them all.
 
 Event relationships are `emits`, `dispatches`, `subscribes` and `unsubscribes`. They point from the
 publisher or listener owner **to** the channel.
+
+Registry relationships are `registers`, `resolves` and `routesTo`. `registers` runs from a registry
+key to the symbol or file it maps to. `resolves` and `routesTo` run from a caller to the key it
+looks up. Version 2 defines these types; no analyzer emits them yet.
 
 **Every relationship is stored once, in its forward direction.** There is no `importedBy`,
 `calledBy`, `generatedBy` or `consumedBy` in a generated map: who imports a file, who calls a
@@ -92,8 +101,9 @@ not channels and are never included.
 `deserializeConnectionMap` accepts version 1 and version 2.
 
 - A version 1 map is converted on read: its nodes are valid in version 2 unchanged,
-  `eventChannels` and `unresolved` start empty, and stored reverse links are turned into the
+  `eventChannels`, `registryKeys` and `unresolved` start empty, and stored reverse links are turned into the
   forward relationship they repeat, so each fact is held once.
+- A version 2 map written before registry keys existed reads with an empty `registryKeys` table.
 - A version 2 map written while reverse links were still stored is cleaned the same way, so
   `deserializeConnectionMap` always returns relationships in canonical form.
 - Any other version is rejected with `Unsupported connection map version`.
@@ -103,6 +113,6 @@ not channels and are never included.
 
 ## Compatibility
 
-The exported `ConnectionMap` type now has `version: 2` and two new tables, which is a breaking
+The exported `ConnectionMap` type now has `version: 2` and three new tables, which is a breaking
 change for TypeScript consumers; `ConnectionMapV1` is exported for code that still handles the
 old shape. This change ships with the next major version.

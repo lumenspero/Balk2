@@ -8,7 +8,8 @@
 
 // ── Node Types ──────────────────────────────────────────────
 
-export type NodeKind = 'file' | 'symbol' | 'artifact' | 'event-channel' | 'unresolved-reference';
+export type NodeKind =
+  'file' | 'symbol' | 'artifact' | 'event-channel' | 'unresolved-reference' | 'registry-key';
 
 /**
  * A code file node in the graph.
@@ -74,6 +75,22 @@ export interface EventChannelNode {
   readonly scope?: string;
 }
 
+/**
+ * A virtual node for a string key scoped to a resolved registry identity, such as a key used to
+ * look up a factory, a route or a plugin.
+ *
+ * Examples: registry:src/container.ts:container#user, registry:global:window#app
+ */
+export interface RegistryKeyNode {
+  readonly kind: 'registry-key';
+  /** Unique identifier: "registry:<scope>#<key>" */
+  readonly id: string;
+  /** The key, as a string */
+  readonly key: string;
+  /** Resolved identity of the registry the key belongs to */
+  readonly scope: string;
+}
+
 /** Why a relationship could not be resolved to a concrete target. */
 export type UnresolvedReason = 'ambiguous-global' | 'dynamic-event-name' | 'unknown-event-receiver';
 
@@ -101,7 +118,12 @@ export interface UnresolvedReferenceNode {
 }
 
 export type GraphNode =
-  FileNode | SymbolNode | ArtifactNode | EventChannelNode | UnresolvedReferenceNode;
+  | FileNode
+  | SymbolNode
+  | ArtifactNode
+  | EventChannelNode
+  | RegistryKeyNode
+  | UnresolvedReferenceNode;
 
 /** A 1-based range in a repository file. */
 export interface SourceSpan {
@@ -132,11 +154,18 @@ export type CodeRelationship =
 /** Event relationships. Reverse links are derived at render/query time, never stored. */
 export type EventRelationship = 'emits' | 'subscribes' | 'unsubscribes' | 'dispatches';
 
+/**
+ * Registry relationships. `registers` runs from a registry key to the symbol or file it maps to.
+ * `resolves` and `routesTo` run from a caller to the registry key it looks up.
+ */
+export type RegistryRelationship = 'registers' | 'resolves' | 'routesTo';
+
 /** Data relationships. `generatedBy` and `consumedBy` are legacy reverse links, as above. */
 export type DataRelationship =
   'generates' | 'generatedBy' | 'consumes' | 'consumedBy' | 'reads' | 'writes' | 'transforms';
 
-export type RelationshipType = CodeRelationship | EventRelationship | DataRelationship;
+export type RelationshipType =
+  CodeRelationship | EventRelationship | DataRelationship | RegistryRelationship;
 
 export type Confidence = 'high' | 'medium' | 'low';
 
@@ -196,6 +225,8 @@ export interface ConnectionMap {
   readonly artifacts: Record<string, ArtifactNode>;
   /** Event channel nodes keyed by id */
   readonly eventChannels: Record<string, EventChannelNode>;
+  /** Registry-key nodes keyed by id */
+  readonly registryKeys: Record<string, RegistryKeyNode>;
   /** Unresolved-reference diagnostics keyed by id */
   readonly unresolved: Record<string, UnresolvedReferenceNode>;
   /** All relationships in the graph */

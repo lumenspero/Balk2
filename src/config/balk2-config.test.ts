@@ -105,14 +105,6 @@ describe('.balk2.json Configuration & Data Lineage', () => {
             r.type === 'generates' && r.from === 'scripts/collect.py' && r.to === 'data/games.json',
         ),
       ).toBe(true);
-      expect(
-        rels.some(
-          (r) =>
-            r.type === 'generatedBy' &&
-            r.from === 'data/games.json' &&
-            r.to === 'scripts/collect.py',
-        ),
-      ).toBe(true);
 
       // Producer inputs & outputs
       expect(
@@ -139,14 +131,6 @@ describe('.balk2.json Configuration & Data Lineage', () => {
             r.type === 'consumes' &&
             r.from === 'src/data/loadGames.ts' &&
             r.to === 'data/games.parquet',
-        ),
-      ).toBe(true);
-      expect(
-        rels.some(
-          (r) =>
-            r.type === 'consumedBy' &&
-            r.from === 'data/games.parquet' &&
-            r.to === 'src/data/loadGames.ts',
         ),
       ).toBe(true);
     });

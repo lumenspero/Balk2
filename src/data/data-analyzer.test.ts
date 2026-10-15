@@ -69,7 +69,7 @@ describe('Data Relationship Inference & Graph Registration', () => {
     expect(inferDataRelationshipType('const path = "data/raw.json";')).toBe('reads');
   });
 
-  it('adds dual directional data relationships to graph', () => {
+  it('stores one forward data relationship, with no reverse link', () => {
     const graph = new ConnectionGraph();
     addDataRelationship('scripts/build.js', 'data/output.parquet', 'generates', graph);
 
@@ -80,14 +80,7 @@ describe('Data Relationship Inference & Graph Registration', () => {
           r.type === 'generates' && r.from === 'scripts/build.js' && r.to === 'data/output.parquet',
       ),
     ).toBe(true);
-    expect(
-      rels.some(
-        (r) =>
-          r.type === 'generatedBy' &&
-          r.from === 'data/output.parquet' &&
-          r.to === 'scripts/build.js',
-      ),
-    ).toBe(true);
+    expect(rels).toHaveLength(1);
   });
 });
 
@@ -164,10 +157,10 @@ describe('Milestone 3 Success Criterion: Multi-Stage Data Pipeline Graph', () =>
           r.type === 'generates' && r.from === 'scripts/collect.js' && r.to === 'data/raw.json',
       ),
     ).toBe(true);
-    // data/raw.json -> consumedBy -> build.js
+    // scripts/build.js -> consumes -> data/raw.json
     expect(
       map.relationships.some(
-        (r) => r.type === 'consumedBy' && r.from === 'data/raw.json' && r.to === 'scripts/build.js',
+        (r) => r.type === 'consumes' && r.from === 'scripts/build.js' && r.to === 'data/raw.json',
       ),
     ).toBe(true);
     // build.js -> generates -> data/titles.parquet
@@ -177,13 +170,13 @@ describe('Milestone 3 Success Criterion: Multi-Stage Data Pipeline Graph', () =>
           r.type === 'generates' && r.from === 'scripts/build.js' && r.to === 'data/titles.parquet',
       ),
     ).toBe(true);
-    // data/titles.parquet -> consumedBy -> src/data/loadTitles.ts
+    // src/data/loadTitles.ts -> consumes -> data/titles.parquet
     expect(
       map.relationships.some(
         (r) =>
-          r.type === 'consumedBy' &&
-          r.from === 'data/titles.parquet' &&
-          r.to === 'src/data/loadTitles.ts',
+          r.type === 'consumes' &&
+          r.from === 'src/data/loadTitles.ts' &&
+          r.to === 'data/titles.parquet',
       ),
     ).toBe(true);
     // TitlesPage.tsx -> calls -> src/data/loadTitles.ts:loadTitles

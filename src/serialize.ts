@@ -55,6 +55,10 @@ export function deserializeConnectionMap(json: string): ConnectionMap {
     if (!isObject(obj['unresolved'])) {
       throw new Error('Invalid connection map: missing unresolved');
     }
+
+    if (obj['registryKeys'] !== undefined && !isObject(obj['registryKeys'])) {
+      throw new Error('Invalid connection map: registryKeys must be an object');
+    }
   }
 
   if (!Array.isArray(obj['relationships'])) {
@@ -63,8 +67,22 @@ export function deserializeConnectionMap(json: string): ConnectionMap {
 
   if (version === 1) return convertV1ToV2(parsed as unknown as ConnectionMapV1);
 
-  const map = parsed as unknown as ConnectionMap;
-  return { ...map, relationships: canonicalRelationships(map.relationships) };
+  // A version 2 map written before registry keys existed has no `registryKeys` table; it reads as
+  // empty. Keys are written in the same order `ConnectionGraph.build` uses.
+  const map = parsed as unknown as Omit<ConnectionMap, 'registryKeys'> & {
+    registryKeys?: ConnectionMap['registryKeys'];
+  };
+  return {
+    version: 2,
+    repository: map.repository,
+    files: map.files,
+    symbols: map.symbols,
+    artifacts: map.artifacts,
+    eventChannels: map.eventChannels,
+    registryKeys: map.registryKeys ?? {},
+    unresolved: map.unresolved,
+    relationships: canonicalRelationships(map.relationships),
+  };
 }
 
 /**
@@ -81,6 +99,7 @@ export function convertV1ToV2(map: ConnectionMapV1): ConnectionMap {
     symbols: map.symbols,
     artifacts: map.artifacts,
     eventChannels: {},
+    registryKeys: {},
     unresolved: {},
     relationships: canonicalRelationships(map.relationships),
   };
