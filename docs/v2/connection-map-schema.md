@@ -89,15 +89,17 @@ with a `low`-confidence relationship of the attempted type.
 
 - `evidence`: `ast`, `ts-program`, `config` or `heuristic`.
 - `spans`: source ranges (`filePath`, `startLine`, `startColumn`, `endLine`, `endColumn`, 1-based).
-- `metadata`: mechanism details, for example `{ "once": true }` on a `subscribes` edge,
-  `{ "loadKind": "worker" }` on an `imports` edge from a dynamic load, or `{ "inline": true }` on a
-  `passesCallback` edge from an inline callback.
+- `metadata`: mechanism details, for example:
+  - `{ "once": true }` on a `subscribes` edge;
+  - `{ "loadKind": "worker" }` on an `imports` edge from a dynamic load;
+  - `{ "inline": true }` on a `passesCallback` edge from an inline callback;
+  - `{ "injection": "constructor" }` on a `resolves` edge from a constructor parameter decorator.
 
 A relationship is identified by `(type, from, to)`. Repeated observations are merged: the
 highest confidence (and its evidence) wins, and spans are combined. Metadata is merged by key:
 
-- Most keys, such as `once`, are kept only when every observation carries the same value, so a flag
-  seen on one registration is never claimed for them all.
+- Most keys, such as `once` and `injection`, are kept only when every observation carries the same
+  value, so a flag seen on one registration is never claimed for them all.
 - `loadKind` is **combinable**. Its values are joined as a sorted, comma-separated list, so a file
   that is both required and dynamically imported from the same owner reads
   `"import-expression,require"`. The combinable keys are listed in `COMBINABLE_METADATA`.
@@ -107,7 +109,8 @@ publisher or listener owner **to** the channel.
 
 Registry relationships are `registers`, `resolves` and `routesTo`. `registers` runs from a registry
 key to the symbol or file it maps to. `resolves` and `routesTo` run from a caller to the key it
-looks up.
+looks up. A `resolves` edge with `metadata.injection` runs from a class to the key it depends on,
+as described under "Constructor injection" in the registry protocols document.
 
 `passesCallback` runs from the function that passes a callback to the callback's symbol. See
 "Callbacks" below.
@@ -157,12 +160,12 @@ A configured function (`protocols.callbacks`) that receives a callback is record
 `passesCallback` relationship from the caller. The callback is passed, not invoked, so no `calls`
 edge is drawn for it.
 
-| Callback argument                                                                        | Edge                                                |
-| ---------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| A function or arrow function written inline                                              | caller → caller, `high`, `metadata.inline: true`    |
-| An identifier naming a top-level function or variable                                    | caller → that symbol, `high`, `ts-program` evidence |
-| Anything else from the repository (a parameter, a local, a call such as `makeHandler()`) | caller → `unresolved-callback` observation, `low`   |
-| An identifier or call from an external module                                            | none                                                |
+| Callback argument                                                                        | Edge                                              |
+| ---------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| A function or arrow function written inline                                              | caller → caller, `high`, `metadata.inline: true`  |
+| An identifier naming a top-level function or variable                                    | caller → that symbol, `high`, `ts-program`        |
+| Anything else from the repository (a parameter, a local, a call such as `makeHandler()`) | caller → `unresolved-callback` observation, `low` |
+| An identifier or call from an external module                                            | none                                              |
 
 An inline callback has no symbol of its own, so its edge targets the enclosing symbol. In the
 Markdown output it is shown as `(inline)`. Locals are not linked: a local function has no symbol in

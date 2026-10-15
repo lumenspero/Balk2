@@ -44,6 +44,11 @@ A receiver is a registry when its type is one of:
 A receiver of unknown type never qualifies. A configured receiver rule (`names` or `types`) is
 checked instead, and is trusted as written.
 
+A Map or Set is trusted as a registry only with evidence that it holds repository symbols: a
+declared key, or a registration whose value resolves to a top-level symbol or file. A local
+collection that holds only runtime values is not a registry, so its dynamic-key calls produce no
+observations.
+
 ## Key types
 
 A key's type decides whether two values are the same key. It follows the container and the key:
@@ -101,7 +106,9 @@ Registry protocols are configured under `protocols.registries` in `.balk2.json`:
           "receiver": { "names": ["container"] }
         },
         { "method": "resolve", "direction": "resolve", "keyFrom": "typeArgument" }
-      ]
+      ],
+      "decorators": [{ "name": "register", "registry": "src/container.ts:container" }],
+      "parameterDecorators": [{ "name": "Inject", "registry": "src/container.ts:container" }]
     }
   }
 }
@@ -147,9 +154,38 @@ dictionary the code already declares, so nothing is registered by a name alone.
 
 Each source adds its keys to the registry, so a lookup in the same registry agrees with them.
 
-Known limit: a service registered through a framework's runtime wiring, with no call the analysis
-can see (for example, constructor parameter injection through `@Inject`), is not connected. Add a
-`manifest` entry for it.
+A registration's target must be a top-level declaration of a repository file, or a class member. A
+local variable, a parameter, or a function nested in another function is not a target.
+
+## Constructor injection
+
+A constructor parameter decorator declares that a class depends on a key. It does not register
+anything; it makes the class look the key up.
+
+```ts
+class UserService {
+  constructor(@Inject(UserRepo) private readonly repo: UserRepo) {}
+}
+```
+
+With `parameterDecorators: [{ "name": "Inject", "registry": "src/container.ts:container" }]`, the
+class `UserService` gets a `resolves` edge to the key `UserRepo` of that registry. The key is read
+from the decorator's argument with the same rules as a lookup, so a class token agrees with
+`container.register(UserRepo, UserRepo)`.
+
+- **Owner.** The owner is the class, since a parameter has no symbol of its own.
+- **Scope.** Only constructor parameters are read. Method parameters and property injection are not.
+- **Keyless arguments.** `keyArg` defaults to `0`, the first argument of the decorator.
+- **Unreadable tokens.** A token the analysis cannot read, such as `@Inject(tokens[0])`, is reported
+  as a `dynamic-registry-key` observation linked from the class at low confidence. No edge names a
+  key.
+- **Unconfigured decorators.** A decorator whose name is not in `parameterDecorators` is ignored.
+
+The `metadata.injection` value on these edges is `constructor`.
+
+Known limit: a service wired by a framework at runtime, with no decorator the analysis can see, is
+not connected. Add a `manifest` entry for it, or a configured `parameterDecorators` rule where the
+framework exposes one.
 
 ## Joining lookups to registrations
 
@@ -185,3 +221,5 @@ among them. A lookup into a registry that declares nothing is not flagged, so an
 - Symbol and object keys are not supported. Class tokens are supported only in typed registries, and
   only when the class is named directly, not through an alias.
 - A type argument must name a class. Generic parameters and unions are reported, not read.
+- Constructor injection covers constructor parameters only. Method parameters, property injection
+  and chained builders (`bind(X).to(Y)`) are not read.
