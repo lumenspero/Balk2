@@ -124,6 +124,44 @@ export function getRegistryLookups(map: ConnectionMap, keyId: string): string[] 
   return distinctSources(getIncoming(map, keyId, 'resolves', 'routesTo'));
 }
 
+/** Symbols or files that read a state path with `readsState`, sorted. */
+export function getStateReaders(map: ConnectionMap, pathId: string): string[] {
+  return distinctSources(getIncoming(map, pathId, 'readsState'));
+}
+
+/**
+ * Symbols or files that write a state path, sorted. A delete counts as a write, since it changes
+ * the value a reader sees.
+ */
+export function getStateWriters(map: ConnectionMap, pathId: string): string[] {
+  return distinctSources(getIncoming(map, pathId, 'writesState', 'deletesState'));
+}
+
+/** A state path that couples owners, with who reads and who writes it. */
+export interface StateCoupling {
+  readonly path: string;
+  readonly readers: readonly string[];
+  readonly writers: readonly string[];
+}
+
+/**
+ * State paths that couple owners: at least one writer, and two or more distinct symbols or files
+ * touching the path. A path that is only read, or that one owner alone uses, couples nothing.
+ *
+ * This is data coupling, not an import or a call. It answers "which code could a change to this
+ * state reach?", and it is kept out of call-path ranking.
+ */
+export function getStateCoupling(map: ConnectionMap): StateCoupling[] {
+  return Object.keys(map.statePaths)
+    .sort(compareStrings)
+    .flatMap((path) => {
+      const readers = getStateReaders(map, path);
+      const writers = getStateWriters(map, path);
+      const owners = new Set([...readers, ...writers]);
+      return writers.length > 0 && owners.size >= 2 ? [{ path, readers, writers }] : [];
+    });
+}
+
 function forwardIndex(map: ConnectionMap): ForwardIndex {
   const cached = indexes.get(map);
   if (cached) return cached;

@@ -1,9 +1,10 @@
-import { forwardRelationships } from '../graph-queries.js';
+import { forwardRelationships, getStateCoupling } from '../graph-queries.js';
 import type {
   ConnectionMap,
   EventRelationship,
   Relationship,
   RegistryRelationship,
+  StateRelationship,
 } from '../types.js';
 import { findConnectionPaths, type PathFinderOptions } from './path-finder.js';
 
@@ -47,6 +48,8 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
   lines.push(`- **Data Artifacts**: ${artifactCount}`);
   if (channelCount > 0) lines.push(`- **Event Channels**: ${channelCount}`);
   if (registryCount > 0) lines.push(`- **Registry Keys**: ${registryCount}`);
+  const statePathCount = Object.keys(map.statePaths).length;
+  if (statePathCount > 0) lines.push(`- **State Paths**: ${statePathCount}`);
   if (unresolvedCount > 0) lines.push(`- **Unresolved Observations**: ${unresolvedCount}`);
   lines.push(`- **Relationships**: ${relationshipCount}`);
   lines.push('');
@@ -129,6 +132,7 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
   const virtualIds = new Set([
     ...Object.keys(map.eventChannels),
     ...Object.keys(map.registryKeys),
+    ...Object.keys(map.statePaths),
     ...Object.keys(map.unresolved),
   ]);
   const symbolKeySet = new Set(Object.keys(map.symbols));
@@ -279,6 +283,41 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
           inRels
             .filter((r) => r.type === type)
             .map((r) => `${r.from}${annotate(r)}`)
+            .sort(),
+        );
+        if (sources.length === 0) continue;
+        lines.push(`${label}:`);
+        for (const source of sources) {
+          lines.push(`  ← ${source}`);
+        }
+      }
+
+      lines.push('');
+    }
+  }
+
+  // 4c. Shared State Coupling: data coupling, kept apart from imports and calls
+  const coupled = getStateCoupling(map);
+  if (coupled.length > 0) {
+    lines.push('## Shared State Coupling');
+    lines.push('');
+    lines.push(
+      'State that one owner writes and another reads or writes. This is data coupling, not an import or a call.',
+    );
+    lines.push('');
+
+    for (const { path } of coupled) {
+      lines.push(`### ${path}`);
+      lines.push('');
+      const node = map.statePaths[path];
+      if (node) lines.push(`Root: ${node.root}`);
+
+      const inRels = incomingMap.get(path) ?? [];
+      for (const [type, label] of STATE_INCOMING) {
+        const sources = dedupe(
+          inRels
+            .filter((r) => r.type === type)
+            .map(stateSource)
             .sort(),
         );
         if (sources.length === 0) continue;
@@ -467,6 +506,18 @@ function pushRegistryLinks(lines: string[], outgoing: readonly Relationship[]): 
       lines.push(`  → ${target}`);
     }
   }
+}
+
+const STATE_INCOMING: ReadonlyArray<readonly [StateRelationship, string]> = [
+  ['writesState', 'Written by'],
+  ['deletesState', 'Deleted by'],
+  ['readsState', 'Read by'],
+];
+
+/** A state accessor, with the method when a call made the access. */
+function stateSource(rel: Relationship): string {
+  const method = rel.metadata?.['method'];
+  return `${rel.from}${annotate(rel)}${typeof method === 'string' ? ` via ${method}` : ''}`;
 }
 
 /** Annotate only what changes interpretation: reduced confidence, one-time and abortable listeners. */

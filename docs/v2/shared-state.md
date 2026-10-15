@@ -45,6 +45,9 @@ that happens to share the name is not the root. Its node root is `config:<name>`
   values injected by a server or bundler.
 - `false` tracks none.
 
+A global that several files assign is still one runtime slot, so every read of it is state, even
+when the global-facts report marks the name as ambiguous.
+
 The same name reaches the same node through any route: `window.store.user`, `globalThis.store.user`
 and a bare `store.user` are all `state:global#store.user`. Browser and runtime built-ins such as
 `window.location` are not state unless you list them. A local variable or parameter that shadows a
@@ -57,7 +60,7 @@ the default is kept.
 Balk2 does not guess which exported objects are shared. The export is matched by symbol, so a
 renamed import, a namespace import (`ns.store`) and a default import all reach it. A different
 module's export with the same name does not. A singleton whose module is not analyzed, or that
-has no such export, is reported and ignored.
+has no such export, is ignored; the analysis returns the problem, and it is kept out of the graph.
 
 **Aliases.** `const cart = store.cart` and `const { cart } = store` are followed, so later
 `cart.items` is `store#cart.items`. A path reached through such an alias is recorded at `medium`
@@ -96,6 +99,14 @@ A computed property whose key is not statically known (`store[key]`) is recorded
 `wildcard` it becomes a path with a `[*]` segment, for example `store#cache[*].value`. A computed
 key that is a constant or literal (`store[KEY]`, `store[0]`) is static.
 
+State method calls follow the same rule. `store.get(key)` with a computed key is a
+`dynamic-state-path` observation under `off` and a `[*]` path under `wildcard`. So is a call whose
+key argument is a spread (`store.get(...args)`) or missing (`store.get()`), and a call on a receiver
+whose own path is computed (`store[key].get('user')`).
+
+Known limit: a computed method name (`store[m]('x')`) is not matched, since which method it calls
+is unknown, so the call is left to other detection.
+
 Known limit: a mutating method such as `push` or `splice` on a state array is not recorded as a
 write unless it is configured as a state method.
 
@@ -122,4 +133,20 @@ An entry that could widen what a call touches is rejected whole. This covers a m
 field. Every dropped setting is reported by `loadBalk2ConfigDetailed`.
 
 When a call on a state root also matches a registry method (for example `cache.get('x')` on a
-configured `Map` singleton), it is recorded as state, not as a registry lookup.
+configured `Map` singleton), it is recorded as state, not as a registry lookup. The same holds for
+event detection: a call on shared state is never an event.
+
+## Coupling and queries
+
+State is reported apart from imports and calls, in three places:
+
+- **Shared State Coupling section.** Lists each state path that couples owners: at least one writer,
+  and two or more distinct symbols or files touching it. For each path it shows the root, who
+  writes it (`Written by`), who deletes it (`Deleted by`) and who reads it (`Read by`). A method call
+  is annotated with its method (`via set`), and reduced confidence is shown.
+- **Queries.** `getStateReaders` and `getStateWriters` list the owners of one path. Writers include
+  deletes, since a delete changes what readers see. `getStateCoupling` lists the coupling paths.
+- **Call paths.** State edges never enter connection paths. Paths run only through data artifacts,
+  event channels and registry keys.
+
+File and symbol sections do not list state edges; they appear only in the coupling section.

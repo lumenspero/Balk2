@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { getStateCoupling, getStateReaders, getStateWriters } from './graph-queries.js';
 import { ConnectionGraph, formatStatePath, statePathId } from './graph.js';
 import { deserializeConnectionMap, serializeConnectionMap } from './serialize.js';
-import type { ConnectionMap } from './types.js';
+import type { ConnectionMap, StateRelationship } from './types.js';
 
 const METADATA = { generatedAt: '2026-01-01T00:00:00.000Z' };
 
@@ -170,5 +171,65 @@ describe('reading maps without statePaths', () => {
     expect(() => deserializeConnectionMap(JSON.stringify(bad))).toThrow(
       'statePaths must be an object',
     );
+  });
+});
+
+/** One access: the owner, what it does, and the top-level property of the store it touches. */
+type Access = readonly [owner: string, type: StateRelationship, property: string];
+
+const STORE = 'src/store.ts:store';
+const USER = 'state:src/store.ts:store#user';
+
+function accessMap(accesses: readonly Access[]): ConnectionMap {
+  const graph = new ConnectionGraph();
+  for (const [owner, type, property] of accesses) {
+    const node = graph.addStatePath(STORE, 'singleton', [property]);
+    graph.addRelationship(type, owner, node.id, 'high', { evidence: 'config' });
+  }
+  return graph.build(METADATA);
+}
+
+describe('shared state queries', () => {
+  it('lists readers and writers of a path, counting a delete as a write', () => {
+    const map = accessMap([
+      ['src/a.ts:load', 'readsState', 'user'],
+      ['src/b.ts:save', 'writesState', 'user'],
+      ['src/c.ts:drop', 'deletesState', 'user'],
+      ['src/d.ts:peek', 'readsState', 'user'],
+      ['src/b.ts:save', 'readsState', 'user'],
+    ]);
+
+    expect(getStateReaders(map, USER)).toEqual(['src/a.ts:load', 'src/b.ts:save', 'src/d.ts:peek']);
+    expect(getStateWriters(map, USER)).toEqual(['src/b.ts:save', 'src/c.ts:drop']);
+  });
+
+  it('returns nothing for a path nothing accesses', () => {
+    const map = accessMap([['src/a.ts:load', 'readsState', 'user']]);
+    expect(getStateReaders(map, 'state:src/store.ts:store#missing')).toEqual([]);
+    expect(getStateWriters(map, 'state:src/store.ts:store#missing')).toEqual([]);
+  });
+
+  it('reports only paths with a writer that two or more owners touch', () => {
+    const map = accessMap([
+      ['src/a.ts:load', 'readsState', 'user'],
+      ['src/b.ts:save', 'writesState', 'user'],
+      ['src/a.ts:fill', 'writesState', 'items'],
+      ['src/b.ts:empty', 'deletesState', 'items'],
+      // Only read: couples nothing.
+      ['src/c.ts:show', 'readsState', 'theme'],
+      ['src/d.ts:show', 'readsState', 'theme'],
+      // One owner reads and writes: couples nothing.
+      ['src/e.ts:solo', 'writesState', 'log'],
+      ['src/e.ts:solo', 'readsState', 'log'],
+    ]);
+
+    expect(getStateCoupling(map)).toEqual([
+      {
+        path: 'state:src/store.ts:store#items',
+        readers: [],
+        writers: ['src/a.ts:fill', 'src/b.ts:empty'],
+      },
+      { path: USER, readers: ['src/a.ts:load'], writers: ['src/b.ts:save'] },
+    ]);
   });
 });
