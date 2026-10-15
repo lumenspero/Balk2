@@ -37,16 +37,32 @@ that happens to share the name is not the root. Its node root is `config:<name>`
 **Globals.** The global object goes by the names in `globals.roots` (`globalThis`, `window`,
 `self` and `global` by default), and all of them share one `global` state root.
 
-- `true` tracks top-level global properties that the repository assigns somewhere.
-- A list tracks only those top-level names.
+- `true` tracks top-level globals the repository establishes as data. That means a script-scope or
+  ambient variable (`var appState = {}`), or a property assigned through the global object
+  (`window.store = {}`). A global function or class is not state. An assigned path such as
+  `window.App.init = fn` still makes the namespace `App` state.
+- A list tracks only those top-level names, whether or not the repository assigns them. This suits
+  values injected by a server or bundler.
 - `false` tracks none.
 
-Browser and runtime built-ins such as `window.location` are therefore not state unless you list
-them. A list with no valid names is reported and the default is kept.
+The same name reaches the same node through any route: `window.store.user`, `globalThis.store.user`
+and a bare `store.user` are all `state:global#store.user`. Browser and runtime built-ins such as
+`window.location` are not state unless you list them. A local variable or parameter that shadows a
+global, or the global object itself, is never state. A computed first property (`window[key]`) is
+not resolved, since which global it names is unknown. A list with no valid names is reported and
+the default is kept.
 
 **Singletons.** `module` is relative to the repository and `export` is an export name or
 `default`. Its node root is `<module>:<export>`. Only exports listed here are treated as state;
-Balk2 does not guess which exported objects are shared.
+Balk2 does not guess which exported objects are shared. The export is matched by symbol, so a
+renamed import, a namespace import (`ns.store`) and a default import all reach it. A different
+module's export with the same name does not. A singleton whose module is not analyzed, or that
+has no such export, is reported and ignored.
+
+**Aliases.** `const cart = store.cart` and `const { cart } = store` are followed, so later
+`cart.items` is `store#cart.items`. A path reached through such an alias is recorded at `medium`
+confidence. `let` and `var` bindings and parameters are not followed, since what they hold can
+change.
 
 ## State methods
 
