@@ -8,7 +8,7 @@
  */
 
 /** What a state method does to its path. */
-export type StateAccess = 'read' | 'write' | 'delete';
+export type StateAccess = 'read' | 'write' | 'delete' | 'update';
 
 export interface StateProtocol {
   /** Method name, e.g. `get` */
@@ -27,13 +27,15 @@ export interface StateProtocol {
 }
 
 /**
- * Built-in state methods: Map-like access plus `subscribe`. They are safe as defaults only
- * because they apply to receivers already resolved to a state root.
+ * Built-in state methods: Map-like access, `update` (which reads and then writes its path), and
+ * `subscribe`. They are safe as defaults only because they apply to receivers already resolved to
+ * a state root.
  */
 export const BUILT_IN_STATE_PROTOCOLS: readonly StateProtocol[] = [
   { method: 'get', access: 'read', keyArg: 0 },
   { method: 'has', access: 'read', keyArg: 0 },
   { method: 'subscribe', access: 'read' },
   { method: 'set', access: 'write', keyArg: 0 },
+  { method: 'update', access: 'update', keyArg: 0 },
   { method: 'delete', access: 'delete', keyArg: 0 },
 ];

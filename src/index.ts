@@ -21,6 +21,9 @@ export type {
   CodeRelationship,
   EventRelationship,
   RegistryRelationship,
+  StatePathNode,
+  StateRelationship,
+  StateRootKind,
   DataRelationship,
   RelationshipType,
   Confidence,
@@ -44,9 +47,13 @@ export {
   getRegistryResolutions,
   getRegistrationTargets,
   getRegistryLookups,
+  getStateReaders,
+  getStateWriters,
+  getStateCoupling,
   type EventReaction,
   type EventTrigger,
   type RegistryResolution,
+  type StateCoupling,
 } from './graph-queries.js';
 export type { Analyzer, AnalyzerOptions } from './analyzer/index.js';
 export { JsTsAnalyzer, PythonAnalyzer, resolveImportPath } from './analyzer/index.js';
@@ -96,6 +103,9 @@ export {
   type ProtocolsConfig,
   type EventProtocolsConfig,
   type RegistryProtocolsConfig,
+  type StateConfig,
+  type StateSingleton,
+  type DynamicPathMode,
   type ConfigProblem,
   type LoadedBalk2Config,
 } from './config/index.js';
@@ -112,3 +122,5 @@ export type {
   RegistryDirection,
   RegistryRule,
 } from './analyzer/registry-protocols.js';
+
+export type { StateProtocol, StateAccess } from './analyzer/state-protocols.js';

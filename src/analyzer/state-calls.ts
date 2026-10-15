@@ -37,10 +37,12 @@ export interface StateCallReport {
   readonly claimed: ReadonlySet<ts.CallExpression>;
 }
 
-const RELATIONSHIPS: Readonly<Record<StateAccess, StateRelationship>> = {
-  read: 'readsState',
-  write: 'writesState',
-  delete: 'deletesState',
+/** One access can touch a path in more than one way: `update` reads it, then writes it. */
+const RELATIONSHIPS: Readonly<Record<StateAccess, readonly StateRelationship[]>> = {
+  read: ['readsState'],
+  write: ['writesState'],
+  delete: ['deletesState'],
+  update: ['readsState', 'writesState'],
 };
 
 /** The effective method table: enabled built-ins, then project methods (which replace by name). */
@@ -71,10 +73,10 @@ export function collectStateCalls(
 
   const visit = (node: ts.Node): void => {
     if (ts.isCallExpression(node)) {
-      const fact = matchCall(node, filePath, resolver, protocols);
-      if (fact) {
+      const matched = matchCall(node, filePath, resolver, protocols);
+      if (matched.length > 0) {
         claimed.add(node);
-        calls.push(fact);
+        calls.push(...matched);
       }
     }
     ts.forEachChild(node, visit);
@@ -95,19 +97,19 @@ function matchCall(
   filePath: string,
   resolver: StateRootResolver,
   protocols: ReadonlyMap<string, StateProtocol>,
-): StateCallFact | undefined {
+): readonly StateCallFact[] {
   const callee = unwrapExpression(call.expression);
   if (!ts.isPropertyAccessExpression(callee) && !ts.isElementAccessExpression(callee)) {
-    return undefined;
+    return [];
   }
 
   const method = methodNameOf(callee, resolver);
-  if (method === undefined) return undefined;
+  if (method === undefined) return [];
   const protocol = protocols.get(method);
-  if (!protocol) return undefined;
+  if (!protocol) return [];
 
   const receiver = resolver.resolve(callee.expression);
-  if (!receiver) return undefined;
+  if (!receiver) return [];
 
   const key = keyPathOf(call, protocol, resolver);
   const dynamicReason = receiver.dynamicReason ?? key.dynamicReason;
@@ -119,15 +121,15 @@ function matchCall(
     evidence: receiver.evidence,
     ...(dynamicReason !== undefined ? { dynamicReason } : {}),
   };
-  return {
-    relationship: RELATIONSHIPS[protocol.access],
+  return RELATIONSHIPS[protocol.access].map((relationship): StateCallFact => ({
+    relationship,
     operation: 'call',
     method,
     reference,
     owner: enclosingOwner(call, filePath),
     span: spanOf(call, filePath),
     subject: snippetOf(call),
-  };
+  }));
 }
 
 /** `store.get` names `get`; `store['get']` names `get` when the key is static. */

@@ -280,6 +280,24 @@ export const STATE_CORPUS: readonly StateFixture[] = [
     edges: [],
   },
 
+  {
+    name: 'an update reads its path and writes it back',
+    files: {
+      'store.ts': STORE_FILE,
+      'use.ts': lines(
+        "import { store } from './store.js';",
+        "export function bump() { store.update('count', (n: number) => n + 1); }",
+      ),
+    },
+    options: STORE_CONFIG,
+    pairs: ['use.ts:bump -> state:store.ts:store#count'],
+    observations: [],
+    edges: [
+      'readsState use.ts:bump -> state:store.ts:store#count',
+      'writesState use.ts:bump -> state:store.ts:store#count',
+    ],
+  },
+
   // ── Known limits: where the tool falls short of what the code means ──────────────────────────
 
   {

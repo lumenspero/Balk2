@@ -131,6 +131,12 @@ describe('normalizeStateConfig', () => {
   });
 
   describe('methods', () => {
+    it('accepts update as an access, with a key position', () => {
+      expect(configOf({ methods: [{ method: 'patch', access: 'update', keyArg: 0 }] })).toEqual({
+        methods: [{ method: 'patch', access: 'update', keyArg: 0 }],
+      });
+    });
+
     it('keeps a whole-container method without keyArg', () => {
       expect(configOf({ methods: [{ method: 'watch', access: 'read' }] })).toEqual({
         methods: [{ method: 'watch', access: 'read' }],
@@ -150,7 +156,7 @@ describe('normalizeStateConfig', () => {
       expect(configOf(section)).toBeUndefined();
       expect(messages(section)).toEqual([
         'state.methods[0].method: must be a method name; entry ignored',
-        'state.methods[1].access: must be one of read, write, delete; entry ignored',
+        'state.methods[1].access: must be one of read, write, delete, update; entry ignored',
         'state.methods[2].keyArg: must be an integer from 0 to 15; entry ignored',
         'state.methods[3].keyArg: must be an integer from 0 to 15; entry ignored',
         'state.methods[4]: must be an object; entry ignored',

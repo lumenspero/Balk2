@@ -61,7 +61,7 @@ const STATE_KEYS = new Set([
 ]);
 const SINGLETON_KEYS = new Set(['module', 'export']);
 const METHOD_KEYS = new Set(['method', 'access', 'keyArg', 'pathSeparator']);
-const ACCESSES: readonly StateAccess[] = ['read', 'write', 'delete'];
+const ACCESSES: readonly StateAccess[] = ['read', 'write', 'delete', 'update'];
 const DYNAMIC_PATH_MODES: readonly DynamicPathMode[] = ['off', 'wildcard'];
 const BUILT_IN_METHODS = new Set(BUILT_IN_STATE_PROTOCOLS.map((protocol) => protocol.method));
 

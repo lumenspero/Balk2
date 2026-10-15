@@ -116,15 +116,18 @@ write unless it is configured as a state method.
 A state method is a call on something that already resolves to a state root. A `get` on an
 unrelated object is never a state access, which is what makes the built-ins safe defaults:
 
-| Method      | Access | Key argument | Example                                     |
-| ----------- | ------ | ------------ | ------------------------------------------- |
-| `get`       | read   | 0            | `store.get('user')` reads `user`            |
-| `has`       | read   | 0            | `store.has('user')` reads `user`            |
-| `subscribe` | read   | none         | `store.subscribe(fn)` reads the whole store |
-| `set`       | write  | 0            | `store.set('user', u)` writes `user`        |
-| `delete`    | delete | 0            | `store.delete('user')` deletes `user`       |
+| Method      | Access | Key argument | Example                                              |
+| ----------- | ------ | ------------ | ---------------------------------------------------- |
+| `get`       | read   | 0            | `store.get('user')` reads `user`                     |
+| `has`       | read   | 0            | `store.has('user')` reads `user`                     |
+| `subscribe` | read   | none         | `store.subscribe(fn)` reads the whole store          |
+| `set`       | write  | 0            | `store.set('user', u)` writes `user`                 |
+| `update`    | update | 0            | `store.update('user', fn)` reads, then writes `user` |
+| `delete`    | delete | 0            | `store.delete('user')` deletes `user`                |
 
-A project method has `method`, `access` (`read`, `write` or `delete`), an optional `keyArg`, and
+`update` is recorded as both a read and a write of its path, from one call.
+
+A project method has `method`, `access` (`read`, `write`, `delete` or `update`), an optional `keyArg`, and
 an optional `pathSeparator`. Without `keyArg`, the call touches the receiver itself.
 `pathSeparator` splits a single string key into a path, so with `"."`, `select('session.user')`
 touches `session.user`.
@@ -149,6 +152,7 @@ State is reported apart from imports and calls, in three places:
 - **Queries.** `getStateReaders` and `getStateWriters` list the owners of one path. Writers include
   deletes, since a delete changes what readers see. `getStateCoupling` lists the coupling paths.
 - **Call paths.** State edges never enter connection paths. Paths run only through data artifacts,
-  event channels and registry keys.
+  event channels and registry keys. There is no option to include state in paths: state is data
+  coupling, not a call chain, and the coupling section and queries already give the navigable view.
 
 File and symbol sections do not list state edges; they appear only in the coupling section.

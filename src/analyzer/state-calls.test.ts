@@ -60,6 +60,25 @@ describe.each(TSCONFIGS)('Phase 6.5: state method calls [%s]', (_label, compiler
     return collectStateCalls(sourceFile, probeFile, resolver, stateProtocols(config));
   }
 
+  it('update reads its path and then writes it, from one claimed call', () => {
+    const report = collect(
+      {
+        ...STORE,
+        'src/use.ts': [
+          "import { store } from './store.js';",
+          "store.update('user', (u: unknown) => u);",
+        ].join('\n'),
+      },
+      'src/use.ts',
+    );
+
+    expect(report.calls.map(describeCall)).toEqual([
+      'readsState update state:src/store.ts:store#user',
+      'writesState update state:src/store.ts:store#user',
+    ]);
+    expect(report.claimed.size).toBe(1);
+  });
+
   it('records the built-in methods on a singleton and on a path below it', () => {
     const report = collect(
       {
