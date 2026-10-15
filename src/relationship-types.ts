@@ -29,6 +29,14 @@ export const CONFIDENCE_RANK: Readonly<Record<Confidence, number>> = {
 };
 
 /**
+ * Metadata keys whose values are joined across observations of one relationship, rather than
+ * dropped when the observations disagree. `loadKind` lists every way a file is loaded, so a file
+ * that is both statically imported and dynamically loaded says so. Every other key (`once`, for
+ * example) stays strict: it is claimed only when all observations agree.
+ */
+export const COMBINABLE_METADATA: ReadonlySet<string> = new Set(['loadKind']);
+
+/**
  * Ordinal (UTF-16 code unit) comparison. `localeCompare` depends on the host's ICU data and
  * locale, which would make the generated map differ between machines.
  */
@@ -88,25 +96,46 @@ export function sortSpans(spans: readonly SourceSpan[]): SourceSpan[] {
   return [...unique.values()].sort(compareSpans);
 }
 
+/** The values a combinable key carries, split from its joined form. */
+function valuesOf(value: string | number | boolean | undefined): string[] {
+  if (value === undefined) return [];
+  return String(value)
+    .split(',')
+    .filter((part) => part.length > 0);
+}
+
 /**
- * Metadata that holds for every observation of a relationship: the keys both carry with the same
- * value. A flag seen on only one registration (`once` on one of two) is dropped rather than
- * claimed for all of them; the merged spans still locate each observation.
+ * Metadata for a merged relationship. A combinable key takes the sorted union of the values every
+ * observation carries for it. Any other key is kept only when both observations have the same
+ * value, so a flag seen on one registration is never claimed for all of them.
  */
-function commonMetadata(
+function mergeMetadata(
   first: RelationshipMetadata | undefined,
   second: RelationshipMetadata | undefined,
 ): RelationshipMetadata | undefined {
-  if (!first || !second) return undefined;
-  const common = Object.fromEntries(
-    Object.entries(first).filter(([key, value]) => second[key] === value),
+  const keys = [...new Set([...Object.keys(first ?? {}), ...Object.keys(second ?? {})])].sort(
+    compareStrings,
   );
-  return Object.keys(common).length > 0 ? common : undefined;
+  const merged: Record<string, string | number | boolean> = {};
+
+  for (const key of keys) {
+    const a = first?.[key];
+    const b = second?.[key];
+
+    if (COMBINABLE_METADATA.has(key)) {
+      const values = [...new Set([...valuesOf(a), ...valuesOf(b)])].sort(compareStrings);
+      if (values.length > 0) merged[key] = values.join(',');
+    } else if (a !== undefined && a === b) {
+      merged[key] = a;
+    }
+  }
+
+  return Object.keys(merged).length > 0 ? merged : undefined;
 }
 
 /**
  * Combine two observations of the same (type, from, to): the higher confidence (and its evidence)
- * wins, spans are combined, and only metadata that holds for both is kept.
+ * wins, spans are combined, and metadata is merged by `mergeMetadata`.
  */
 export function mergeRelationships(existing: Relationship, incoming: Relationship): Relationship {
   const stronger =
@@ -115,7 +144,7 @@ export function mergeRelationships(existing: Relationship, incoming: Relationshi
       : existing;
   const evidence = stronger.evidence ?? existing.evidence ?? incoming.evidence;
   const spans = sortSpans([...(existing.spans ?? []), ...(incoming.spans ?? [])]);
-  const metadata = commonMetadata(existing.metadata, incoming.metadata);
+  const metadata = mergeMetadata(existing.metadata, incoming.metadata);
 
   return {
     type: existing.type,

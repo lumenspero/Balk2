@@ -148,7 +148,8 @@ export type UnresolvedReason =
   | 'dynamic-registry-key'
   | 'unknown-registry-receiver'
   | 'ambiguous-registry'
-  | 'dynamic-state-path';
+  | 'dynamic-state-path'
+  | 'dynamic-module-specifier';
 
 /**
  * A diagnostic-only node recording code that looks like a connection but could not be
@@ -235,6 +236,20 @@ export type StateRelationship = 'readsState' | 'writesState' | 'deletesState';
 export type StateOperation =
   'read' | 'assign' | 'compound-assign' | 'increment' | 'delete' | 'call';
 
+/**
+ * How a dynamic module load was written, stored as `metadata.loadKind` on an `imports` edge.
+ *
+ * - `import-expression`: `import('./x')`
+ * - `require`: `require('./x')` inside a function or other non-top-level position
+ * - `worker`: `new Worker(new URL('./x', import.meta.url))`
+ * - `url`: `new URL('./x', import.meta.url)` used outside a worker
+ * - `loader`: a configured loader function (`protocols.loaders`)
+ *
+ * When one file is loaded in more than one way, the merged edge lists each kind, sorted and
+ * comma-joined, so `"import-expression,require"`.
+ */
+export type LoadKind = 'import-expression' | 'require' | 'worker' | 'url' | 'loader';
+
 export type RelationshipType =
   | CodeRelationship
   | EventRelationship
@@ -247,7 +262,12 @@ export type Confidence = 'high' | 'medium' | 'low';
 /** How a relationship was established. */
 export type Evidence = 'ast' | 'ts-program' | 'config' | 'heuristic';
 
-/** Lifecycle and mechanism details such as `{ once: true }` on a subscription. */
+/**
+ * Lifecycle and mechanism details such as `{ once: true }` on a subscription, or
+ * `{ loadKind: 'import-expression' }` on a dynamic import. Keys listed in `COMBINABLE_METADATA`
+ * (see relationship-types.ts) are joined across observations; every other key is kept only when
+ * all observations agree on its value.
+ */
 export type RelationshipMetadata = Readonly<Record<string, string | number | boolean>>;
 
 /** Optional detail attached to a relationship. */
