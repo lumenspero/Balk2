@@ -124,6 +124,9 @@ function usesOf(node: ts.Expression): readonly Use[] {
   }
   if (ts.isTaggedTemplateExpression(parent) && parent.tag === outer) return [];
   if (ts.isDecorator(parent)) return [];
+  // `export default store` re-exports the binding without reading its contents, as `export { store }`
+  // does. A property path there (`export default store.user`) is still evaluated, so it is a read.
+  if (ts.isIdentifier(node) && ts.isExportAssignment(parent)) return [];
 
   if (ts.isDeleteExpression(parent) && parent.expression === outer) return [DELETE];
 
