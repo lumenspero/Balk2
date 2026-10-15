@@ -7,6 +7,9 @@ import type {
   EventChannelNode,
   RegistryKeyNode,
   RegistryKeyType,
+  StatePathNode,
+  StatePathSegment,
+  StateRootKind,
   UnresolvedReferenceNode,
   Relationship,
   RelationshipDetail,
@@ -42,6 +45,7 @@ export class ConnectionGraph {
   private readonly artifacts = new Map<string, ArtifactNode>();
   private readonly eventChannels = new Map<string, EventChannelNode>();
   private readonly registryKeys = new Map<string, RegistryKeyNode>();
+  private readonly statePaths = new Map<string, StatePathNode>();
   private readonly unresolved = new Map<string, UnresolvedReferenceNode>();
   private readonly relationships: Relationship[] = [];
   private readonly relationshipIndex = new Map<string, number>();
@@ -117,6 +121,34 @@ export class ConnectionGraph {
       keyType,
     };
     this.registryKeys.set(id, node);
+    return node;
+  }
+
+  /**
+   * Add a state-path node: a resolved root plus a static property path. The id is
+   * `state:<root>` for the container (no segments) or `state:<root>#<path>`, so reading a whole
+   * store and reading one field of it are different nodes. A `null` segment is a wildcard for a
+   * computed property. Adding it again is a no-op.
+   */
+  addStatePath(
+    root: string,
+    rootKind: StateRootKind,
+    segments: readonly StatePathSegment[] = [],
+  ): StatePathNode {
+    const normalizedRoot = normalizePath(root);
+    const id = statePathId(normalizedRoot, segments);
+    const existing = this.statePaths.get(id);
+    if (existing) return existing;
+
+    const node: StatePathNode = {
+      kind: 'state-path',
+      id,
+      root: normalizedRoot,
+      rootKind,
+      path: formatStatePath(segments),
+      segments: [...segments],
+    };
+    this.statePaths.set(id, node);
     return node;
   }
 
@@ -209,6 +241,16 @@ export class ConnectionGraph {
     return this.registryKeys.has(id);
   }
 
+  /** Returns true if a state-path node exists for the given id. */
+  hasStatePath(id: string): boolean {
+    return this.statePaths.has(id);
+  }
+
+  /** Returns the state-path node for the given id, or undefined. */
+  getStatePath(id: string): StatePathNode | undefined {
+    return this.statePaths.get(id);
+  }
+
   /** Returns true if an unresolved-reference node exists for the given id. */
   hasUnresolved(id: string): boolean {
     return this.unresolved.has(id);
@@ -244,6 +286,7 @@ export class ConnectionGraph {
       this.artifacts.size +
       this.eventChannels.size +
       this.registryKeys.size +
+      this.statePaths.size +
       this.unresolved.size
     );
   }
@@ -268,6 +311,7 @@ export class ConnectionGraph {
       artifacts: sortedRecord(this.artifacts),
       eventChannels: sortedRecord(this.eventChannels),
       registryKeys: sortedRecord(this.registryKeys),
+      statePaths: sortedRecord(this.statePaths),
       unresolved: sortedRecord(this.unresolved),
       relationships: [...this.relationships].sort(compareRelationships),
     };
@@ -292,6 +336,35 @@ export function registryKeyId(
 ): string {
   const tag = keyType === 'number' ? 'number:' : '';
   return `registry:${normalizePath(scope)}#${tag}${key}`;
+}
+
+const IDENTIFIER_SEGMENT = /^[A-Za-z_$][\w$]*$/;
+
+/**
+ * Display form of a state path. Identifier names are joined with `.`; any other name is written
+ * `["name"]` with JSON escaping, and a wildcard is `[*]`. The form is unambiguous, so it is safe
+ * inside an id: `a.b`, `a["b.c"]` and `a[*]` are three different paths, and a property literally
+ * named `*` is `["*"]`.
+ */
+export function formatStatePath(segments: readonly StatePathSegment[]): string {
+  return segments
+    .map((segment, index) => {
+      if (segment === null) return '[*]';
+      if (IDENTIFIER_SEGMENT.test(segment)) return index === 0 ? segment : `.${segment}`;
+      return `[${JSON.stringify(segment)}]`;
+    })
+    .join('');
+}
+
+/**
+ * Id of a state-path node; shared with analyzers that need to name paths. The container of a root
+ * (no segments) is `state:<root>`; any property under it is `state:<root>#<path>`.
+ */
+export function statePathId(root: string, segments: readonly StatePathSegment[] = []): string {
+  const normalizedRoot = normalizePath(root);
+  return segments.length === 0
+    ? `state:${normalizedRoot}`
+    : `state:${normalizedRoot}#${formatStatePath(segments)}`;
 }
 
 function unresolvedId(reason: string, location: SourceSpan): string {

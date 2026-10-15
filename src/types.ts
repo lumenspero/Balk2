@@ -2,14 +2,21 @@
  * Core type definitions for the Balk2 connection map graph model (schema version 2).
  *
  * The graph supports file, symbol and artifact nodes plus virtual nodes for indirect
- * mechanisms (event channels) and diagnostics (unresolved references), connected by
+ * mechanisms (event channels, registry keys, state paths) and diagnostics (unresolved
+ * references), connected by
  * typed directional relationships. See docs/connection-map-schema.md.
  */
 
 // ── Node Types ──────────────────────────────────────────────
 
 export type NodeKind =
-  'file' | 'symbol' | 'artifact' | 'event-channel' | 'unresolved-reference' | 'registry-key';
+  | 'file'
+  | 'symbol'
+  | 'artifact'
+  | 'event-channel'
+  | 'unresolved-reference'
+  | 'registry-key'
+  | 'state-path';
 
 /**
  * A code file node in the graph.
@@ -99,6 +106,40 @@ export interface RegistryKeyNode {
   readonly keyType: RegistryKeyType;
 }
 
+/**
+ * What a state root is. `global` is the global object under any of its names (`globalThis`,
+ * `window`, ...), so all of them share one root. `configured` is a root named in `.balk2.json`.
+ * `singleton` is a module export declared as shared state in `.balk2.json`.
+ */
+export type StateRootKind = 'global' | 'configured' | 'singleton';
+
+/**
+ * One step of a state path: a property name, or `null` for a computed property whose name is not
+ * statically known. `null` appears only when dynamic paths are enabled as wildcards.
+ */
+export type StatePathSegment = string | null;
+
+/**
+ * A virtual node for a shared state location: a resolved root plus a static property path. An
+ * empty path is the container itself, so reading the whole store and reading one field of it are
+ * different nodes.
+ *
+ * Examples: state:global#store.session.user, state:src/store.ts:store#cart.items,
+ * state:config:appState, state:global#cache[*].value
+ */
+export interface StatePathNode {
+  readonly kind: 'state-path';
+  /** Unique identifier: "state:<root>" for the container, "state:<root>#<path>" otherwise */
+  readonly id: string;
+  /** Resolved root identity: "global", "config:<name>", or "<file>:<export>" for a singleton */
+  readonly root: string;
+  readonly rootKind: StateRootKind;
+  /** The path in display form (see `formatStatePath`); empty for the container */
+  readonly path: string;
+  /** The path as property names; `null` is a wildcard */
+  readonly segments: readonly StatePathSegment[];
+}
+
 /** Why a relationship could not be resolved to a concrete target. */
 export type UnresolvedReason =
   | 'ambiguous-global'
@@ -106,7 +147,8 @@ export type UnresolvedReason =
   | 'unknown-event-receiver'
   | 'dynamic-registry-key'
   | 'unknown-registry-receiver'
-  | 'ambiguous-registry';
+  | 'ambiguous-registry'
+  | 'dynamic-state-path';
 
 /**
  * A diagnostic-only node recording code that looks like a connection but could not be
@@ -137,6 +179,7 @@ export type GraphNode =
   | ArtifactNode
   | EventChannelNode
   | RegistryKeyNode
+  | StatePathNode
   | UnresolvedReferenceNode;
 
 /** A 1-based range in a repository file. */
@@ -178,8 +221,26 @@ export type RegistryRelationship = 'registers' | 'resolves' | 'routesTo';
 export type DataRelationship =
   'generates' | 'generatedBy' | 'consumes' | 'consumedBy' | 'reads' | 'writes' | 'transforms';
 
+/**
+ * Shared-state relationships. Each runs from the symbol or file that touches the state to the
+ * state-path node. They record data coupling, not structural dependency, so path ranking leaves
+ * them out unless asked.
+ */
+export type StateRelationship = 'readsState' | 'writesState' | 'deletesState';
+
+/**
+ * How a state relationship touches its path, stored as `metadata.operation`. An API call such as
+ * `store.set('user', u)` is `call`, with the method name in `metadata.method`.
+ */
+export type StateOperation =
+  'read' | 'assign' | 'compound-assign' | 'increment' | 'delete' | 'call';
+
 export type RelationshipType =
-  CodeRelationship | EventRelationship | DataRelationship | RegistryRelationship;
+  | CodeRelationship
+  | EventRelationship
+  | DataRelationship
+  | RegistryRelationship
+  | StateRelationship;
 
 export type Confidence = 'high' | 'medium' | 'low';
 
@@ -241,6 +302,8 @@ export interface ConnectionMap {
   readonly eventChannels: Record<string, EventChannelNode>;
   /** Registry-key nodes keyed by id */
   readonly registryKeys: Record<string, RegistryKeyNode>;
+  /** State-path nodes keyed by id */
+  readonly statePaths: Record<string, StatePathNode>;
   /** Unresolved-reference diagnostics keyed by id */
   readonly unresolved: Record<string, UnresolvedReferenceNode>;
   /** All relationships in the graph */
