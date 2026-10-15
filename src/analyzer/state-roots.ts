@@ -367,7 +367,7 @@ function isVariableGlobal(symbol: GlobalSymbol): boolean {
 }
 
 /** The keys a destructured binding reads, outermost first, and the expression it reads them from. */
-function destructuringOf(
+export function destructuringOf(
   element: ts.BindingElement,
 ): { readonly keys: string[]; readonly initializer: ts.Expression } | undefined {
   const keys: string[] = [];

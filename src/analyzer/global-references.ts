@@ -206,7 +206,7 @@ function classifyUse(node: ts.Expression): readonly UseKind[] {
 }
 
 /** True for identifiers that are expressions (uses), not names being declared or property keys. */
-function isIdentifierPosition(node: ts.Identifier): boolean {
+export function isIdentifierPosition(node: ts.Identifier): boolean {
   const parent = node.parent;
   if (!parent) return false;
   if (ts.isPropertyAccessExpression(parent) && parent.name === node) return false;

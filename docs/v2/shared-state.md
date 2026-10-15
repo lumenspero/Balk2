@@ -64,6 +64,41 @@ has no such export, is reported and ignored.
 confidence. `let` and `var` bindings and parameters are not followed, since what they hold can
 change.
 
+## What counts as an access
+
+Only the outermost expression of a property chain is an access. `store.cart.items = []` writes
+`cart.items`; it does not also read `store` or `store.cart`. Reading `store` itself (passing it to a
+function, say) is a read of the container, a different node from any of its properties.
+
+| Code                                            | Relationship               | `operation`       |
+| ----------------------------------------------- | -------------------------- | ----------------- |
+| `render(store.user)`                            | `readsState`               | `read`            |
+| `store.user = u`, `window.store = {}`           | `writesState`              | `assign`          |
+| `({ a: store.x } = o)`, `for (store.y of list)` | `writesState`              | `assign`          |
+| `store.count += 1`, `store.flag ??= true`       | `readsState`+`writesState` | `compound-assign` |
+| `store.count++`, `--store.count`                | `readsState`+`writesState` | `increment`       |
+| `delete store.cache`                            | `deletesState`             | `delete`          |
+| `const { cart, user: { name } } = store`        | `readsState` per binding   | `read`            |
+
+**Calls are not data access.** `store.items.push(x)` and `App.init()` record nothing, since calling
+a method is behavior, not a read of a value. State passed as an argument is still read.
+`store.get('user')` is recorded only when `get` is a state method (see below).
+
+**Declarations are not writes.** `export const store = {...}` and `var appState = {...}` create
+state; only later assignments are writes. An assignment through the global object
+(`window.store = {}`) is a write.
+
+`const` destructuring reads each bound path rather than the whole container. A `let` or `var`
+destructuring, or one with a rest element or a computed key, reads the container.
+
+A computed property whose key is not statically known (`store[key]`) is recorded according to
+`dynamicPaths`. With the default `off` it becomes a `dynamic-state-path` observation; with
+`wildcard` it becomes a path with a `[*]` segment, for example `store#cache[*].value`. A computed
+key that is a constant or literal (`store[KEY]`, `store[0]`) is static.
+
+Known limit: a mutating method such as `push` or `splice` on a state array is not recorded as a
+write unless it is configured as a state method.
+
 ## State methods
 
 A state method is a call on something that already resolves to a state root. A `get` on an
