@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { ConfigProblem } from './config-problem.js';
 import { normalizeProtocolsConfig, type ProtocolsConfig } from './protocols-config.js';
+import { normalizeStateConfig, type StateConfig } from './state-config.js';
 
 export interface DataLineageEntry {
   /** Source code script/file that produces data output */
@@ -49,6 +50,8 @@ export interface Balk2Config {
   readonly globals?: GlobalsConfig;
   /** Project conventions for indirect connections (event protocols) */
   readonly protocols?: ProtocolsConfig;
+  /** What counts as shared state and how it is accessed */
+  readonly state?: StateConfig;
 }
 
 /** The loaded configuration plus everything in the file that was ignored or unusable. */
@@ -105,6 +108,7 @@ export function loadBalk2ConfigDetailed(
   const config: Record<string, unknown> = { ...raw };
   delete config.globals;
   delete config.protocols;
+  delete config.state;
 
   if ('globals' in raw) {
     problems.push(...validateGlobalsConfig(raw.globals));
@@ -116,6 +120,12 @@ export function loadBalk2ConfigDetailed(
     const protocols = normalizeProtocolsConfig(raw.protocols);
     problems.push(...protocols.problems);
     if (protocols.config) config.protocols = protocols.config;
+  }
+
+  if ('state' in raw) {
+    const state = normalizeStateConfig(raw.state);
+    problems.push(...state.problems);
+    if (state.config) config.state = state.config;
   }
 
   return { config: config as Balk2Config, problems };
