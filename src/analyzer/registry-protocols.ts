@@ -39,10 +39,44 @@ export interface RegistryProtocol {
   readonly receiver?: RegistryRule;
 }
 
+/** A decorator convention: a call to `name` registers the decorated class or method. */
+export interface RegistryDecoratorRule {
+  /** The decorator's identifier, as written at the use site */
+  readonly name: string;
+  /** Explicit registry identity, such as `src/container.ts:container` */
+  readonly registry: string;
+  /** Zero-based index of the key argument; default 0 */
+  readonly keyArg?: number;
+}
+
+/** One explicit registration: `key` in `registry` maps to `target`. */
+export interface RegistryManifestEntry {
+  readonly registry: string;
+  readonly key: string;
+  /** A symbol id (`src/user.ts:User`) or a file path */
+  readonly target: string;
+}
+
+/** A file convention: every file matching `glob` registers under its name, in `registry`. */
+export interface RegistryDiscoverRule {
+  /** Repository-relative glob, such as `src/commands/*.ts` */
+  readonly glob: string;
+  readonly registry: string;
+}
+
 /** Catalog customization, from `protocols.registries` in `.balk2.json`. */
 export interface RegistryProtocolOptions {
   /** Use the built-in catalog (default `true`) */
   readonly builtIns?: boolean;
+  /**
+   * Decorators that register what they decorate: `{ name: 'register', registry, keyArg: 0 }`
+   * maps `@register('user') class User` to the key `user` of `registry`.
+   */
+  readonly decorators?: readonly RegistryDecoratorRule[];
+  /** Explicit registrations, such as for generated code that no call site shows */
+  readonly manifest?: readonly RegistryManifestEntry[];
+  /** Files that register themselves under their name, found by glob */
+  readonly discover?: readonly RegistryDiscoverRule[];
   /**
    * Built-in methods to stop mapping. They still count as evidence that a receiver is a
    * registry.

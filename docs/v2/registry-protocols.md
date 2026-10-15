@@ -98,6 +98,26 @@ Validation follows the events section. Unusable fields are dropped with a messag
 would widen matching rejects the entry: an unrecognised receiver rule, or a key and value position
 that are the same.
 
+## Registrations without a call
+
+Some registrations are not a call on a registry. Each of these names its registry, or is a
+dictionary the code already declares, so nothing is registered by a name alone.
+
+- **Dictionary literals.** `const routes: Record<string, unknown> = { home: Home }` registers each
+  property whose value is a symbol in the repository. The declaration must be a dictionary type, so
+  a plain config object such as `const options = { debug: fn }` is not a registry.
+- **Decorators.** `decorators: [{ "name": "register", "registry": "src/container.ts:container" }]`
+  makes `@register('user') class User` register `User` under `user`. Only the named decorator
+  counts.
+- **Manifest.** `manifest: [{ "registry": "...", "key": "...", "target": "..." }]` adds explicit
+  registrations, for generated code. The target is a symbol id or a file path. A target missing from
+  the map leaves the key without an edge.
+- **Discovery.** `discover: [{ "glob": "src/commands/*.ts", "registry": "..." }]` registers each
+  matching file under its name, without the extension, with the file as target. Globs are
+  repository-relative; `*` stays within one segment, `**` crosses segments.
+
+Each source adds its keys to the registry, so a lookup in the same registry agrees with them.
+
 ## Joining lookups to registrations
 
 A lookup reaches a registration when its registry and its key both agree. Both sides share one

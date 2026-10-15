@@ -7,8 +7,8 @@ import type {
   SourceSpan,
   UnresolvedReason,
 } from '../types.js';
-import { ownerOf, enclosingOwner } from './owner.js';
-import { createPathLookup, type PathLookup } from './repository-files.js';
+import { enclosingOwner } from './owner.js';
+import { createPathLookup } from './repository-files.js';
 import type { RepositoryProgram } from './repository-program.js';
 import { ReceiverResolver } from './receiver-identity.js';
 import { resolveRegistryKey, type RegistryKeyResolution } from './registry-keys.js';
@@ -19,6 +19,8 @@ import {
 } from './registry-protocols.js';
 import { qualifyRegistryReceiver } from './registry-receivers.js';
 import { snippetOf, spanOf } from './spans.js';
+import { symbolTargetOf } from './registry-targets.js';
+import { declareRegistrations } from './registry-sources.js';
 import { unwrapExpression } from './static-keys.js';
 
 /** `registry[key] = value`: a registration by assignment, on a dictionary only. */
@@ -76,6 +78,7 @@ export function collectRegistryRelationships(
   // Every key a registry declares (by a register call or assignment), by id.
   const declared = new Map<string, RegistryKeyNode>();
   const lookups: Lookup[] = [];
+  declareRegistrations(repository, graph, catalog, options, declared);
 
   for (const call of collectRegistryCalls(repository, catalog)) {
     const { filePath, node, receiver, protocol } = call;
@@ -267,41 +270,6 @@ function collectRegistryCalls(
   }
 
   return found;
-}
-
-/**
- * The graph symbol a registered value names (`User`, `this.handler`, a function): the same
- * ownership rule the listener pass uses, so the id matches the symbol node. Classes are valid
- * targets here, unlike listeners. Anything else (a parameter, a literal, a call) is `undefined`.
- */
-function symbolTargetOf(
-  expression: ts.Expression,
-  checker: ts.TypeChecker,
-  graph: ConnectionGraph,
-  pathOf: PathLookup,
-): string | undefined {
-  const node = unwrapExpression(expression);
-  const nameNode = ts.isIdentifier(node)
-    ? node
-    : ts.isPropertyAccessExpression(node)
-      ? node.name
-      : undefined;
-  if (!nameNode) return undefined;
-
-  let symbol = checker.getSymbolAtLocation(nameNode);
-  if (symbol && symbol.flags & ts.SymbolFlags.Alias) {
-    symbol = checker.getAliasedSymbol(symbol);
-  }
-
-  const declaration = symbol?.valueDeclaration ?? symbol?.declarations?.[0];
-  if (!declaration) return undefined;
-
-  const sourceFile = declaration.getSourceFile();
-  const filePath = pathOf(sourceFile);
-  if (filePath === undefined || sourceFile.isDeclarationFile) return undefined;
-
-  const id = ownerOf(declaration, filePath);
-  return id !== undefined && graph.hasSymbol(id) ? id : undefined;
 }
 
 /** `config` when a configured protocol or rule decided it; otherwise what the compiler saw. */

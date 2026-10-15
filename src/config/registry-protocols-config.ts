@@ -1,6 +1,9 @@
 import {
   BUILT_IN_REGISTRY_PROTOCOLS,
+  type RegistryDecoratorRule,
   type RegistryDirection,
+  type RegistryDiscoverRule,
+  type RegistryManifestEntry,
   type RegistryProtocol,
   type RegistryProtocolOptions,
   type RegistryRule,
@@ -18,7 +21,17 @@ import {
 /** Registry conventions for a repository; see `protocols.registries` in `.balk2.json`. */
 export type RegistryProtocolsConfig = RegistryProtocolOptions;
 
-const REGISTRY_KEYS = new Set(['builtIns', 'disable', 'methods']);
+const REGISTRY_KEYS = new Set([
+  'builtIns',
+  'disable',
+  'methods',
+  'decorators',
+  'manifest',
+  'discover',
+]);
+const DECORATOR_KEYS = new Set(['name', 'registry', 'keyArg']);
+const MANIFEST_KEYS = new Set(['registry', 'key', 'target']);
+const DISCOVER_KEYS = new Set(['glob', 'registry']);
 const METHOD_KEYS = new Set(['method', 'direction', 'keyArg', 'valueArg', 'receiver']);
 const DIRECTIONS: readonly RegistryDirection[] = ['register', 'resolve', 'route'];
 const BUILT_IN_METHODS = new Set(BUILT_IN_REGISTRY_PROTOCOLS.map((protocol) => protocol.method));
@@ -54,11 +67,35 @@ export function normalizeRegistries(
 
   const disable = normalizeDisable(value['disable'], 'disable' in value, problems);
   const methods = normalizeMethods(value['methods'], 'methods' in value, problems);
+  const decorators = normalizeEntries(
+    value['decorators'],
+    'decorators' in value,
+    `${base}.decorators`,
+    problems,
+    normalizeDecorator,
+  );
+  const manifest = normalizeEntries(
+    value['manifest'],
+    'manifest' in value,
+    `${base}.manifest`,
+    problems,
+    normalizeManifestEntry,
+  );
+  const discover = normalizeEntries(
+    value['discover'],
+    'discover' in value,
+    `${base}.discover`,
+    problems,
+    normalizeDiscover,
+  );
 
   const result: RegistryProtocolsConfig = {
     ...(builtIns !== undefined ? { builtIns } : {}),
     ...(disable.length > 0 ? { disable } : {}),
     ...(methods.length > 0 ? { methods } : {}),
+    ...(decorators.length > 0 ? { decorators } : {}),
+    ...(manifest.length > 0 ? { manifest } : {}),
+    ...(discover.length > 0 ? { discover } : {}),
   };
   return Object.keys(result).length > 0 ? result : undefined;
 }
@@ -232,4 +269,117 @@ function normalizeReceiver(
 
 function isDirection(value: unknown): value is RegistryDirection {
   return DIRECTIONS.some((direction) => direction === value);
+}
+
+/**
+ * A list of entries, each checked by `normalize`. A missing or malformed list is reported and
+ * treated as empty; a malformed entry is reported and dropped.
+ */
+function normalizeEntries<T>(
+  value: unknown,
+  present: boolean,
+  path: string,
+  problems: ConfigProblem[],
+  normalize: (entry: unknown, path: string, problems: ConfigProblem[]) => T | undefined,
+): T[] {
+  if (!present) return [];
+  if (!Array.isArray(value)) {
+    problems.push({ path, message: 'must be an array' });
+    return [];
+  }
+
+  const entries: T[] = [];
+  value.forEach((entry: unknown, index) => {
+    const normalized = normalize(entry, `${path}[${index}]`, problems);
+    if (normalized !== undefined) entries.push(normalized);
+  });
+  return entries;
+}
+
+function normalizeDecorator(
+  value: unknown,
+  path: string,
+  problems: ConfigProblem[],
+): RegistryDecoratorRule | undefined {
+  if (!isRecord(value)) {
+    problems.push({ path, message: 'must be an object; entry ignored' });
+    return undefined;
+  }
+  reportUnknownKeys(value, DECORATOR_KEYS, path, problems);
+
+  const name = value['name'];
+  if (typeof name !== 'string' || !IDENTIFIER_PATTERN.test(name)) {
+    problems.push({ path: `${path}.name`, message: 'must be an identifier; entry ignored' });
+    return undefined;
+  }
+  const registry = nonEmptyString(value['registry'], `${path}.registry`, problems);
+  if (registry === undefined) return undefined;
+
+  const keyArg = argField(value, 'keyArg', true, '', path, problems);
+  return { name, registry, ...(keyArg !== undefined ? { keyArg } : {}) };
+}
+
+function normalizeManifestEntry(
+  value: unknown,
+  path: string,
+  problems: ConfigProblem[],
+): RegistryManifestEntry | undefined {
+  if (!isRecord(value)) {
+    problems.push({ path, message: 'must be an object; entry ignored' });
+    return undefined;
+  }
+  reportUnknownKeys(value, MANIFEST_KEYS, path, problems);
+
+  const registry = nonEmptyString(value['registry'], `${path}.registry`, problems);
+  const key = nonEmptyString(value['key'], `${path}.key`, problems);
+  const target = nonEmptyString(value['target'], `${path}.target`, problems);
+  if (registry === undefined || key === undefined || target === undefined) return undefined;
+  return { registry, key, target };
+}
+
+function normalizeDiscover(
+  value: unknown,
+  path: string,
+  problems: ConfigProblem[],
+): RegistryDiscoverRule | undefined {
+  if (!isRecord(value)) {
+    problems.push({ path, message: 'must be an object; entry ignored' });
+    return undefined;
+  }
+  reportUnknownKeys(value, DISCOVER_KEYS, path, problems);
+
+  const glob = nonEmptyString(value['glob'], `${path}.glob`, problems);
+  const registry = nonEmptyString(value['registry'], `${path}.registry`, problems);
+  if (glob === undefined || registry === undefined) return undefined;
+  // A glob is relative to the repository. An absolute one would match nothing, so reject it.
+  if (glob.startsWith('/')) {
+    problems.push({
+      path: `${path}.glob`,
+      message: 'must be relative to the repository; entry ignored',
+    });
+    return undefined;
+  }
+  return { glob, registry };
+}
+
+function nonEmptyString(
+  value: unknown,
+  path: string,
+  problems: ConfigProblem[],
+): string | undefined {
+  if (typeof value === 'string' && value.length > 0) return value;
+  problems.push({ path, message: 'must be a non-empty string; entry ignored' });
+  return undefined;
+}
+
+function reportUnknownKeys(
+  value: Record<string, unknown>,
+  allowed: ReadonlySet<string>,
+  path: string,
+  problems: ConfigProblem[],
+): void {
+  for (const key of Object.keys(value)) {
+    if (!allowed.has(key))
+      problems.push({ path: `${path}.${key}`, message: 'unknown key ignored' });
+  }
 }
