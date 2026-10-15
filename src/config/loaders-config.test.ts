@@ -1,9 +1,15 @@
 import { describe, expect, it } from 'vitest';
+import type { LoaderProtocol } from '../analyzer/loader-protocols.js';
 import type { ConfigProblem } from './config-problem.js';
 import { normalizeLoaders } from './loaders-config.js';
 import { normalizeProtocolsConfig } from './protocols-config.js';
 
-const run = (value: unknown) => {
+interface LoaderRun {
+  readonly loaders: LoaderProtocol[] | undefined;
+  readonly problems: ConfigProblem[];
+}
+
+const run = (value: unknown): LoaderRun => {
   const problems: ConfigProblem[] = [];
   const loaders = normalizeLoaders(value, problems);
   return { loaders, problems };

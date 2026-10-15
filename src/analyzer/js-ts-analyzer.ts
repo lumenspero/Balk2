@@ -293,9 +293,7 @@ function recordModuleLoadEdges(loads: readonly ModuleLoad[], graph: ConnectionGr
 
     const alreadyLinked = graph
       .getRelationships(load.owner)
-      .some(
-        (rel) => rel.type === 'imports' && rel.from === load.owner && rel.to === load.target,
-      );
+      .some((rel) => rel.type === 'imports' && rel.from === load.owner && rel.to === load.target);
     if (alreadyLinked) continue;
 
     graph.addRelationship('imports', load.owner, load.target, 'high', {

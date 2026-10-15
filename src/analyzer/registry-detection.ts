@@ -11,13 +11,17 @@ import { enclosingOwner } from './owner.js';
 import { createPathLookup } from './repository-files.js';
 import type { RepositoryProgram } from './repository-program.js';
 import { ReceiverResolver } from './receiver-identity.js';
-import { resolveRegistryKey, type RegistryKeyResolution } from './registry-keys.js';
+import {
+  resolveRegistryKey,
+  resolveTypeArgumentKey,
+  type RegistryKeyResolution,
+} from './registry-keys.js';
 import {
   RegistryProtocolCatalog,
   type RegistryProtocolOptions,
   type ResolvedRegistryProtocol,
 } from './registry-protocols.js';
-import { qualifyRegistryReceiver } from './registry-receivers.js';
+import { qualifyRegistryReceiver, type RegistryContainer } from './registry-receivers.js';
 import { snippetOf, spanOf } from './spans.js';
 import { symbolTargetOf } from './registry-targets.js';
 import { declareRegistrations } from './registry-sources.js';
@@ -48,7 +52,10 @@ interface RegistryCall {
   /** The call expression, or the assignment expression */
   readonly node: ts.Expression;
   readonly receiver: ts.Expression;
-  readonly keyExpression: ts.Expression;
+  /** The key argument, when the protocol reads its key from an argument */
+  readonly keyExpression: ts.Expression | undefined;
+  /** The type argument, when the protocol reads its key from the type (`keyFrom: 'typeArgument'`) */
+  readonly typeArgument: ts.TypeNode | undefined;
   readonly valueExpression: ts.Expression | undefined;
   readonly protocol: ResolvedRegistryProtocol;
   readonly assignment: boolean;
@@ -56,8 +63,8 @@ interface RegistryCall {
 
 /**
  * Registry pass: map registry calls (`container.set('user', User)`, `container.get('user')`,
- * `router.navigate('/users')`) and dictionary assignments (`handlers[404] = NotFound`) onto
- * registry keys.
+ * `container.get(UserService)`, `container.resolve<UserService>()`, `router.navigate('/users')`)
+ * and dictionary assignments (`handlers[404] = NotFound`) onto registry keys.
  *
  * A registration links the key to the symbol it maps to with `registers`. A lookup links its
  * caller to the key with `resolves` or `routesTo`. A key is scoped by the identity of its registry,
@@ -125,8 +132,8 @@ export function collectRegistryRelationships(
       qualification.evidence === 'config' ||
       (identity.kind !== 'unknown' && registryScopes.has(identity.scope));
 
-    const key = resolveRegistryKey(call.keyExpression, checker, qualification.container);
-    if (key.kind === 'not-a-name') continue;
+    const key = keyOf(call, checker, qualification.container);
+    if (key === undefined || key.kind === 'not-a-name') continue;
 
     const span = spanOf(node, filePath);
     const owner = enclosingOwner(node, filePath);
@@ -186,6 +193,17 @@ export function collectRegistryRelationships(
   recordAmbiguousLookups(graph, lookups, declared);
 }
 
+/** The key a call names: from its type argument when the protocol says so, otherwise its argument. */
+function keyOf(
+  call: RegistryCall,
+  checker: ts.TypeChecker,
+  container: RegistryContainer,
+): RegistryKeyResolution | undefined {
+  if (call.typeArgument) return resolveTypeArgumentKey(call.typeArgument, checker, container);
+  if (call.keyExpression) return resolveRegistryKey(call.keyExpression, checker, container);
+  return undefined;
+}
+
 /**
  * Agreement: a lookup reaches a registration when its registry identity and key both match, which
  * is what sharing one key node means, so those lookups need nothing more.
@@ -237,7 +255,8 @@ function keyGroup(node: RegistryKeyNode): string {
 
 /**
  * Every call whose method has a registry protocol, and every dictionary assignment, in a stable
- * order. Receivers are checked later, because most method names match nothing.
+ * order. Receivers are checked later, because most method names match nothing. A protocol that
+ * reads its key from a type argument needs one; a call without it is not a candidate.
  */
 function collectRegistryCalls(
   repository: RepositoryProgram,
@@ -267,18 +286,27 @@ function collectRegistryCalls(
         }
 
         const protocol = method !== undefined ? catalog.forMethod(method) : undefined;
-        const keyExpression = protocol ? node.arguments[protocol.keyArg] : undefined;
-        if (protocol && receiver && keyExpression) {
-          found.push({
-            filePath,
-            node,
-            receiver,
-            keyExpression,
-            valueExpression:
-              protocol.valueArg !== undefined ? node.arguments[protocol.valueArg] : undefined,
-            protocol,
-            assignment: false,
-          });
+        if (protocol && receiver) {
+          const fromType = protocol.keyFrom === 'typeArgument';
+          const typeArgument = fromType ? node.typeArguments?.[0] : undefined;
+          const keyExpression =
+            !fromType && protocol.keyArg !== undefined
+              ? node.arguments[protocol.keyArg]
+              : undefined;
+
+          if (typeArgument !== undefined || keyExpression !== undefined) {
+            found.push({
+              filePath,
+              node,
+              receiver,
+              keyExpression,
+              typeArgument,
+              valueExpression:
+                protocol.valueArg !== undefined ? node.arguments[protocol.valueArg] : undefined,
+              protocol,
+              assignment: false,
+            });
+          }
         }
       } else if (
         ts.isBinaryExpression(node) &&
@@ -290,6 +318,7 @@ function collectRegistryCalls(
           node,
           receiver: node.left.expression,
           keyExpression: node.left.argumentExpression,
+          typeArgument: undefined,
           valueExpression: node.right,
           protocol: ASSIGNMENT,
           assignment: true,

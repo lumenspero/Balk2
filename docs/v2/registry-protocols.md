@@ -1,9 +1,8 @@
 # Registry protocols
 
-A registry is a string or number key that maps to a target: a factory name, a route, a plugin.
-Registry protocols describe the calls that register a key, look one up, or navigate to one. This
-document covers the catalogue and configuration. Detection of registrations and lookups in code
-is a later step.
+A registry is a string, number or class key that maps to a target: a factory name, a route, a
+plugin, or a service token. Registry protocols describe the calls that register a key, look one up,
+or navigate to one. This document covers the catalogue and configuration.
 
 ## Directions and relationships
 
@@ -47,17 +46,40 @@ checked instead, and is trusted as written.
 
 ## Key types
 
-A key's type decides whether `1` and `'1'` are the same key. It follows the container:
+A key's type decides whether two values are the same key. It follows the container and the key:
 
-- **object** (a dictionary): JavaScript converts every key to a string, so `routes[404]` and
-  `routes['404']` are one key, stored as `'404'`.
-- **typed** (a Map, Set, class, or anything unknown): keys keep their type, so `store.get(404)`
+- **string** (the default): a dictionary stores `routes[404]` and `routes['404']` as one key,
+  stored as `'404'`.
+- **number** (a Map, Set, class, or anything unknown): keys keep their type, so `store.get(404)`
   and `store.get('404')` are different keys. Numeric keys get a typed id, for example
   `registry:src/cache.ts:store#number:404`.
+- **type** (a class used as a token): a class reference is a key of its own, so
+  `container.get(UserService)` and `container.get('UserService')` are different keys. The key is
+  the class name, with the id `registry:<scope>#type:UserService`. A class token is recognised only
+  in a typed registry; in a dictionary it is not a key.
+
+A class token is recognised when the identifier, or `Namespace.Class`, resolves directly to a class
+declaration. An alias such as `const Token = UserService` is not followed, so it is not a key.
 
 Arrays are not registries by default. `handlers[0] = fn` is positional, not a keyed lookup.
 
 Events do not accept numeric names. An event name that is not a string is not an event.
+
+## Type-argument lookups
+
+Some containers read the key from the type argument rather than from an argument:
+
+```ts
+const service = container.resolve<UserService>();
+```
+
+A protocol with `keyFrom: "typeArgument"` takes its key from the first type argument of the call.
+The key is the named class, stored as a class token, so it agrees with
+`container.register(UserService, UserService)`.
+
+A type argument that is not a named class (a generic `T`, a union, a primitive) cannot be read as a
+token. The lookup is reported as a `dynamic-registry-key` observation rather than guessed. A
+`keyFrom` protocol has no `keyArg`; setting both drops `keyArg` with a message.
 
 ## Configuration
 
@@ -77,7 +99,8 @@ Registry protocols are configured under `protocols.registries` in `.balk2.json`:
           "keyArg": 0,
           "valueArg": 1,
           "receiver": { "names": ["container"] }
-        }
+        },
+        { "method": "resolve", "direction": "resolve", "keyFrom": "typeArgument" }
       ]
     }
   }
@@ -90,13 +113,19 @@ Registry protocols are configured under `protocols.registries` in `.balk2.json`:
 | `disable`  | Built-in methods to stop mapping. They still count as evidence    |
 | `methods`  | Project methods. One with the same name as a built-in replaces it |
 
-Each method has `method`, `direction` (`register`, `resolve` or `route`), `keyArg` (required),
-`valueArg` (`register` only) and an optional `receiver`. A configured method defaults to
-`receiver: "any"`, because naming it states the intent.
+Each method has `method`, `direction` (`register`, `resolve` or `route`), and one key source:
+
+- `keyArg`: the zero-based argument that holds the key. Required unless `keyFrom` is set.
+- `keyFrom`: where the key comes from when it is not an argument. The only value is `typeArgument`,
+  described above. An unrecognised value rejects the entry, since falling back to `keyArg` could
+  match the wrong thing.
+
+It may also have `valueArg` (`register` only) and an optional `receiver`. A configured method
+defaults to `receiver: "any"`, because naming it states the intent.
 
 Validation follows the events section. Unusable fields are dropped with a message. A mistake that
-would widen matching rejects the entry: an unrecognised receiver rule, or a key and value position
-that are the same.
+would widen matching rejects the entry: an unrecognised receiver rule, a key and value position
+that are the same, or an unknown `keyFrom`.
 
 ## Registrations without a call
 
@@ -118,11 +147,15 @@ dictionary the code already declares, so nothing is registered by a name alone.
 
 Each source adds its keys to the registry, so a lookup in the same registry agrees with them.
 
+Known limit: a service registered through a framework's runtime wiring, with no call the analysis
+can see (for example, constructor parameter injection through `@Inject`), is not connected. Add a
+`manifest` entry for it.
+
 ## Joining lookups to registrations
 
 A lookup reaches a registration when its registry and its key both agree. Both sides share one
-key node (`registry:<scope>#<key>`), so that case needs nothing more: the path
-`caller -> resolves -> key -> registers -> target` is already in the map.
+key node (`registry:<scope>#<key>`, or the `number:` or `type:` form), so that case needs nothing
+more: the path `caller -> resolves -> key -> registers -> target` is already in the map.
 
 A lookup whose registry declares other keys, but not this one, while another registry declares it,
 is recorded as `ambiguous-registry`. Its `candidates` list those other keys, and no edge chooses
@@ -149,4 +182,6 @@ among them. A lookup into a registry that declares nothing is not flagged, so an
   configuration.
 - Element access (`routes[name] = Target`) is a registration pattern handled by detection, not
   by these method protocols.
-- Symbol and object keys are not supported; they are not string or number keys.
+- Symbol and object keys are not supported. Class tokens are supported only in typed registries, and
+  only when the class is named directly, not through an alias.
+- A type argument must name a class. Generic parameters and unions are reported, not read.

@@ -23,13 +23,26 @@ export type RegistryRule =
   | 'any'
   | { readonly names?: readonly string[]; readonly types?: readonly string[] };
 
+/**
+ * Where a protocol reads its key from, when not from an argument.
+ *
+ * - `typeArgument`: the type argument of the call, as in `container.resolve<UserService>()`. The
+ *   key is the named class, stored as a class token.
+ */
+export type RegistryKeySource = 'typeArgument';
+
 /** One registry convention: how a method call maps onto a registry key. */
 export interface RegistryProtocol {
   /** Method name matched on a receiver, e.g. `set` in `map.set('user', User)` */
   readonly method: string;
   readonly direction: RegistryDirection;
-  /** Zero-based index of the key argument */
-  readonly keyArg: number;
+  /**
+   * Zero-based index of the key argument. Required unless `keyFrom` is set, in which case the key
+   * is not an argument and this is ignored.
+   */
+  readonly keyArg?: number;
+  /** Where the key comes from when it is not an argument */
+  readonly keyFrom?: RegistryKeySource;
   /** Zero-based index of the target argument (`register` only) */
   readonly valueArg?: number;
   /**
@@ -91,7 +104,8 @@ export interface ResolvedRegistryProtocol {
   readonly method: string;
   readonly direction: RegistryDirection;
   readonly relationship: RegistryRelationship;
-  readonly keyArg: number;
+  readonly keyArg?: number;
+  readonly keyFrom?: RegistryKeySource;
   readonly valueArg?: number;
   readonly receiver: RegistryRule;
   /** `config` protocols produce relationships with `config` evidence */
@@ -195,7 +209,8 @@ function resolveProtocol(
     method: protocol.method,
     direction: protocol.direction,
     relationship: registryRelationshipOf(protocol.direction),
-    keyArg: protocol.keyArg,
+    ...(protocol.keyArg !== undefined ? { keyArg: protocol.keyArg } : {}),
+    ...(protocol.keyFrom !== undefined ? { keyFrom: protocol.keyFrom } : {}),
     ...(protocol.valueArg !== undefined ? { valueArg: protocol.valueArg } : {}),
     receiver: protocol.receiver ?? (source === 'built-in' ? 'registry-like' : 'any'),
     source,

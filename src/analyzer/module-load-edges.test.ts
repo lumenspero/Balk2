@@ -3,6 +3,7 @@ import { ConnectionGraph } from '../graph.js';
 import { createRepositoryFixture, type RepositoryFixture } from '../testing/repository-fixture.js';
 import type { LoaderProtocol } from './loader-protocols.js';
 import { JsTsAnalyzer } from './js-ts-analyzer.js';
+import type { Relationship } from '../types.js';
 
 const lines = (...rows: string[]): string => rows.join('\n');
 
@@ -42,7 +43,7 @@ describe('module load edges', () => {
   });
   afterAll(() => fixture?.cleanup());
 
-  const edgesFrom = (from: string, to: string) =>
+  const edgesFrom = (from: string, to: string): Relationship[] =>
     graph
       .getRelationships()
       .filter((rel) => rel.type === 'imports' && rel.from === from && rel.to === to);

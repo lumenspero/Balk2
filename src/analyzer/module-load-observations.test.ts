@@ -3,6 +3,7 @@ import { ConnectionGraph } from '../graph.js';
 import { createRepositoryFixture, type RepositoryFixture } from '../testing/repository-fixture.js';
 import { collectModuleLoads } from './module-loads.js';
 import { recordDynamicLoads } from './module-load-observations.js';
+import type { Relationship } from '../types.js';
 
 const lines = (...rows: string[]): string => rows.join('\n');
 
@@ -32,7 +33,7 @@ describe('recordDynamicLoads', () => {
   });
   afterAll(() => fixture?.cleanup());
 
-  const observationLinks = () =>
+  const observationLinks = (): Relationship[] =>
     graph
       .getRelationships()
       .filter((rel) => rel.type === 'imports' && rel.to.startsWith(OBSERVATION_PREFIX));
@@ -43,10 +44,7 @@ describe('recordDynamicLoads', () => {
 
   it('links each observation at low confidence, from the symbol that performs the load', () => {
     const links = observationLinks();
-    expect(links.map((rel) => rel.from).sort()).toEqual([
-      'main.ts:computed',
-      'main.ts:worker',
-    ]);
+    expect(links.map((rel) => rel.from).sort()).toEqual(['main.ts:computed', 'main.ts:worker']);
     for (const rel of links) {
       expect(rel).toMatchObject({ type: 'imports', confidence: 'low', evidence: 'ts-program' });
     }

@@ -104,8 +104,9 @@ export class ConnectionGraph {
 
   /**
    * Add a registry-key node: a key scoped to a resolved registry identity. The id is
-   * `registry:<scope>#<key>`, or `registry:<scope>#number:<key>` for a numeric key in a typed
-   * registry, so the same key in two registries is two nodes. Adding it again is a no-op.
+   * `registry:<scope>#<key>`, `registry:<scope>#number:<key>` for a numeric key in a typed
+   * registry, or `registry:<scope>#type:<name>` for a class token, so the same key in two
+   * registries is two nodes. Adding it again is a no-op.
    */
   addRegistryKey(key: string, scope: string, keyType: RegistryKeyType = 'string'): RegistryKeyNode {
     const normalizedScope = normalizePath(scope);
@@ -327,14 +328,15 @@ export function eventChannelId(name: string, scope?: string): string {
 
 /**
  * Id of a registry-key node; shared with analyzers that need to name keys. A numeric key in a
- * typed registry is tagged, so `1` and `'1'` stay apart there.
+ * typed registry is tagged `number:`, and a class token is tagged `type:`, so `1`, `'1'` and a
+ * class named `1` stay apart.
  */
 export function registryKeyId(
   key: string,
   scope: string,
   keyType: RegistryKeyType = 'string',
 ): string {
-  const tag = keyType === 'number' ? 'number:' : '';
+  const tag = keyType === 'number' ? 'number:' : keyType === 'type' ? 'type:' : '';
   return `registry:${normalizePath(scope)}#${tag}${key}`;
 }
 

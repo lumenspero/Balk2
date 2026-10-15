@@ -13,7 +13,7 @@
 | `symbols`       | `Record<id, SymbolNode>`                   | `filePath:name`                        |
 | `artifacts`     | `Record<path, ArtifactNode>`               | Data files                             |
 | `eventChannels` | `Record<id, EventChannelNode>`             | Virtual nodes for event names          |
-| `registryKeys`  | `Record<id, RegistryKeyNode>`              | Virtual nodes for string keys          |
+| `registryKeys`  | `Record<id, RegistryKeyNode>`              | Virtual nodes for keys                 |
 | `statePaths`    | `Record<id, StatePathNode>`                | Virtual nodes for shared state         |
 | `unresolved`    | `Record<id, UnresolvedReferenceNode>`      | Diagnostics for ambiguous/dynamic code |
 | `relationships` | `Relationship[]`                           | Sorted by `(type, from, to)`           |
@@ -28,10 +28,22 @@ is resolved. `socket.emit('ready')` and `document.dispatchEvent(new Event('ready
 produce different channels. Fields: `kind`, `id`, `name`, optional `scope`.
 
 **Registry key** — `registry:<scope>#<key>`. A key scoped to the resolved identity of the registry
-it belongs to, so the same key in two containers stays two nodes. A numeric key in a typed registry
-(Map, Set, class) is `registry:<scope>#number:<key>`, so `404` and `'404'` stay apart there; in a
-dictionary a number is stored as its string form. Fields: `kind`, `id`, `key`, `scope`, `keyType`
-(`string` or `number`).
+it belongs to, so the same key in two containers stays two nodes. The id form depends on the key
+type:
+
+| `keyType` | Id                              | Example                                                |
+| --------- | ------------------------------- | ------------------------------------------------------ |
+| `string`  | `registry:<scope>#<key>`        | `registry:src/routes.ts:routes#home`                   |
+| `number`  | `registry:<scope>#number:<key>` | `registry:src/cache.ts:store#number:404`               |
+| `type`    | `registry:<scope>#type:<name>`  | `registry:src/container.ts:container#type:UserService` |
+
+A numeric key in a typed registry (Map, Set, class) is `number`, so `404` and `'404'` stay apart
+there; in a dictionary a number is stored as its string form. A class used as a token is `type`,
+keyed by the class name, so `UserService` (the class) and `'UserService'` (the string) stay apart in
+a typed registry. A class token has no key in a dictionary.
+
+Fields: `kind`, `id`, `key`, `scope`, `keyType` (`string`, `number` or `type`). For a `type` key,
+`key` is the class name.
 
 A registry key is created only for a registry the analysis trusts. A dictionary, a configured name
 or type, or a Map or Set with evidence of repository symbols (a declared key, or a registration
@@ -110,13 +122,13 @@ four names remain in the type definitions only so older maps can be read, and
 Module loads that the analysis can see are recorded as `imports` relationships. The source of the
 load determines the edge:
 
-| Written as                                    | `loadKind`          | Edge                                                         |
-| --------------------------------------------- | ------------------- | ------------------------------------------------------------ |
-| `import('./x')` with a constant specifier     | `import-expression` | owner → file, when the file resolves inside the repository   |
-| `new Worker(new URL('./x', import.meta.url))` | `worker`            | owner → file                                                 |
-| `new URL('./x', import.meta.url)` elsewhere   | `url`               | owner → file                                                 |
-| A configured loader call (`protocols.loaders`) | `loader`           | owner → file                                                 |
-| `require('./x')` (literal)                    | none                | file or owner → file; carries no `loadKind` in this version |
+| Written as                                     | `loadKind`          | Edge                                                        |
+| ---------------------------------------------- | ------------------- | ----------------------------------------------------------- |
+| `import('./x')` with a constant specifier      | `import-expression` | owner → file, when the file resolves inside the repository  |
+| `new Worker(new URL('./x', import.meta.url))`  | `worker`            | owner → file                                                |
+| `new URL('./x', import.meta.url)` elsewhere    | `url`               | owner → file                                                |
+| A configured loader call (`protocols.loaders`) | `loader`            | owner → file                                                |
+| `require('./x')` (literal)                     | none                | file or owner → file; carries no `loadKind` in this version |
 
 The owner is the enclosing symbol when there is one (for example `src/app.ts:loadPlugin`), and the
 file at top level.
@@ -129,9 +141,7 @@ Three rules keep dynamic loads from changing existing output:
 - **External and missing targets are silent.** A package specifier (`import('left-pad')`) and a
   relative specifier that names no repository file produce no edge and no observation.
 - **Computed specifiers are observations.** A specifier that is not a constant, such as
-  `import(\`./${name}.js\`)` or `loadPlugin(name)`, produces a `dynamic-module-specifier`
-  observation. The owner links to it with a `low`-confidence `imports` relationship whose
-  `loadKind` says how it loads. No edge names a target.
+  `import(\`./${name}.js\`)`or`loadPlugin(name)`, produces a `dynamic-module-specifier`observation. The owner links to it with a`low`-confidence `imports`relationship whose`loadKind` says how it loads. No edge names a target.
 
 ## Reading the graph
 
@@ -172,8 +182,8 @@ not channels and are never included.
 - A version 1 map is converted on read: its nodes are valid in version 2 unchanged,
   `eventChannels`, `registryKeys`, `statePaths` and `unresolved` start empty, and stored reverse
   links are turned into the forward relationship they repeat, so each fact is held once.
-- A version 2 map written before registry keys or state paths existed reads with an empty
-  `registryKeys` or `statePaths` table.
+- A version 2 map written before registry keys, state paths, or `type` keys existed reads with the
+  missing tables empty. A map with no `type` keys is unchanged.
 - A version 2 map written while reverse links were still stored is cleaned the same way, so
   `deserializeConnectionMap` always returns relationships in canonical form.
 - Any other version is rejected with `Unsupported connection map version`.
@@ -187,3 +197,5 @@ The exported `ConnectionMap` type now has `version: 2` and four new tables (`eve
 `registryKeys`, `statePaths`, `unresolved`), which is a breaking
 change for TypeScript consumers; `ConnectionMapV1` is exported for code that still handles the
 old shape. This change ships with the next major version.
+
+`RegistryKeyType` gained `'type'`. Code that switches over `keyType` exhaustively must handle it.

@@ -11,6 +11,7 @@ import {
 import type { ConfigProblem } from './config-problem.js';
 import {
   argField,
+  dropped,
   IDENTIFIER_PATTERN,
   isArgIndex,
   isRecord,
@@ -32,8 +33,9 @@ const REGISTRY_KEYS = new Set([
 const DECORATOR_KEYS = new Set(['name', 'registry', 'keyArg']);
 const MANIFEST_KEYS = new Set(['registry', 'key', 'target']);
 const DISCOVER_KEYS = new Set(['glob', 'registry']);
-const METHOD_KEYS = new Set(['method', 'direction', 'keyArg', 'valueArg', 'receiver']);
+const METHOD_KEYS = new Set(['method', 'direction', 'keyArg', 'keyFrom', 'valueArg', 'receiver']);
 const DIRECTIONS: readonly RegistryDirection[] = ['register', 'resolve', 'route'];
+const KEY_FROM_VALUES = ['typeArgument'] as const;
 const BUILT_IN_METHODS = new Set(BUILT_IN_REGISTRY_PROTOCOLS.map((protocol) => protocol.method));
 
 /**
@@ -187,13 +189,36 @@ function normalizeMethod(
     return undefined;
   }
 
-  const keyArg = value['keyArg'];
-  if (!isArgIndex(keyArg)) {
-    problems.push({
-      path: `${path}.keyArg`,
-      message: `must be an integer from 0 to ${MAX_ARG_INDEX}; entry ignored`,
-    });
-    return undefined;
+  // `keyFrom` changes which argument or type is the key, so an unknown value rejects the entry
+  // rather than falling back to `keyArg`, which would match the wrong thing.
+  let keyFrom: (typeof KEY_FROM_VALUES)[number] | undefined;
+  if ('keyFrom' in value) {
+    const raw = value['keyFrom'];
+    if (!KEY_FROM_VALUES.some((allowed) => allowed === raw)) {
+      problems.push({
+        path: `${path}.keyFrom`,
+        message: `must be one of ${KEY_FROM_VALUES.join(', ')}; entry ignored`,
+      });
+      return undefined;
+    }
+    keyFrom = raw as (typeof KEY_FROM_VALUES)[number];
+  }
+
+  let keyArg: number | undefined;
+  if (keyFrom !== undefined) {
+    if ('keyArg' in value) {
+      dropped(`${path}.keyArg`, 'not used when keyFrom is set', problems);
+    }
+  } else {
+    const raw = value['keyArg'];
+    if (!isArgIndex(raw)) {
+      problems.push({
+        path: `${path}.keyArg`,
+        message: `must be an integer from 0 to ${MAX_ARG_INDEX}; entry ignored`,
+      });
+      return undefined;
+    }
+    keyArg = raw;
   }
 
   const receiver = normalizeReceiver(value, path, problems);
@@ -207,7 +232,7 @@ function normalizeMethod(
     path,
     problems,
   );
-  if (valueArg !== undefined && valueArg === keyArg) {
+  if (valueArg !== undefined && keyArg !== undefined && valueArg === keyArg) {
     problems.push({
       path: `${path}.valueArg`,
       message: `must differ from keyArg (both are ${keyArg}); entry ignored`,
@@ -218,7 +243,8 @@ function normalizeMethod(
   return {
     method,
     direction,
-    keyArg,
+    ...(keyArg !== undefined ? { keyArg } : {}),
+    ...(keyFrom !== undefined ? { keyFrom } : {}),
     ...(valueArg !== undefined ? { valueArg } : {}),
     ...(receiver ? { receiver } : {}),
   };

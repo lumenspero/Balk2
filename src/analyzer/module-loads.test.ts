@@ -5,6 +5,8 @@ import type { LoaderProtocol } from './loader-protocols.js';
 
 const lines = (...rows: string[]): string => rows.join('\n');
 
+const OPTIONS = { target: 'ES2022', module: 'ESNext', moduleResolution: 'Bundler' };
+
 const FILES: Record<string, string> = {
   'util.ts': 'export const help = 1;',
   'worker.ts': 'export {};',
@@ -27,11 +29,7 @@ describe('collectModuleLoads', () => {
   let loads: ModuleLoad[] = [];
 
   beforeAll(() => {
-    fixture = createRepositoryFixture(FILES, {
-      target: 'ES2022',
-      module: 'ESNext',
-      moduleResolution: 'Bundler',
-    });
+    fixture = createRepositoryFixture(FILES, OPTIONS);
     loads = collectModuleLoads(fixture.repository);
   });
   afterAll(() => fixture?.cleanup());
@@ -102,10 +100,8 @@ describe('collectModuleLoads: loader receiver rules', () => {
     receiver: 'any',
   } as unknown as LoaderProtocol;
 
-  let fixture: RepositoryFixture | undefined;
-
-  beforeAll(() => {
-    fixture = createRepositoryFixture(
+  const repo = (): RepositoryFixture =>
+    createRepositoryFixture(
       {
         'util.ts': 'export const u = 1;',
         'main.ts': lines(
@@ -113,13 +109,15 @@ describe('collectModuleLoads: loader receiver rules', () => {
           "export const viaAny = () => anything.load('./util.js');",
         ),
       },
-      { target: 'ES2022', module: 'ESNext', moduleResolution: 'Bundler' },
+      OPTIONS,
     );
-  });
-  afterAll(() => fixture?.cleanup());
 
   it('does not match a method call when the receiver rule is a string', () => {
-    const loads = collectModuleLoads(fixture!.repository, [stringReceiver]);
-    expect(loads).toHaveLength(0);
+    const fixture = repo();
+    try {
+      expect(collectModuleLoads(fixture.repository, [stringReceiver])).toHaveLength(0);
+    } finally {
+      fixture.cleanup();
+    }
   });
 });

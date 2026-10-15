@@ -24,12 +24,12 @@ describe('renderMarkdown: dynamic module loads', () => {
     'main.ts': "export function lazy() { return import('./util.js'); }",
   });
 
-  it('shows the load kind on the owning symbol\'s import', () => {
+  it("shows the load kind on the owning symbol's import", () => {
     expect(dynamic).toContain('### main.ts:lazy');
     expect(dynamic).toContain('Imports:\n  → util.ts (import-expression)');
   });
 
-  it('shows the importing symbol under the file\'s imported-by list, with its load kind', () => {
+  it("shows the importing symbol under the file's imported-by list, with its load kind", () => {
     expect(dynamic).toContain('  ← main.ts:lazy (import-expression)');
   });
 

@@ -33,7 +33,10 @@ export const MODULE_LOAD_CORPUS: readonly ModuleLoadFixture[] = [
         "export const loadB = () => import('./b.js');",
       ),
     },
-    edges: ['main.ts:loadA -> a.ts [import-expression]', 'main.ts:loadB -> b.ts [import-expression]'],
+    edges: [
+      'main.ts:loadA -> a.ts [import-expression]',
+      'main.ts:loadB -> b.ts [import-expression]',
+    ],
     observations: [],
   },
   {
