@@ -3,8 +3,9 @@ import * as path from 'path';
 import { serializeConnectionMap } from '../serialize.js';
 import { renderMarkdown } from '../renderer/markdown-renderer.js';
 import { getGitCommitHash } from './git-utils.js';
-import { loadBalk2Config } from '../config/index.js';
-import { buildConnectionGraph } from './build-graph.js';
+import { loadBalk2ConfigDetailed } from '../config/index.js';
+import { buildConnectionGraphDetailed } from './build-graph.js';
+import { formatConfigWarnings } from './problem-warnings.js';
 import type { ConnectionMap } from '../types.js';
 
 export interface GenerateOptions {
@@ -20,6 +21,8 @@ export interface GenerateResult {
   readonly jsonPath: string;
   readonly mdPath: string;
   readonly map: ConnectionMap;
+  /** One line per configuration entry that was dropped; printed to stderr by the CLI */
+  readonly warnings: readonly string[];
 }
 
 /**
@@ -27,8 +30,11 @@ export interface GenerateResult {
  */
 export function generateConnectionMap(options: GenerateOptions = {}): GenerateResult {
   const rootDir = path.resolve(options.cwd ?? process.cwd());
-  const balk2Config = loadBalk2Config(rootDir);
-  const graph = buildConnectionGraph(rootDir, balk2Config);
+  const loaded = loadBalk2ConfigDetailed(rootDir);
+  const balk2Config = loaded.config;
+  const built = buildConnectionGraphDetailed(rootDir, balk2Config);
+  const graph = built.graph;
+  const warnings = formatConfigWarnings([...loaded.problems, ...built.problems]);
 
   // Build connection map
   const commit = getGitCommitHash(rootDir);
@@ -56,7 +62,7 @@ export function generateConnectionMap(options: GenerateOptions = {}): GenerateRe
   fs.writeFileSync(jsonPath, jsonContent, 'utf8');
   fs.writeFileSync(mdPath, mdContent, 'utf8');
 
-  return { jsonPath, mdPath, map };
+  return { jsonPath, mdPath, map, warnings };
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────

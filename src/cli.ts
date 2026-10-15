@@ -33,6 +33,7 @@ function main(): void {
     case 'generate': {
       try {
         const res = generateConnectionMap({ output: outputOption });
+        for (const line of res.warnings) console.warn(line);
         console.log(`Generated repository connection map:`);
         console.log(`  JSON: ${res.jsonPath}`);
         console.log(`  Markdown: ${res.mdPath}`);
@@ -61,6 +62,7 @@ function main(): void {
 
     case 'check': {
       const res = checkConnectionMap({ output: outputOption });
+      for (const line of res.warnings) console.warn(line);
       console.log(res.message);
       if (!res.isCurrent) process.exit(1);
       break;

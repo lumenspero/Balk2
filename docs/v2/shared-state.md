@@ -60,7 +60,8 @@ the default is kept.
 Balk2 does not guess which exported objects are shared. The export is matched by symbol, so a
 renamed import, a namespace import (`ns.store`) and a default import all reach it. A different
 module's export with the same name does not. A singleton whose module is not analyzed, or that
-has no such export, is ignored; the analysis returns the problem, and it is kept out of the graph.
+has no such export, is ignored. `generate` and `check` print a warning for it on stderr, and the
+graph is unchanged.
 
 **Aliases.** `const cart = store.cart` and `const { cart } = store` are followed, so later
 `cart.items` is `store#cart.items`. A path reached through such an alias is recorded at `medium`
@@ -130,7 +131,8 @@ touches `session.user`.
 
 An entry that could widen what a call touches is rejected whole. This covers a missing or unknown
 `access`, a malformed `keyArg`, and a bad method name. A misused `pathSeparator` drops only that
-field. Every dropped setting is reported by `loadBalk2ConfigDetailed`.
+field. Every dropped setting is printed as a warning by `generate` and `check`, and returned
+programmatically by `loadBalk2ConfigDetailed`. Warnings do not change the exit code.
 
 When a call on a state root also matches a registry method (for example `cache.get('x')` on a
 configured `Map` singleton), it is recorded as state, not as a registry lookup. The same holds for

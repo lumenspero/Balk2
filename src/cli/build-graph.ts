@@ -10,6 +10,7 @@ import {
 import { registerDataArtifacts } from '../data/formats.js';
 import { filterFilesWithConfig, applyExplicitLineage } from '../config/index.js';
 import type { Balk2Config } from '../config/balk2-config.js';
+import type { ConfigProblem } from '../config/config-problem.js';
 
 const DEFAULT_EXCLUDES = new Set([
   'node_modules',
@@ -24,17 +25,25 @@ const DEFAULT_EXCLUDES = new Set([
   'connection-map.md',
 ]);
 
+/** The graph, and what the analysis dropped that the configuration asked for. */
+export interface BuiltGraph {
+  readonly graph: ConnectionGraph;
+  /** Configured entries the analysis could not use, such as a singleton with no export */
+  readonly problems: readonly ConfigProblem[];
+}
+
 /**
- * Build the connection graph for a repository.
+ * Build the connection graph for a repository, with the problems the analysis reported.
  *
  * This is the single analysis path shared by `generate` and `check`. Both
  * commands must produce byte-identical graphs for identical input, so no
  * analysis logic may live outside this function.
  */
-export function buildConnectionGraph(rootDir: string, config?: Balk2Config): ConnectionGraph {
+export function buildConnectionGraphDetailed(rootDir: string, config?: Balk2Config): BuiltGraph {
   const jsTsAnalyzer = new JsTsAnalyzer();
   const analyzers: Analyzer[] = [new PythonAnalyzer()];
   const graph = new ConnectionGraph();
+  let problems: readonly ConfigProblem[] = [];
 
   // 1. Scan directory for repository files & apply config filters
   const rawFiles = scanRepositoryFiles(rootDir);
@@ -52,12 +61,12 @@ export function buildConnectionGraph(rootDir: string, config?: Balk2Config): Con
   const jsTsFiles = allRelativeFiles.filter((filePath) => jsTsAnalyzer.canAnalyze(filePath));
   if (jsTsFiles.length > 0) {
     const repository = createRepositoryProgram({ rootDir, filePaths: jsTsFiles });
-    jsTsAnalyzer.analyzeRepository(repository, graph, {
+    problems = jsTsAnalyzer.analyzeRepository(repository, graph, {
       globals: config?.globals,
       events: config?.protocols?.events,
       registries: config?.protocols?.registries,
       state: config?.state,
-    });
+    }).stateProblems;
   }
 
   // 5. Analyze files for language analyzers that do not yet use the shared session.
@@ -77,7 +86,12 @@ export function buildConnectionGraph(rootDir: string, config?: Balk2Config): Con
     }
   }
 
-  return graph;
+  return { graph, problems };
+}
+
+/** The connection graph alone, for callers that do not report problems. */
+export function buildConnectionGraph(rootDir: string, config?: Balk2Config): ConnectionGraph {
+  return buildConnectionGraphDetailed(rootDir, config).graph;
 }
 
 /** Recursively list repository-relative files, sorted, skipping default excludes. */

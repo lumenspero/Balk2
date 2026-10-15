@@ -64,7 +64,8 @@ export interface LoadedBalk2Config {
 /**
  * Load and parse .balk2.json configuration file if present.
  *
- * Unusable content is ignored silently; use {@link loadBalk2ConfigDetailed} to learn what.
+ * Unusable content is dropped. `generate` and `check` print each dropped entry as a warning on
+ * stderr; use {@link loadBalk2ConfigDetailed} to get the same list programmatically.
  */
 export function loadBalk2Config(
   cwd: string = process.cwd(),
