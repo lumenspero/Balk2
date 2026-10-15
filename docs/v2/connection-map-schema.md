@@ -61,11 +61,11 @@ for a wildcard).
 **Unresolved reference** — `unresolved:<reason>:<file>:<line>:<column>`. Records code that looks
 like a connection but cannot be resolved without guessing. Fields: `kind`, `id`, `reason`
 (`ambiguous-global`, `dynamic-event-name`, `unknown-event-receiver`, `dynamic-registry-key`,
-`unknown-registry-receiver`, `ambiguous-registry`, `dynamic-state-path`), `attempted` (the
-relationship type that would have been created), `subject`, `location` (a source span), and
-`candidates` when the problem is ambiguity, and an optional one-sentence `detail` saying why it
-could not be resolved. The owning symbol or file links to it with a
-`low`-confidence relationship of the attempted type.
+`unknown-registry-receiver`, `ambiguous-registry`, `dynamic-state-path`, `dynamic-module-specifier`),
+`attempted` (the relationship type that would have been created), `subject`, `location` (a source
+span), and `candidates` when the problem is ambiguity, and an optional one-sentence `detail` saying
+why it could not be resolved. The owning symbol or file links to it with a `low`-confidence
+relationship of the attempted type.
 
 ## Relationships
 
@@ -73,12 +73,17 @@ could not be resolved. The owning symbol or file links to it with a
 
 - `evidence`: `ast`, `ts-program`, `config` or `heuristic`.
 - `spans`: source ranges (`filePath`, `startLine`, `startColumn`, `endLine`, `endColumn`, 1-based).
-- `metadata`: mechanism details, for example `{ "once": true }` on a `subscribes` edge.
+- `metadata`: mechanism details, for example `{ "once": true }` on a `subscribes` edge, or
+  `{ "loadKind": "worker" }` on an `imports` edge from a dynamic load.
 
 A relationship is identified by `(type, from, to)`. Repeated observations are merged: the
-highest confidence (and its evidence) wins, spans are combined, and `metadata` keeps only the keys
-that carry the same value in every observation, so a flag seen on one registration is never claimed
-for them all.
+highest confidence (and its evidence) wins, and spans are combined. Metadata is merged by key:
+
+- Most keys, such as `once`, are kept only when every observation carries the same value, so a flag
+  seen on one registration is never claimed for them all.
+- `loadKind` is **combinable**. Its values are joined as a sorted, comma-separated list, so a file
+  that is both required and dynamically imported from the same owner reads
+  `"import-expression,require"`. The combinable keys are listed in `COMBINABLE_METADATA`.
 
 Event relationships are `emits`, `dispatches`, `subscribes` and `unsubscribes`. They point from the
 publisher or listener owner **to** the channel.
@@ -99,6 +104,34 @@ unless asked.
 function and what consumes a data file are derived when reading (see "Reading the graph"). Those
 four names remain in the type definitions only so older maps can be read, and
 `ConnectionGraph.addRelationship` stores the forward relationship when it is given one.
+
+### Dynamic module loads
+
+Module loads that the analysis can see are recorded as `imports` relationships. The source of the
+load determines the edge:
+
+| Written as                                    | `loadKind`          | Edge                                                         |
+| --------------------------------------------- | ------------------- | ------------------------------------------------------------ |
+| `import('./x')` with a constant specifier     | `import-expression` | owner → file, when the file resolves inside the repository   |
+| `new Worker(new URL('./x', import.meta.url))` | `worker`            | owner → file                                                 |
+| `new URL('./x', import.meta.url)` elsewhere   | `url`               | owner → file                                                 |
+| A configured loader call (`protocols.loaders`) | `loader`           | owner → file                                                 |
+| `require('./x')` (literal)                    | none                | file or owner → file; carries no `loadKind` in this version |
+
+The owner is the enclosing symbol when there is one (for example `src/app.ts:loadPlugin`), and the
+file at top level.
+
+Three rules keep dynamic loads from changing existing output:
+
+- **Absorption.** A load whose owner already has an `imports` edge to the same file adds nothing.
+  The static edge is never restamped with `loadKind`. A top-level `import()` of a file the same
+  file already imports statically is therefore silent.
+- **External and missing targets are silent.** A package specifier (`import('left-pad')`) and a
+  relative specifier that names no repository file produce no edge and no observation.
+- **Computed specifiers are observations.** A specifier that is not a constant, such as
+  `import(\`./${name}.js\`)` or `loadPlugin(name)`, produces a `dynamic-module-specifier`
+  observation. The owner links to it with a `low`-confidence `imports` relationship whose
+  `loadKind` says how it loads. No edge names a target.
 
 ## Reading the graph
 

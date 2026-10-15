@@ -81,11 +81,8 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
       const outRels = outgoingMap.get(filePath) ?? [];
       const inRels = incomingMap.get(filePath) ?? [];
 
-      const imports = outRels
-        .filter((r) => r.type === 'imports')
-        .map((r) => r.to)
-        .sort();
-      const importedBy = sourcesOf(inRels, 'imports');
+      const imports = importsOf(outRels);
+      const importedBy = importsOf(inRels, 'from');
       const references = annotatedTargets(outRels, 'references');
       const referencedBy = sourcesOf(inRels, 'references');
 
@@ -170,6 +167,8 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
         .filter((r) => r.type === 'implements')
         .map((r) => r.to)
         .sort();
+      // Dynamic loads and loaders are owned by the symbol that performs them, so they show here.
+      const symbolImports = importsOf(outRels);
 
       if (extendsRels.length > 0) {
         lines.push('Extends:');
@@ -182,6 +181,13 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
         lines.push('Implements:');
         for (const target of dedupe(implementsRels)) {
           lines.push(`  → ${target}`);
+        }
+      }
+
+      if (symbolImports.length > 0) {
+        lines.push('Imports:');
+        for (const imp of dedupe(symbolImports)) {
+          lines.push(`  → ${imp}`);
         }
       }
 
@@ -527,6 +533,26 @@ function annotate(rel: Relationship): string {
   if (rel.metadata?.['once'] === true) notes.push('once');
   if (rel.metadata?.['abortable'] === true) notes.push('abortable');
   return notes.length > 0 ? ` (${notes.join(', ')})` : '';
+}
+
+/**
+ * How an import edge is loaded, as a suffix: `(import-expression)`, `(loader)`, and so on.
+ * A static import or `require` carries no `loadKind`, so it gets no suffix and renders as before.
+ */
+function loadSuffix(rel: Relationship): string {
+  const kind = rel.metadata?.['loadKind'];
+  return typeof kind === 'string' ? ` (${kind})` : '';
+}
+
+/**
+ * Sorted `imports` targets from a node's relationships. `end` selects the other side: `'to'` for
+ * what this node imports, `'from'` for what imports this node. Each target keeps its load kind.
+ */
+function importsOf(rels: readonly Relationship[], end: 'to' | 'from' = 'to'): string[] {
+  return rels
+    .filter((r) => r.type === 'imports')
+    .map((r) => `${end === 'to' ? r.to : r.from}${loadSuffix(r)}${annotate(r)}`)
+    .sort();
 }
 
 /** Event relationships that start at this node, grouped by mechanism. */
