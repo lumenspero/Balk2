@@ -7,3 +7,5 @@ coverage/
 # Balk2 Connection Map
 /connection-map
 .balk2.json
+connection-map.json
+connection-map.md
