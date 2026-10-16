@@ -19,6 +19,8 @@ import { collectModuleLoads, type ModuleLoad } from './module-loads.js';
 import { recordDynamicLoads } from './module-load-observations.js';
 import { collectGlobalReferences } from './global-references.js';
 import { collectStateRelationships } from './state-relationships.js';
+import type { ResourceProtocol } from './resource-protocols.js';
+import { collectResourceRelationships } from './resource-detection.js';
 import type { ConfigProblem } from '../config/config-problem.js';
 import type { StateConfig } from '../config/state-config.js';
 import { resolveImportPath } from './resolver.js';
@@ -41,6 +43,8 @@ export interface RepositoryAnalysisOptions {
   readonly callbacks?: readonly CallbackProtocol[];
   /** Reflect metadata keys from `protocols.metadata` in `.balk2.json`. */
   readonly metadata?: readonly MetadataProtocol[];
+  /** Loader-style resource functions from `protocols.resources` in `.balk2.json`. */
+  readonly resources?: readonly ResourceProtocol[];
   /** Shared-state behavior from the `state` section of `.balk2.json`. */
   readonly state?: StateConfig;
 }
@@ -111,6 +115,9 @@ export class JsTsAnalyzer implements Analyzer {
 
     // Reflect metadata with configured keys. Runs after the per-file pass, so targets exist.
     collectMetadataRelationships(repository, graph, options.metadata ?? []);
+
+    // Templates, stylesheets and schemas. Runs after the per-file pass, so the importing file exists.
+    collectResourceRelationships(repository, graph, options.resources ?? []);
 
     for (const globalSymbol of globalSymbols.effective()) {
       if (!graph.hasSymbol(globalSymbol.symbolId)) {
@@ -307,9 +314,7 @@ function recordModuleLoadEdges(loads: readonly ModuleLoad[], graph: ConnectionGr
 
     const alreadyLinked = graph
       .getRelationships(load.owner)
-      .some(
-        (rel) => rel.type === 'imports' && rel.from === load.owner && rel.to === load.target,
-      );
+      .some((rel) => rel.type === 'imports' && rel.from === load.owner && rel.to === load.target);
     if (alreadyLinked) continue;
 
     graph.addRelationship('imports', load.owner, load.target, 'high', {

@@ -23,10 +23,10 @@ in `.balk2.json`.
 
 Each entry has:
 
-| Field     | Meaning                                                                     |
-| --------- | --------------------------------------------------------------------------- |
-| `key`     | The metadata key, exactly as passed to `Reflect`. Required.                 |
-| `defines` | `true` to read `Reflect.defineMetadata` and `Reflect.defineOwnMetadata` calls. |
+| Field     | Meaning                                                                                           |
+| --------- | ------------------------------------------------------------------------------------------------- |
+| `key`     | The metadata key, exactly as passed to `Reflect`. Required.                                       |
+| `defines` | `true` to read `Reflect.defineMetadata` and `Reflect.defineOwnMetadata` calls.                    |
 | `reads`   | `true` to read `Reflect.getMetadata`, `getOwnMetadata`, `hasMetadata` and `hasOwnMetadata` calls. |
 
 An entry must set `defines`, `reads`, or both to `true`. An entry with neither describes nothing and

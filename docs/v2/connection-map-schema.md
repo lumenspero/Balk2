@@ -5,19 +5,20 @@
 
 ## Top level
 
-| Field           | Type                                       | Notes                                  |
-| --------------- | ------------------------------------------ | -------------------------------------- |
-| `version`       | `2`                                        | Schema version                         |
-| `repository`    | `{ commit?: string, generatedAt: string }` | Generation metadata                    |
-| `files`         | `Record<path, FileNode>`                   | Code files                             |
-| `symbols`       | `Record<id, SymbolNode>`                   | `filePath:name`                        |
-| `artifacts`     | `Record<path, ArtifactNode>`               | Data files                             |
-| `eventChannels` | `Record<id, EventChannelNode>`             | Virtual nodes for event names          |
-| `registryKeys`  | `Record<id, RegistryKeyNode>`              | Virtual nodes for keys                 |
+| Field           | Type                                       | Notes                                   |
+| --------------- | ------------------------------------------ | --------------------------------------- |
+| `version`       | `2`                                        | Schema version                          |
+| `repository`    | `{ commit?: string, generatedAt: string }` | Generation metadata                     |
+| `files`         | `Record<path, FileNode>`                   | Code files                              |
+| `symbols`       | `Record<id, SymbolNode>`                   | `filePath:name`                         |
+| `artifacts`     | `Record<path, ArtifactNode>`               | Data files                              |
+| `eventChannels` | `Record<id, EventChannelNode>`             | Virtual nodes for event names           |
+| `registryKeys`  | `Record<id, RegistryKeyNode>`              | Virtual nodes for keys                  |
 | `metadataKeys`  | `Record<id, MetadataKeyNode>`              | Virtual nodes for Reflect metadata keys |
-| `statePaths`    | `Record<id, StatePathNode>`                | Virtual nodes for shared state         |
-| `unresolved`    | `Record<id, UnresolvedReferenceNode>`      | Diagnostics for ambiguous/dynamic code |
-| `relationships` | `Relationship[]`                           | Sorted by `(type, from, to)`           |
+| `resources`     | `Record<id, ResourceNode>`                 | Virtual nodes for templates, stylesheets, schemas |
+| `statePaths`    | `Record<id, StatePathNode>`                | Virtual nodes for shared state          |
+| `unresolved`    | `Record<id, UnresolvedReferenceNode>`      | Diagnostics for ambiguous/dynamic code  |
+| `relationships` | `Relationship[]`                           | Sorted by `(type, from, to)`            |
 
 Every table is sorted by key and relationships by `(type, from, to)` using ordinal string
 comparison, so output is identical across machines for identical input.
@@ -61,6 +62,10 @@ so a value stored from inside a function does not register that function.
 are global, so the same key name is one node across the repository. Fields: `kind`, `id`, `key`.
 Created only for keys that are configured and used.
 
+**Resource** — `resource:<path>`. A template, stylesheet or schema file that code uses, identified by
+its repository-relative path. Fields: `kind`, `id`, `path`, `resourceKind` (`template`,
+`stylesheet` or `schema`). Created only for files that exist in the repository and are used.
+
 **State path** — `state:<root>` for a state container, `state:<root>#<path>` for a property under
 it, so reading a whole store and reading one field of it are different nodes. The root is the
 resolved identity of the shared object:
@@ -83,7 +88,7 @@ for a wildcard).
 like a connection but cannot be resolved without guessing. Fields: `kind`, `id`, `reason`
 (`ambiguous-global`, `dynamic-event-name`, `unknown-event-receiver`, `dynamic-registry-key`,
 `unknown-registry-receiver`, `ambiguous-registry`, `dynamic-state-path`, `dynamic-module-specifier`,
-`unresolved-callback`, `unresolved-metadata-key`), `attempted` (the relationship type that would
+`unresolved-callback`, `unresolved-metadata-key`, `dynamic-resource-specifier`), `attempted` (the relationship type that would
 have been created), `subject`, `location` (a source span), and `candidates` when the problem is
 ambiguity, and an optional one-sentence `detail` saying why it could not be resolved. The owning
 symbol or file links to it with a `low`-confidence relationship of the attempted type.
@@ -122,6 +127,12 @@ target symbol to the metadata key it carries. `readsMetadata` runs from the encl
 read to the same key. A `definesMetadata` or `readsMetadata` edge whose target is an
 `unresolved-metadata-key` node is an observation link, not a resolved definition or read. See
 `metadata-protocols.md`.
+
+Resource relationships are `usesResource`. It runs from the file or symbol that uses a resource to
+the resource node. `metadata.resourceKind` gives the kind, and `metadata.mechanism` gives how it is
+used: `import` for a static import, or `loader` for a configured loader call. A `usesResource` edge
+whose target is a `dynamic-resource-specifier` observation is a link to an unresolved use, not a
+resolved one. See `resource-protocols.md`.
 
 `passesCallback` runs from the function that passes a callback to the callback's symbol. See
 "Callbacks" below.
@@ -163,9 +174,7 @@ Three rules keep dynamic loads from changing existing output:
 - **External and missing targets are silent.** A package specifier (`import('left-pad')`) and a
   relative specifier that names no repository file produce no edge and no observation.
 - **Computed specifiers are observations.** A specifier that is not a constant, such as
-  `import(\`./${name}.js\`)` or `loadPlugin(name)`, produces a `dynamic-module-specifier`
-  observation. The owner links to it with a `low`-confidence `imports` relationship whose
-  `loadKind` says how it loads. No edge names a target.
+  `import(\`./${name}.js\`)`or`loadPlugin(name)`, produces a `dynamic-module-specifier`observation. The owner links to it with a`low`-confidence `imports`relationship whose`loadKind` says how it loads. No edge names a target.
 
 ### Callbacks
 
@@ -173,12 +182,12 @@ A configured function (`protocols.callbacks`) that receives a callback is record
 `passesCallback` relationship from the caller. The callback is passed, not invoked, so no `calls`
 edge is drawn for it.
 
-| Callback argument                                                                        | Edge                                             |
-| ---------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| A function or arrow function written inline                                              | caller → caller, `high`, `metadata.inline: true` |
-| An identifier naming a top-level function or variable                                    | caller → that symbol, `high`, `ts-program`       |
+| Callback argument                                                                        | Edge                                              |
+| ---------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| A function or arrow function written inline                                              | caller → caller, `high`, `metadata.inline: true`  |
+| An identifier naming a top-level function or variable                                    | caller → that symbol, `high`, `ts-program`        |
 | Anything else from the repository (a parameter, a local, a call such as `makeHandler()`) | caller → `unresolved-callback` observation, `low` |
-| An identifier or call from an external module                                            | none                                             |
+| An identifier or call from an external module                                            | none                                              |
 
 An inline callback has no symbol of its own, so its edge targets the enclosing symbol. In the
 Markdown output it is shown as `(inline)`. Locals are not linked: a local function has no symbol in
@@ -241,7 +250,8 @@ TypeScript consumers; `ConnectionMapV1` is exported for code that still handles 
 change ships with the next major version.
 
 `RegistryKeyType` gained `'type'`. Code that switches over `keyType` exhaustively must handle it.
-`UnresolvedReason` gained `'unresolved-callback'` and `'unresolved-metadata-key'`, `CodeRelationship`
-gained `'passesCallback'`, and the relationship union gained `definesMetadata` and `readsMetadata`.
-`NodeKind` and `GraphNode` gained `'metadata-key'`. Code that switches over any of these
-exhaustively must handle the new values.
+`UnresolvedReason` gained `'unresolved-callback'`, `'unresolved-metadata-key'` and
+`'dynamic-resource-specifier'`; `CodeRelationship` gained `'passesCallback'`; the relationship union
+gained `definesMetadata`, `readsMetadata` and `usesResource`; `NodeKind` and `GraphNode` gained
+`'metadata-key'` and `'resource'`. Code that switches over any of these exhaustively must handle the
+new values.

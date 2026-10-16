@@ -2,8 +2,8 @@
  * Core type definitions for the Balk2 connection map graph model (schema version 2).
  *
  * The graph supports file, symbol and artifact nodes plus virtual nodes for indirect
- * mechanisms (event channels, registry keys, state paths, metadata keys) and diagnostics
- * (unresolved references), connected by typed directional relationships.
+ * mechanisms (event channels, registry keys, state paths, metadata keys, resources) and
+ * diagnostics (unresolved references), connected by typed directional relationships.
  * See docs/v2/connection-map-schema.md.
  */
 
@@ -17,7 +17,8 @@ export type NodeKind =
   | 'unresolved-reference'
   | 'registry-key'
   | 'state-path'
-  | 'metadata-key';
+  | 'metadata-key'
+  | 'resource';
 
 /**
  * A code file node in the graph.
@@ -130,6 +131,27 @@ export interface MetadataKeyNode {
 }
 
 /**
+ * The kinds of static resource a repository file can be: a markup template, a stylesheet, or a
+ * JSON schema (`*.schema.json`). A plain JSON file is a data artifact, not a resource.
+ */
+export type ResourceKind = 'template' | 'stylesheet' | 'schema';
+
+/**
+ * A virtual node for a non-code resource file that code uses: a template, a stylesheet or a
+ * schema. Kept apart from `files` (code) and `artifacts` (data) so each table keeps its meaning.
+ *
+ * Examples: resource:app.css, resource:tpl/card.html, resource:user.schema.json
+ */
+export interface ResourceNode {
+  readonly kind: 'resource';
+  /** Unique identifier: "resource:<path>" */
+  readonly id: string;
+  /** Repository-relative path of the resource file */
+  readonly path: string;
+  readonly resourceKind: ResourceKind;
+}
+
+/**
  * What a state root is. `global` is the global object under any of its names (`globalThis`,
  * `window`, ...), so all of them share one root. `configured` is a root named in `.balk2.json`.
  * `singleton` is a module export declared as shared state in `.balk2.json`.
@@ -174,7 +196,8 @@ export type UnresolvedReason =
   | 'dynamic-state-path'
   | 'dynamic-module-specifier'
   | 'unresolved-callback'
-  | 'unresolved-metadata-key';
+  | 'unresolved-metadata-key'
+  | 'dynamic-resource-specifier';
 
 /**
  * A diagnostic-only node recording code that looks like a connection but could not be
@@ -205,8 +228,9 @@ export type GraphNode =
   | ArtifactNode
   | EventChannelNode
   | RegistryKeyNode
-  | StatePathNode
   | MetadataKeyNode
+  | StatePathNode
+  | ResourceNode
   | UnresolvedReferenceNode;
 
 /** A 1-based range in a repository file. */
@@ -255,6 +279,12 @@ export type RegistryRelationship = 'registers' | 'resolves' | 'routesTo';
  */
 export type MetadataRelationship = 'definesMetadata' | 'readsMetadata';
 
+/**
+ * Resource relationships. `usesResource` runs from the file or symbol that uses a resource to the
+ * resource node. `metadata.mechanism` says how: `import` or `loader`.
+ */
+export type ResourceRelationship = 'usesResource';
+
 /** Data relationships. `generatedBy` and `consumedBy` are legacy reverse links, as above. */
 export type DataRelationship =
   'generates' | 'generatedBy' | 'consumes' | 'consumedBy' | 'reads' | 'writes' | 'transforms';
@@ -293,6 +323,7 @@ export type RelationshipType =
   | DataRelationship
   | RegistryRelationship
   | MetadataRelationship
+  | ResourceRelationship
   | StateRelationship;
 
 export type Confidence = 'high' | 'medium' | 'low';
@@ -362,6 +393,8 @@ export interface ConnectionMap {
   readonly registryKeys: Record<string, RegistryKeyNode>;
   /** Metadata-key nodes keyed by id */
   readonly metadataKeys: Record<string, MetadataKeyNode>;
+  /** Resource nodes keyed by id */
+  readonly resources: Record<string, ResourceNode>;
   /** State-path nodes keyed by id */
   readonly statePaths: Record<string, StatePathNode>;
   /** Unresolved-reference diagnostics keyed by id */

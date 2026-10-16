@@ -8,6 +8,8 @@ import type {
   RegistryKeyNode,
   RegistryKeyType,
   MetadataKeyNode,
+  ResourceKind,
+  ResourceNode,
   StatePathNode,
   StatePathSegment,
   StateRootKind,
@@ -47,6 +49,7 @@ export class ConnectionGraph {
   private readonly eventChannels = new Map<string, EventChannelNode>();
   private readonly registryKeys = new Map<string, RegistryKeyNode>();
   private readonly metadataKeys = new Map<string, MetadataKeyNode>();
+  private readonly resources = new Map<string, ResourceNode>();
   private readonly statePaths = new Map<string, StatePathNode>();
   private readonly unresolved = new Map<string, UnresolvedReferenceNode>();
   private readonly relationships: Relationship[] = [];
@@ -138,6 +141,21 @@ export class ConnectionGraph {
 
     const node: MetadataKeyNode = { kind: 'metadata-key', id, key };
     this.metadataKeys.set(id, node);
+    return node;
+  }
+
+  /**
+   * Add a resource node: a template, stylesheet or schema file, identified by its repository path.
+   * The id is `resource:<path>`. Adding it again is a no-op.
+   */
+  addResource(path: string, resourceKind: ResourceKind): ResourceNode {
+    const normalized = normalizePath(path);
+    const id = resourceId(normalized);
+    const existing = this.resources.get(id);
+    if (existing) return existing;
+
+    const node: ResourceNode = { kind: 'resource', id, path: normalized, resourceKind };
+    this.resources.set(id, node);
     return node;
   }
 
@@ -263,6 +281,11 @@ export class ConnectionGraph {
     return this.metadataKeys.has(id);
   }
 
+  /** Returns true if a resource node exists for the given id. */
+  hasResource(id: string): boolean {
+    return this.resources.has(id);
+  }
+
   /** Returns true if a state-path node exists for the given id. */
   hasStatePath(id: string): boolean {
     return this.statePaths.has(id);
@@ -309,6 +332,7 @@ export class ConnectionGraph {
       this.eventChannels.size +
       this.registryKeys.size +
       this.metadataKeys.size +
+      this.resources.size +
       this.statePaths.size +
       this.unresolved.size
     );
@@ -335,6 +359,7 @@ export class ConnectionGraph {
       eventChannels: sortedRecord(this.eventChannels),
       registryKeys: sortedRecord(this.registryKeys),
       metadataKeys: sortedRecord(this.metadataKeys),
+      resources: sortedRecord(this.resources),
       statePaths: sortedRecord(this.statePaths),
       unresolved: sortedRecord(this.unresolved),
       relationships: [...this.relationships].sort(compareRelationships),
@@ -366,6 +391,11 @@ export function registryKeyId(
 /** Id of a metadata-key node; shared with analyzers that need to name metadata keys. */
 export function metadataKeyId(key: string): string {
   return `metadata:${key}`;
+}
+
+/** Id of a resource node, from its repository-relative path. */
+export function resourceId(path: string): string {
+  return `resource:${normalizePath(path)}`;
 }
 
 const IDENTIFIER_SEGMENT = /^[A-Za-z_$][\w$]*$/;

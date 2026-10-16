@@ -1,4 +1,4 @@
-import type { ArtifactFormat } from '../types.js';
+import type { ArtifactFormat, ResourceKind } from '../types.js';
 import { normalizePath } from '../graph.js';
 import type { ConnectionGraph } from '../graph.js';
 
@@ -21,21 +21,51 @@ const EXTENSION_FORMAT_MAP: Record<string, ArtifactFormat> = {
   '.db': 'sqlite',
 };
 
+/** Extensions of markup templates. */
+const TEMPLATE_EXTENSIONS: readonly string[] = [
+  '.html',
+  '.htm',
+  '.hbs',
+  '.handlebars',
+  '.ejs',
+  '.mustache',
+];
+
+/** Extensions of stylesheets. */
+const STYLESHEET_EXTENSIONS: readonly string[] = ['.css', '.scss', '.sass', '.less'];
+
+/** The suffix that makes a JSON file a schema resource rather than a data artifact. */
+const SCHEMA_SUFFIX = '.schema.json';
+
 /**
  * Supported data file extensions.
  */
 export const SUPPORTED_DATA_EXTENSIONS: readonly string[] = Object.keys(EXTENSION_FORMAT_MAP);
 
 /**
- * Detect the ArtifactFormat of a file path based on its extension.
+ * Detect the ArtifactFormat of a file path based on its extension. A `*.schema.json` file is a
+ * schema resource, not a data artifact, so it has no artifact format.
  */
 export function detectArtifactFormat(filePath: string): ArtifactFormat | undefined {
   const norm = normalizePath(filePath).toLowerCase();
+  if (norm.endsWith(SCHEMA_SUFFIX)) return undefined;
   for (const [ext, format] of Object.entries(EXTENSION_FORMAT_MAP)) {
     if (norm.endsWith(ext)) {
       return format;
     }
   }
+  return undefined;
+}
+
+/**
+ * Detect the ResourceKind of a file path: a template, a stylesheet or a schema. Returns undefined
+ * for anything else, including plain data files.
+ */
+export function detectResourceKind(filePath: string): ResourceKind | undefined {
+  const norm = normalizePath(filePath).toLowerCase();
+  if (norm.endsWith(SCHEMA_SUFFIX)) return 'schema';
+  if (TEMPLATE_EXTENSIONS.some((ext) => norm.endsWith(ext))) return 'template';
+  if (STYLESHEET_EXTENSIONS.some((ext) => norm.endsWith(ext))) return 'stylesheet';
   return undefined;
 }
 

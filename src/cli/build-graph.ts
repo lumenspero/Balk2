@@ -68,6 +68,7 @@ export function buildConnectionGraphDetailed(rootDir: string, config?: Balk2Conf
       loaders: config?.protocols?.loaders,
       callbacks: config?.protocols?.callbacks,
       metadata: config?.protocols?.metadata,
+      resources: config?.protocols?.resources,
       state: config?.state,
     }).stateProblems;
   }

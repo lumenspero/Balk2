@@ -106,12 +106,17 @@ describe('statePaths in the built map', () => {
     return graph.build(METADATA);
   }
 
-  it('is sorted by id and placed after registryKeys', () => {
+  it('is sorted by id and placed in schema order among the virtual tables', () => {
     const map = build();
     expect(Object.keys(map.statePaths)).toEqual(['state:global', 'state:global#store.user']);
+
+    // Only the relative order of the virtual tables matters. A table added between them does not
+    // break this test, but a table moved out of schema order does.
     const keys = Object.keys(map);
-    expect(keys.indexOf('metadataKeys')).toBe(keys.indexOf('registryKeys') + 1);
-    expect(keys.indexOf('statePaths')).toBe(keys.indexOf('metadataKeys') + 1);
+    const order = ['registryKeys', 'metadataKeys', 'resources', 'statePaths', 'unresolved'];
+    const positions = order.map((key) => keys.indexOf(key));
+    expect(positions.every((position) => position >= 0)).toBe(true);
+    expect([...positions].sort((a, b) => a - b)).toEqual(positions);
   });
 
   it('stores state relationships forward only', () => {

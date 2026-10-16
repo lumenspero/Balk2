@@ -13,10 +13,7 @@ export interface MetadataProtocol {
 }
 
 /** The `Reflect` calls the metadata pass recognises, by direction. */
-export const METADATA_DEFINE_METHODS: readonly string[] = [
-  'defineMetadata',
-  'defineOwnMetadata',
-];
+export const METADATA_DEFINE_METHODS: readonly string[] = ['defineMetadata', 'defineOwnMetadata'];
 export const METADATA_READ_METHODS: readonly string[] = [
   'getMetadata',
   'getOwnMetadata',

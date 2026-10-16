@@ -40,6 +40,7 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
   const channelCount = Object.keys(map.eventChannels).length;
   const registryCount = Object.keys(map.registryKeys).length;
   const metadataCount = Object.keys(map.metadataKeys).length;
+  const resourceCount = Object.keys(map.resources).length;
   const unresolvedCount = Object.keys(map.unresolved).length;
 
   lines.push('## Repository Overview');
@@ -50,6 +51,7 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
   if (channelCount > 0) lines.push(`- **Event Channels**: ${channelCount}`);
   if (registryCount > 0) lines.push(`- **Registry Keys**: ${registryCount}`);
   if (metadataCount > 0) lines.push(`- **Metadata Keys**: ${metadataCount}`);
+  if (resourceCount > 0) lines.push(`- **Resources**: ${resourceCount}`);
   const statePathCount = Object.keys(map.statePaths).length;
   if (statePathCount > 0) lines.push(`- **State Paths**: ${statePathCount}`);
   if (unresolvedCount > 0) lines.push(`- **Unresolved Observations**: ${unresolvedCount}`);
@@ -120,6 +122,7 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
         }
       }
 
+      pushResourceLinks(lines, outRels);
       pushCallbackLinks(lines, outRels, inRels);
       pushMetadataLinks(lines, outRels);
       pushEventLinks(lines, outRels);
@@ -134,6 +137,7 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
     ...Object.keys(map.eventChannels),
     ...Object.keys(map.registryKeys),
     ...Object.keys(map.metadataKeys),
+    ...Object.keys(map.resources),
     ...Object.keys(map.statePaths),
     ...Object.keys(map.unresolved),
   ]);
@@ -224,6 +228,7 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
         }
       }
 
+      pushResourceLinks(lines, outRels);
       pushCallbackLinks(lines, outRels, inRels);
       pushMetadataLinks(lines, outRels);
       pushEventLinks(lines, outRels);
@@ -340,7 +345,37 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
     }
   }
 
-  // 4e. Shared State Coupling: data coupling, kept apart from imports and calls
+  // 4e. Resources: templates, stylesheets and schemas that code uses
+  const resourceIds = Object.keys(map.resources).sort();
+  if (resourceIds.length > 0) {
+    lines.push('## Resources');
+    lines.push('');
+
+    for (const resourceId of resourceIds) {
+      const node = map.resources[resourceId];
+      lines.push(`### ${resourceId}`);
+      lines.push('');
+      if (node) lines.push(`Kind: ${node.resourceKind}`);
+
+      const inRels = incomingMap.get(resourceId) ?? [];
+      const users = dedupe(
+        inRels
+          .filter((r) => r.type === 'usesResource')
+          .map((r) => `${r.from}${resourceMechanism(r)}${annotate(r)}`)
+          .sort(),
+      );
+      if (users.length > 0) {
+        lines.push('Used by:');
+        for (const user of users) {
+          lines.push(`  ← ${user}`);
+        }
+      }
+
+      lines.push('');
+    }
+  }
+
+  // 4f. Shared State Coupling: data coupling, kept apart from imports and calls
   const coupled = getStateCoupling(map);
   if (coupled.length > 0) {
     lines.push('## Shared State Coupling');
@@ -555,6 +590,27 @@ function pushRegistryLinks(lines: string[], outgoing: readonly Relationship[]): 
       lines.push(`  → ${target}`);
     }
   }
+}
+
+/** Resources this node uses, with how it uses them. */
+function pushResourceLinks(lines: string[], outgoing: readonly Relationship[]): void {
+  const uses = dedupe(
+    outgoing
+      .filter((r) => r.type === 'usesResource')
+      .map((r) => `${r.to}${resourceMechanism(r)}${annotate(r)}`)
+      .sort(),
+  );
+  if (uses.length === 0) return;
+  lines.push('Uses resource:');
+  for (const target of uses) {
+    lines.push(`  → ${target}`);
+  }
+}
+
+/** The mechanism suffix for a resource edge: `(import)` or `(loader)`. */
+function resourceMechanism(rel: Relationship): string {
+  const mechanism = rel.metadata?.['mechanism'];
+  return typeof mechanism === 'string' ? ` (${mechanism})` : '';
 }
 
 /** Metadata keys this node defines on a target or reads, shown from the owner's side. */

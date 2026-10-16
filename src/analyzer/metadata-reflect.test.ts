@@ -9,9 +9,7 @@ const OPTIONS = { target: 'ES2022', module: 'ESNext', moduleResolution: 'Bundler
 const META = { generatedAt: '2026-01-01T00:00:00Z' };
 const lines = (...rows: string[]): string => rows.join('\n');
 
-const METADATA: MetadataProtocol[] = [
-  { key: 'route', defines: true, reads: true },
-];
+const METADATA: MetadataProtocol[] = [{ key: 'route', defines: true, reads: true }];
 
 function analyze(files: Record<string, string>): ConnectionMap {
   const fixture = createRepositoryFixture(files, OPTIONS);
@@ -29,12 +27,12 @@ describe('Reflect metadata with a configured key', () => {
     'decorate.ts': 'export function Route(path: string) { return (t: unknown): void => {}; }',
     'users.ts': lines(
       'export class UsersController {}',
-      "declare const Reflect: { defineMetadata(k: string, v: unknown, t: unknown): void; getMetadata(k: string, t: unknown): unknown };",
+      'declare const Reflect: { defineMetadata(k: string, v: unknown, t: unknown): void; getMetadata(k: string, t: unknown): unknown };',
       "Reflect.defineMetadata('route', '/users', UsersController);",
     ),
     'router.ts': lines(
       "import { UsersController } from './users.js';",
-      "declare const Reflect: { getMetadata(k: string, t: unknown): unknown };",
+      'declare const Reflect: { getMetadata(k: string, t: unknown): unknown };',
       'export function mount(): unknown { return Reflect.getMetadata("route", UsersController); }',
     ),
   };
@@ -70,7 +68,7 @@ describe('Reflect metadata with a configured key', () => {
     const map = analyze({
       'users.ts': lines(
         'export class UsersController {}',
-        "declare const Reflect: { defineMetadata(k: string, v: unknown, t: unknown): void };",
+        'declare const Reflect: { defineMetadata(k: string, v: unknown, t: unknown): void };',
         "Reflect.defineMetadata('other', 1, UsersController);",
       ),
     });
@@ -86,7 +84,7 @@ describe('Reflect metadata with a configured key', () => {
     const map = analyze({
       'users.ts': lines(
         'export class UsersController {}',
-        "declare const Reflect: { getMetadata(k: string, t: unknown): unknown };",
+        'declare const Reflect: { getMetadata(k: string, t: unknown): unknown };',
         'export function read(k: string): unknown { return Reflect.getMetadata(k, UsersController); }',
       ),
     });
@@ -97,7 +95,7 @@ describe('Reflect metadata with a configured key', () => {
   it('reports a target that is a local value as an unresolved-metadata-key observation', () => {
     const map = analyze({
       'users.ts': lines(
-        "declare const Reflect: { defineMetadata(k: string, v: unknown, t: unknown): void };",
+        'declare const Reflect: { defineMetadata(k: string, v: unknown, t: unknown): void };',
         'export function make(): void {',
         '  const local = { id: 1 };',
         "  Reflect.defineMetadata('route', '/x', local);",
