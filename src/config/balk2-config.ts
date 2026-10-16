@@ -18,8 +18,6 @@ export interface DataLineageEntry {
 }
 
 export interface DataConfig {
-  /** Custom data file extensions to recognize (e.g. ['.json', '.parquet']) */
-  readonly extensions?: readonly string[];
   /** Explicit data lineage rules */
   readonly lineage?: readonly DataLineageEntry[];
 }

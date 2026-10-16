@@ -21,7 +21,6 @@ const SAMPLE = {
   exclude: ['**/*.test.ts'],
   output: 'connection-map',
   data: {
-    extensions: ['.json', '.parquet'],
     lineage: [
       { producer: 'scripts/collect.py', output: 'data/raw.json' },
       { input: ['data/raw.json'], producer: 'scripts/build.py', output: 'data/titles.parquet' },
@@ -94,6 +93,10 @@ describe('balk2 configuration schema', () => {
     const result = check(SAMPLE);
     expect(result.errors).toEqual([]);
     expect(result.valid).toBe(true);
+  });
+
+  it('rejects data.extensions, which the loader does not read', () => {
+    expect(check({ data: { extensions: ['.json'] } }).valid).toBe(false);
   });
 
   it('rejects an unknown top-level key', () => {

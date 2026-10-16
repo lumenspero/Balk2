@@ -5,91 +5,195 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
-    "$schema": { "type": "string" },
-    "include": { "type": "array", "items": { "$ref": "#/$defs/nonEmptyString" } },
-    "exclude": { "type": "array", "items": { "$ref": "#/$defs/nonEmptyString" } },
-    "output": { "$ref": "#/$defs/nonEmptyString" },
-    "data": { "$ref": "#/$defs/data" },
-    "globals": { "$ref": "#/$defs/globals" },
-    "protocols": { "$ref": "#/$defs/protocols" },
-    "state": { "$ref": "#/$defs/state" },
-    "annotations": { "type": "array", "items": { "$ref": "#/$defs/annotation" } }
+    "$schema": {
+      "type": "string"
+    },
+    "include": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/nonEmptyString"
+      }
+    },
+    "exclude": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/nonEmptyString"
+      }
+    },
+    "output": {
+      "$ref": "#/$defs/nonEmptyString"
+    },
+    "data": {
+      "$ref": "#/$defs/data"
+    },
+    "globals": {
+      "$ref": "#/$defs/globals"
+    },
+    "protocols": {
+      "$ref": "#/$defs/protocols"
+    },
+    "state": {
+      "$ref": "#/$defs/state"
+    },
+    "annotations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/annotation"
+      }
+    }
   },
   "$defs": {
-    "nonEmptyString": { "type": "string", "minLength": 1 },
-    "identifier": { "type": "string", "pattern": "^[A-Za-z_$][\\w$]*$" },
-    "argIndex": { "type": "integer", "minimum": 0, "maximum": 15 },
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1
+    },
+    "identifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z_$][\\w$]*$"
+    },
+    "argIndex": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 15
+    },
     "nameTypeRule": {
       "type": "object",
       "additionalProperties": false,
       "minProperties": 1,
       "properties": {
-        "names": { "type": "array", "items": { "$ref": "#/$defs/nonEmptyString" } },
-        "types": { "type": "array", "items": { "$ref": "#/$defs/nonEmptyString" } }
+        "names": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          }
+        },
+        "types": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          }
+        }
       }
     },
-
     "data": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "extensions": {
+        "lineage": {
           "type": "array",
-          "items": { "type": "string", "pattern": "^\\.[A-Za-z0-9]+$" }
-        },
-        "lineage": { "type": "array", "items": { "$ref": "#/$defs/lineageEntry" } }
+          "items": {
+            "$ref": "#/$defs/lineageEntry"
+          }
+        }
       }
     },
     "lineageEntry": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "producer": { "$ref": "#/$defs/nonEmptyString" },
-        "consumer": { "$ref": "#/$defs/nonEmptyString" },
-        "input": { "$ref": "#/$defs/pathOrPaths" },
-        "output": { "$ref": "#/$defs/pathOrPaths" }
+        "producer": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "consumer": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "input": {
+          "$ref": "#/$defs/pathOrPaths"
+        },
+        "output": {
+          "$ref": "#/$defs/pathOrPaths"
+        }
       }
     },
     "pathOrPaths": {
       "oneOf": [
-        { "$ref": "#/$defs/nonEmptyString" },
-        { "type": "array", "items": { "$ref": "#/$defs/nonEmptyString" } }
+        {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          }
+        }
       ]
     },
-
     "globals": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "roots": { "type": "array", "items": { "$ref": "#/$defs/identifier" } },
+        "roots": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
         "targets": {
           "type": "object",
-          "propertyNames": { "minLength": 1 },
-          "additionalProperties": { "$ref": "#/$defs/nonEmptyString" }
+          "propertyNames": {
+            "minLength": 1
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/nonEmptyString"
+          }
         }
       }
     },
-
     "protocols": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "events": { "$ref": "#/$defs/events" },
-        "registries": { "$ref": "#/$defs/registries" },
-        "loaders": { "type": "array", "items": { "$ref": "#/$defs/loader" } },
-        "callbacks": { "type": "array", "items": { "$ref": "#/$defs/callback" } },
-        "metadata": { "type": "array", "items": { "$ref": "#/$defs/metadata" } },
-        "resources": { "type": "array", "items": { "$ref": "#/$defs/resource" } }
+        "events": {
+          "$ref": "#/$defs/events"
+        },
+        "registries": {
+          "$ref": "#/$defs/registries"
+        },
+        "loaders": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/loader"
+          }
+        },
+        "callbacks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/callback"
+          }
+        },
+        "metadata": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/metadata"
+          }
+        },
+        "resources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/resource"
+          }
+        }
       }
     },
-
     "events": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "builtIns": { "type": "boolean" },
-        "disable": { "type": "array", "items": { "$ref": "#/$defs/nonEmptyString" } },
-        "methods": { "type": "array", "items": { "$ref": "#/$defs/eventMethod" } }
+        "builtIns": {
+          "type": "boolean"
+        },
+        "disable": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          }
+        },
+        "methods": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/eventMethod"
+          }
+        }
       }
     },
     "eventMethod": {
@@ -97,31 +201,85 @@
       "additionalProperties": false,
       "required": ["method", "direction", "eventArg"],
       "properties": {
-        "method": { "$ref": "#/$defs/identifier" },
-        "direction": { "enum": ["subscribe", "unsubscribe", "emit", "dispatch"] },
-        "eventArg": { "$ref": "#/$defs/argIndex" },
-        "eventArgKind": { "enum": ["name", "event-object"] },
-        "payloadArg": { "$ref": "#/$defs/argIndex" },
-        "listenerArg": { "$ref": "#/$defs/argIndex" },
-        "optionsArg": { "$ref": "#/$defs/argIndex" },
-        "once": { "type": "boolean" },
+        "method": {
+          "$ref": "#/$defs/identifier"
+        },
+        "direction": {
+          "enum": ["subscribe", "unsubscribe", "emit", "dispatch"]
+        },
+        "eventArg": {
+          "$ref": "#/$defs/argIndex"
+        },
+        "eventArgKind": {
+          "enum": ["name", "event-object"]
+        },
+        "payloadArg": {
+          "$ref": "#/$defs/argIndex"
+        },
+        "listenerArg": {
+          "$ref": "#/$defs/argIndex"
+        },
+        "optionsArg": {
+          "$ref": "#/$defs/argIndex"
+        },
+        "once": {
+          "type": "boolean"
+        },
         "receiver": {
-          "oneOf": [{ "enum": ["any", "event-like"] }, { "$ref": "#/$defs/nameTypeRule" }]
+          "oneOf": [
+            {
+              "enum": ["any", "event-like"]
+            },
+            {
+              "$ref": "#/$defs/nameTypeRule"
+            }
+          ]
         }
       }
     },
-
     "registries": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "builtIns": { "type": "boolean" },
-        "disable": { "type": "array", "items": { "$ref": "#/$defs/nonEmptyString" } },
-        "methods": { "type": "array", "items": { "$ref": "#/$defs/registryMethod" } },
-        "decorators": { "type": "array", "items": { "$ref": "#/$defs/decorator" } },
-        "parameterDecorators": { "type": "array", "items": { "$ref": "#/$defs/decorator" } },
-        "manifest": { "type": "array", "items": { "$ref": "#/$defs/manifestEntry" } },
-        "discover": { "type": "array", "items": { "$ref": "#/$defs/discoverRule" } }
+        "builtIns": {
+          "type": "boolean"
+        },
+        "disable": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          }
+        },
+        "methods": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/registryMethod"
+          }
+        },
+        "decorators": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/decorator"
+          }
+        },
+        "parameterDecorators": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/decorator"
+          }
+        },
+        "manifest": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/manifestEntry"
+          }
+        },
+        "discover": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/discoverRule"
+          }
+        }
       }
     },
     "registryMethod": {
@@ -129,17 +287,44 @@
       "additionalProperties": false,
       "required": ["method", "direction"],
       "oneOf": [
-        { "required": ["keyArg"], "properties": { "keyArg": true } },
-        { "required": ["keyFrom"], "properties": { "keyFrom": true } }
+        {
+          "required": ["keyArg"],
+          "properties": {
+            "keyArg": true
+          }
+        },
+        {
+          "required": ["keyFrom"],
+          "properties": {
+            "keyFrom": true
+          }
+        }
       ],
       "properties": {
-        "method": { "$ref": "#/$defs/identifier" },
-        "direction": { "enum": ["register", "resolve", "route"] },
-        "keyArg": { "$ref": "#/$defs/argIndex" },
-        "keyFrom": { "enum": ["typeArgument"] },
-        "valueArg": { "$ref": "#/$defs/argIndex" },
+        "method": {
+          "$ref": "#/$defs/identifier"
+        },
+        "direction": {
+          "enum": ["register", "resolve", "route"]
+        },
+        "keyArg": {
+          "$ref": "#/$defs/argIndex"
+        },
+        "keyFrom": {
+          "enum": ["typeArgument"]
+        },
+        "valueArg": {
+          "$ref": "#/$defs/argIndex"
+        },
         "receiver": {
-          "oneOf": [{ "enum": ["any", "registry-like"] }, { "$ref": "#/$defs/nameTypeRule" }]
+          "oneOf": [
+            {
+              "enum": ["any", "registry-like"]
+            },
+            {
+              "$ref": "#/$defs/nameTypeRule"
+            }
+          ]
         }
       }
     },
@@ -148,9 +333,15 @@
       "additionalProperties": false,
       "required": ["name", "registry"],
       "properties": {
-        "name": { "$ref": "#/$defs/identifier" },
-        "registry": { "$ref": "#/$defs/nonEmptyString" },
-        "keyArg": { "$ref": "#/$defs/argIndex" }
+        "name": {
+          "$ref": "#/$defs/identifier"
+        },
+        "registry": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "keyArg": {
+          "$ref": "#/$defs/argIndex"
+        }
       }
     },
     "manifestEntry": {
@@ -158,9 +349,15 @@
       "additionalProperties": false,
       "required": ["registry", "key", "target"],
       "properties": {
-        "registry": { "$ref": "#/$defs/nonEmptyString" },
-        "key": { "$ref": "#/$defs/nonEmptyString" },
-        "target": { "$ref": "#/$defs/nonEmptyString" }
+        "registry": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "key": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "target": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
       }
     },
     "discoverRule": {
@@ -168,19 +365,28 @@
       "additionalProperties": false,
       "required": ["glob", "registry"],
       "properties": {
-        "glob": { "$ref": "#/$defs/nonEmptyString" },
-        "registry": { "$ref": "#/$defs/nonEmptyString" }
+        "glob": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "registry": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
       }
     },
-
     "loader": {
       "type": "object",
       "additionalProperties": false,
       "required": ["function", "specifierArg"],
       "properties": {
-        "function": { "$ref": "#/$defs/identifier" },
-        "specifierArg": { "$ref": "#/$defs/argIndex" },
-        "receiver": { "$ref": "#/$defs/nameTypeRule" }
+        "function": {
+          "$ref": "#/$defs/identifier"
+        },
+        "specifierArg": {
+          "$ref": "#/$defs/argIndex"
+        },
+        "receiver": {
+          "$ref": "#/$defs/nameTypeRule"
+        }
       }
     },
     "callback": {
@@ -188,8 +394,12 @@
       "additionalProperties": false,
       "required": ["function", "callbackArg"],
       "properties": {
-        "function": { "$ref": "#/$defs/identifier" },
-        "callbackArg": { "$ref": "#/$defs/argIndex" }
+        "function": {
+          "$ref": "#/$defs/identifier"
+        },
+        "callbackArg": {
+          "$ref": "#/$defs/argIndex"
+        }
       }
     },
     "resource": {
@@ -197,8 +407,12 @@
       "additionalProperties": false,
       "required": ["function", "specifierArg"],
       "properties": {
-        "function": { "$ref": "#/$defs/identifier" },
-        "specifierArg": { "$ref": "#/$defs/argIndex" }
+        "function": {
+          "$ref": "#/$defs/identifier"
+        },
+        "specifierArg": {
+          "$ref": "#/$defs/argIndex"
+        }
       }
     },
     "metadata": {
@@ -206,32 +420,82 @@
       "additionalProperties": false,
       "required": ["key"],
       "anyOf": [
-        { "required": ["defines"], "properties": { "defines": { "const": true } } },
-        { "required": ["reads"], "properties": { "reads": { "const": true } } }
+        {
+          "required": ["defines"],
+          "properties": {
+            "defines": {
+              "const": true
+            }
+          }
+        },
+        {
+          "required": ["reads"],
+          "properties": {
+            "reads": {
+              "const": true
+            }
+          }
+        }
       ],
       "properties": {
-        "key": { "$ref": "#/$defs/nonEmptyString" },
-        "defines": { "type": "boolean" },
-        "reads": { "type": "boolean" }
+        "key": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "defines": {
+          "type": "boolean"
+        },
+        "reads": {
+          "type": "boolean"
+        }
       }
     },
-
     "state": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "roots": { "type": "array", "items": { "$ref": "#/$defs/identifier" } },
+        "roots": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
+        },
         "globals": {
           "oneOf": [
-            { "type": "boolean" },
-            { "type": "array", "items": { "$ref": "#/$defs/identifier" } }
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/identifier"
+              }
+            }
           ]
         },
-        "singletons": { "type": "array", "items": { "$ref": "#/$defs/singleton" } },
-        "builtIns": { "type": "boolean" },
-        "disable": { "type": "array", "items": { "$ref": "#/$defs/nonEmptyString" } },
-        "methods": { "type": "array", "items": { "$ref": "#/$defs/stateMethod" } },
-        "dynamicPaths": { "enum": ["off", "wildcard"] }
+        "singletons": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/singleton"
+          }
+        },
+        "builtIns": {
+          "type": "boolean"
+        },
+        "disable": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          }
+        },
+        "methods": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/stateMethod"
+          }
+        },
+        "dynamicPaths": {
+          "enum": ["off", "wildcard"]
+        }
       }
     },
     "singleton": {
@@ -239,8 +503,12 @@
       "additionalProperties": false,
       "required": ["module", "export"],
       "properties": {
-        "module": { "$ref": "#/$defs/nonEmptyString" },
-        "export": { "$ref": "#/$defs/nonEmptyString" }
+        "module": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "export": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
       }
     },
     "stateMethod": {
@@ -248,22 +516,37 @@
       "additionalProperties": false,
       "required": ["method", "access"],
       "properties": {
-        "method": { "$ref": "#/$defs/identifier" },
-        "access": { "enum": ["read", "write", "delete", "update"] },
-        "keyArg": { "$ref": "#/$defs/argIndex" },
-        "pathSeparator": { "$ref": "#/$defs/nonEmptyString" }
+        "method": {
+          "$ref": "#/$defs/identifier"
+        },
+        "access": {
+          "enum": ["read", "write", "delete", "update"]
+        },
+        "keyArg": {
+          "$ref": "#/$defs/argIndex"
+        },
+        "pathSeparator": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
       }
     },
-
     "annotation": {
       "type": "object",
       "additionalProperties": false,
       "required": ["type", "from", "to", "confidence"],
       "properties": {
-        "type": { "$ref": "#/$defs/nonEmptyString" },
-        "from": { "$ref": "#/$defs/nonEmptyString" },
-        "to": { "$ref": "#/$defs/nonEmptyString" },
-        "confidence": { "enum": ["high", "medium", "low"] }
+        "type": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "from": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "to": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "confidence": {
+          "enum": ["high", "medium", "low"]
+        }
       }
     }
   }
