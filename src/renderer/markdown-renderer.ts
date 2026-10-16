@@ -41,7 +41,10 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
   const registryCount = Object.keys(map.registryKeys).length;
   const metadataCount = Object.keys(map.metadataKeys).length;
   const resourceCount = Object.keys(map.resources).length;
-  const unresolvedCount = Object.keys(map.unresolved).length;
+  const internalCount = Object.values(map.unresolved).filter(
+    (node) => node.tier === 'internal',
+  ).length;
+  const unresolvedCount = Object.keys(map.unresolved).length - internalCount;
 
   lines.push('## Repository Overview');
   lines.push('');
@@ -54,7 +57,11 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
   if (resourceCount > 0) lines.push(`- **Resources**: ${resourceCount}`);
   const statePathCount = Object.keys(map.statePaths).length;
   if (statePathCount > 0) lines.push(`- **State Paths**: ${statePathCount}`);
-  if (unresolvedCount > 0) lines.push(`- **Unresolved Observations**: ${unresolvedCount}`);
+  if (unresolvedCount > 0 || internalCount > 0) {
+    const internalNote =
+      internalCount > 0 ? ` (${internalCount} internal, in connection-map.json)` : '';
+    lines.push(`- **Unresolved Observations**: ${unresolvedCount}${internalNote}`);
+  }
   lines.push(`- **Relationships**: ${relationshipCount}`);
   lines.push('');
 
@@ -485,8 +492,10 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
     }
   }
 
-  // 5b. Unresolved Observations
-  const unresolvedIds = Object.keys(map.unresolved).sort();
+  // 5b. Unresolved Observations. Internal ones (built-in container bookkeeping) stay in the JSON.
+  const unresolvedIds = Object.keys(map.unresolved)
+    .filter((id) => map.unresolved[id]?.tier !== 'internal')
+    .sort();
   if (unresolvedIds.length > 0) {
     lines.push('## Unresolved Observations');
     lines.push('');
