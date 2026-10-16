@@ -260,7 +260,9 @@ export class JsTsAnalyzer implements Analyzer {
       // ── Data Artifact References ────────────────────────────────────
       if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
         const text = node.text;
-        if (isDataArtifact(text)) {
+        // A data path has no whitespace. A label such as "[data/raw.json] build.js | ..." that ends
+        // in an extension is prose or output, not a file the code reads or writes.
+        if (!/\s/.test(text) && isDataArtifact(text)) {
           const context = node.parent ? node.parent.getText(sourceFile) : '';
           const relType = inferDataRelationshipType(context);
           addDataRelationship(normalizedPath, text, relType, graph, 'high');

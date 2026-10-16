@@ -61,6 +61,15 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
     const internalNote =
       internalCount > 0 ? ` (${internalCount} internal, in connection-map.json)` : '';
     lines.push(`- **Unresolved Observations**: ${unresolvedCount}${internalNote}`);
+    // Actionable observations by reason, so dynamic and ambiguous code is visible at a glance.
+    const byReason = new Map<string, number>();
+    for (const node of Object.values(map.unresolved)) {
+      if (node.tier === 'internal') continue;
+      byReason.set(node.reason, (byReason.get(node.reason) ?? 0) + 1);
+    }
+    for (const [reason, count] of [...byReason].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
+      lines.push(`  - ${reason}: ${count}`);
+    }
   }
   lines.push(`- **Relationships**: ${relationshipCount}`);
   lines.push('');

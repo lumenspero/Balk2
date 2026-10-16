@@ -3,7 +3,7 @@ import * as path from 'path';
 import { deserializeConnectionMap, serializeConnectionMap } from '../serialize.js';
 import { loadBalk2ConfigDetailed } from '../config/index.js';
 import { buildConnectionGraphDetailed } from './build-graph.js';
-import { formatConfigWarnings } from './problem-warnings.js';
+import { formatConfigWarnings, formatSyntaxWarnings } from './problem-warnings.js';
 
 export interface CheckOptions {
   readonly cwd?: string;
@@ -40,7 +40,10 @@ export function checkConnectionMap(options: CheckOptions = {}): CheckResult {
 
     // Build fresh graph through the same path as `generate`
     const built = buildConnectionGraphDetailed(rootDir, loaded.config);
-    warnings = formatConfigWarnings([...loaded.problems, ...built.problems]);
+    warnings = [
+      ...formatConfigWarnings([...loaded.problems, ...built.problems]),
+      ...formatSyntaxWarnings(built.syntaxErrors),
+    ];
 
     const freshMap = built.graph.build({
       commit: existingMap.repository.commit,
