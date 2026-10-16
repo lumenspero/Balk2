@@ -5,7 +5,7 @@ import { renderMarkdown } from '../renderer/markdown-renderer.js';
 import { getGitCommitHash } from './git-utils.js';
 import { loadBalk2ConfigDetailed } from '../config/index.js';
 import { buildConnectionGraphDetailed } from './build-graph.js';
-import { formatConfigWarnings } from './problem-warnings.js';
+import { formatConfigWarnings, formatSyntaxWarnings } from './problem-warnings.js';
 import type { ConnectionMap } from '../types.js';
 
 export interface GenerateOptions {
@@ -34,7 +34,10 @@ export function generateConnectionMap(options: GenerateOptions = {}): GenerateRe
   const balk2Config = loaded.config;
   const built = buildConnectionGraphDetailed(rootDir, balk2Config);
   const graph = built.graph;
-  const warnings = formatConfigWarnings([...loaded.problems, ...built.problems]);
+  const warnings = [
+    ...formatConfigWarnings([...loaded.problems, ...built.problems]),
+    ...formatSyntaxWarnings(built.syntaxErrors),
+  ];
 
   // Build connection map
   const commit = getGitCommitHash(rootDir);

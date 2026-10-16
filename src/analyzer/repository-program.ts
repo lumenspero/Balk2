@@ -1,6 +1,7 @@
 import * as path from 'node:path';
 import * as ts from 'typescript';
 import { normalizePath } from '../graph.js';
+import { compareStrings } from '../relationship-types.js';
 import { resolveImportPath } from './resolver.js';
 
 export type ModuleResolutionKind = 'internal' | 'external' | 'unresolved';
@@ -11,6 +12,16 @@ export interface ResolvedModule {
   readonly kind: ModuleResolutionKind;
   readonly path?: string;
   readonly resolution: 'typescript' | 'fallback' | 'unresolved';
+}
+
+/** A syntax error TypeScript recovered from. Analysis of that file may be incomplete. */
+export interface SyntaxErrorNote {
+  readonly path: string;
+  /** 1-based */
+  readonly line: number;
+  /** 1-based */
+  readonly column: number;
+  readonly message: string;
 }
 
 export interface RepositoryProgramOptions {
@@ -38,6 +49,7 @@ export class RepositoryProgram {
 
   private readonly knownFiles: ReadonlySet<string>;
   private readonly host: ts.ModuleResolutionHost;
+  private readonly program: ts.Program;
 
   constructor(options: RepositoryProgramOptions) {
     this.rootDir = path.resolve(options.rootDir);
@@ -51,6 +63,7 @@ export class RepositoryProgram {
       options: this.compilerOptions,
       ...(options.host ? { host: options.host } : {}),
     });
+    this.program = program;
     this.checker = program.getTypeChecker();
     const sourceFiles = new Map<string, ts.SourceFile>();
 
@@ -60,6 +73,28 @@ export class RepositoryProgram {
     }
 
     this.sourceFiles = sourceFiles;
+  }
+
+  /**
+   * Syntax errors recorded for each analyzed file, sorted by path, then position. TypeScript
+   * recovers from these and still builds a tree, so the graph is produced but may be incomplete.
+   */
+  syntaxErrors(): SyntaxErrorNote[] {
+    const notes: SyntaxErrorNote[] = [];
+    for (const [filePath, sourceFile] of this.sourceFiles) {
+      for (const diagnostic of this.program.getSyntacticDiagnostics(sourceFile)) {
+        const position = diagnostic.file?.getLineAndCharacterOfPosition(diagnostic.start ?? 0);
+        notes.push({
+          path: filePath,
+          line: (position?.line ?? 0) + 1,
+          column: (position?.character ?? 0) + 1,
+          message: ts.flattenDiagnosticMessageText(diagnostic.messageText, ' '),
+        });
+      }
+    }
+    return notes.sort(
+      (a, b) => compareStrings(a.path, b.path) || a.line - b.line || a.column - b.column,
+    );
   }
 
   resolveModule(fromFile: string, specifier: string): ResolvedModule {

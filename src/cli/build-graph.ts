@@ -17,6 +17,7 @@ import { registerDataArtifacts } from '../data/formats.js';
 import { filterFilesWithConfig, applyExplicitLineage } from '../config/index.js';
 import type { Balk2Config } from '../config/balk2-config.js';
 import type { ConfigProblem } from '../config/config-problem.js';
+import type { SyntaxErrorNote } from '../analyzer/repository-program.js';
 
 const DEFAULT_EXCLUDES = new Set([
   'node_modules',
@@ -36,6 +37,8 @@ export interface BuiltGraph {
   readonly graph: ConnectionGraph;
   /** Configured entries the analysis could not use, such as a singleton with no export */
   readonly problems: readonly ConfigProblem[];
+  /** Syntax errors in analyzed source files. The graph is still built from the recovered trees. */
+  readonly syntaxErrors: readonly SyntaxErrorNote[];
 }
 
 /**
@@ -50,6 +53,7 @@ export function buildConnectionGraphDetailed(rootDir: string, config?: Balk2Conf
   const analyzers: Analyzer[] = [new PythonAnalyzer()];
   const graph = new ConnectionGraph();
   const problems: ConfigProblem[] = [];
+  let syntaxErrors: readonly SyntaxErrorNote[] = [];
   const configAnnotations: readonly Annotation[] = config?.annotations ?? [];
 
   // 1. Scan directory for repository files & apply config filters
@@ -84,6 +88,7 @@ export function buildConnectionGraphDetailed(rootDir: string, config?: Balk2Conf
     });
     problems.push(...analysis.stateProblems);
     jsSource = collectSourceAnnotations(repository, []);
+    syntaxErrors = repository.syntaxErrors();
   }
 
   // 5. Analyze files for language analyzers that do not yet use the shared session.
@@ -125,7 +130,7 @@ export function buildConnectionGraphDetailed(rootDir: string, config?: Balk2Conf
     problems.push({ path: problem.path, message: problem.message });
   }
 
-  return { graph, problems };
+  return { graph, problems, syntaxErrors };
 }
 
 /**
