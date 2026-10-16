@@ -61,7 +61,9 @@ export function buildConnectionGraphDetailed(rootDir: string, config?: Balk2Conf
 
   // 3. Apply explicit data lineage rules from .balk2.json
   if (config?.data?.lineage) {
-    applyExplicitLineage(config.data.lineage, graph);
+    // Checked against every file in the repository, not only the included ones, so a script
+    // outside `include` is not reported as missing.
+    problems.push(...applyExplicitLineage(config.data.lineage, graph, new Set(rawFiles)));
   }
 
   // 4. Parse and analyze JS/TS once through a shared repository session.
