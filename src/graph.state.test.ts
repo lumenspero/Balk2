@@ -110,7 +110,8 @@ describe('statePaths in the built map', () => {
     const map = build();
     expect(Object.keys(map.statePaths)).toEqual(['state:global', 'state:global#store.user']);
     const keys = Object.keys(map);
-    expect(keys.indexOf('statePaths')).toBe(keys.indexOf('registryKeys') + 1);
+    expect(keys.indexOf('metadataKeys')).toBe(keys.indexOf('registryKeys') + 1);
+    expect(keys.indexOf('statePaths')).toBe(keys.indexOf('metadataKeys') + 1);
   });
 
   it('stores state relationships forward only', () => {

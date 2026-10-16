@@ -14,6 +14,7 @@
 | `artifacts`     | `Record<path, ArtifactNode>`               | Data files                             |
 | `eventChannels` | `Record<id, EventChannelNode>`             | Virtual nodes for event names          |
 | `registryKeys`  | `Record<id, RegistryKeyNode>`              | Virtual nodes for keys                 |
+| `metadataKeys`  | `Record<id, MetadataKeyNode>`              | Virtual nodes for Reflect metadata keys |
 | `statePaths`    | `Record<id, StatePathNode>`                | Virtual nodes for shared state         |
 | `unresolved`    | `Record<id, UnresolvedReferenceNode>`      | Diagnostics for ambiguous/dynamic code |
 | `relationships` | `Relationship[]`                           | Sorted by `(type, from, to)`           |
@@ -56,6 +57,10 @@ A registration's target must be declared at the top level of a repository file, 
 member. A local variable, a parameter, or a function nested in another function is not a target,
 so a value stored from inside a function does not register that function.
 
+**Metadata key** — `metadata:<key>`. A `Reflect` metadata key listed in `protocols.metadata`. Keys
+are global, so the same key name is one node across the repository. Fields: `kind`, `id`, `key`.
+Created only for keys that are configured and used.
+
 **State path** — `state:<root>` for a state container, `state:<root>#<path>` for a property under
 it, so reading a whole store and reading one field of it are different nodes. The root is the
 resolved identity of the shared object:
@@ -78,10 +83,10 @@ for a wildcard).
 like a connection but cannot be resolved without guessing. Fields: `kind`, `id`, `reason`
 (`ambiguous-global`, `dynamic-event-name`, `unknown-event-receiver`, `dynamic-registry-key`,
 `unknown-registry-receiver`, `ambiguous-registry`, `dynamic-state-path`, `dynamic-module-specifier`,
-`unresolved-callback`), `attempted` (the relationship type that would have been created), `subject`,
-`location` (a source span), and `candidates` when the problem is ambiguity, and an optional
-one-sentence `detail` saying why it could not be resolved. The owning symbol or file links to it
-with a `low`-confidence relationship of the attempted type.
+`unresolved-callback`, `unresolved-metadata-key`), `attempted` (the relationship type that would
+have been created), `subject`, `location` (a source span), and `candidates` when the problem is
+ambiguity, and an optional one-sentence `detail` saying why it could not be resolved. The owning
+symbol or file links to it with a `low`-confidence relationship of the attempted type.
 
 ## Relationships
 
@@ -111,6 +116,12 @@ Registry relationships are `registers`, `resolves` and `routesTo`. `registers` r
 key to the symbol or file it maps to. `resolves` and `routesTo` run from a caller to the key it
 looks up. A `resolves` edge with `metadata.injection` runs from a class to the key it depends on,
 as described under "Constructor injection" in the registry protocols document.
+
+Metadata relationships are `definesMetadata` and `readsMetadata`. `definesMetadata` runs from the
+target symbol to the metadata key it carries. `readsMetadata` runs from the enclosing owner of a
+read to the same key. A `definesMetadata` or `readsMetadata` edge whose target is an
+`unresolved-metadata-key` node is an observation link, not a resolved definition or read. See
+`metadata-protocols.md`.
 
 `passesCallback` runs from the function that passes a callback to the callback's symbol. See
 "Callbacks" below.
@@ -152,7 +163,9 @@ Three rules keep dynamic loads from changing existing output:
 - **External and missing targets are silent.** A package specifier (`import('left-pad')`) and a
   relative specifier that names no repository file produce no edge and no observation.
 - **Computed specifiers are observations.** A specifier that is not a constant, such as
-  `import(\`./${name}.js\`)`or`loadPlugin(name)`, produces a `dynamic-module-specifier`observation. The owner links to it with a`low`-confidence `imports`relationship whose`loadKind` says how it loads. No edge names a target.
+  `import(\`./${name}.js\`)` or `loadPlugin(name)`, produces a `dynamic-module-specifier`
+  observation. The owner links to it with a `low`-confidence `imports` relationship whose
+  `loadKind` says how it loads. No edge names a target.
 
 ### Callbacks
 
@@ -160,12 +173,12 @@ A configured function (`protocols.callbacks`) that receives a callback is record
 `passesCallback` relationship from the caller. The callback is passed, not invoked, so no `calls`
 edge is drawn for it.
 
-| Callback argument                                                                        | Edge                                              |
-| ---------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| A function or arrow function written inline                                              | caller → caller, `high`, `metadata.inline: true`  |
-| An identifier naming a top-level function or variable                                    | caller → that symbol, `high`, `ts-program`        |
+| Callback argument                                                                        | Edge                                             |
+| ---------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| A function or arrow function written inline                                              | caller → caller, `high`, `metadata.inline: true` |
+| An identifier naming a top-level function or variable                                    | caller → that symbol, `high`, `ts-program`       |
 | Anything else from the repository (a parameter, a local, a call such as `makeHandler()`) | caller → `unresolved-callback` observation, `low` |
-| An identifier or call from an external module                                            | none                                              |
+| An identifier or call from an external module                                            | none                                             |
 
 An inline callback has no symbol of its own, so its edge targets the enclosing symbol. In the
 Markdown output it is shown as `(inline)`. Locals are not linked: a local function has no symbol in
@@ -208,10 +221,11 @@ not channels and are never included.
 `deserializeConnectionMap` accepts version 1 and version 2.
 
 - A version 1 map is converted on read: its nodes are valid in version 2 unchanged,
-  `eventChannels`, `registryKeys`, `statePaths` and `unresolved` start empty, and stored reverse
-  links are turned into the forward relationship they repeat, so each fact is held once.
-- A version 2 map written before registry keys, state paths, or `type` keys existed reads with the
-  missing tables empty. A map with no `type` keys is unchanged.
+  `eventChannels`, `registryKeys`, `metadataKeys`, `statePaths` and `unresolved` start empty, and
+  stored reverse links are turned into the forward relationship they repeat, so each fact is held
+  once.
+- A version 2 map written before registry keys, metadata keys, or state paths existed reads with
+  the missing tables empty. A map with no `type` keys or metadata keys is unchanged.
 - A version 2 map written while reverse links were still stored is cleaned the same way, so
   `deserializeConnectionMap` always returns relationships in canonical form.
 - Any other version is rejected with `Unsupported connection map version`.
@@ -221,11 +235,13 @@ not channels and are never included.
 
 ## Compatibility
 
-The exported `ConnectionMap` type now has `version: 2` and four new tables (`eventChannels`,
-`registryKeys`, `statePaths`, `unresolved`), which is a breaking
-change for TypeScript consumers; `ConnectionMapV1` is exported for code that still handles the
-old shape. This change ships with the next major version.
+The exported `ConnectionMap` type now has `version: 2` and five new tables (`eventChannels`,
+`registryKeys`, `metadataKeys`, `statePaths`, `unresolved`), which is a breaking change for
+TypeScript consumers; `ConnectionMapV1` is exported for code that still handles the old shape. This
+change ships with the next major version.
 
 `RegistryKeyType` gained `'type'`. Code that switches over `keyType` exhaustively must handle it.
-`UnresolvedReason` gained `'unresolved-callback'`, and `CodeRelationship` gained `'passesCallback'`.
-Code that switches over either exhaustively must handle the new values.
+`UnresolvedReason` gained `'unresolved-callback'` and `'unresolved-metadata-key'`, `CodeRelationship`
+gained `'passesCallback'`, and the relationship union gained `definesMetadata` and `readsMetadata`.
+`NodeKind` and `GraphNode` gained `'metadata-key'`. Code that switches over any of these
+exhaustively must handle the new values.

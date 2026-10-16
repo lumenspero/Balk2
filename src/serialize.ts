@@ -60,6 +60,10 @@ export function deserializeConnectionMap(json: string): ConnectionMap {
       throw new Error('Invalid connection map: registryKeys must be an object');
     }
 
+    if (obj['metadataKeys'] !== undefined && !isObject(obj['metadataKeys'])) {
+      throw new Error('Invalid connection map: metadataKeys must be an object');
+    }
+
     if (obj['statePaths'] !== undefined && !isObject(obj['statePaths'])) {
       throw new Error('Invalid connection map: statePaths must be an object');
     }
@@ -71,10 +75,14 @@ export function deserializeConnectionMap(json: string): ConnectionMap {
 
   if (version === 1) return convertV1ToV2(parsed as unknown as ConnectionMapV1);
 
-  // A version 2 map written before registry keys or state paths existed lacks those tables; each
-  // reads as empty. Keys are written in the same order `ConnectionGraph.build` uses.
-  const map = parsed as unknown as Omit<ConnectionMap, 'registryKeys' | 'statePaths'> & {
+  // A version 2 map written before registry keys, metadata keys or state paths existed lacks those
+  // tables; each reads as empty. Keys are written in the same order `ConnectionGraph.build` uses.
+  const map = parsed as unknown as Omit<
+    ConnectionMap,
+    'registryKeys' | 'metadataKeys' | 'statePaths'
+  > & {
     registryKeys?: ConnectionMap['registryKeys'];
+    metadataKeys?: ConnectionMap['metadataKeys'];
     statePaths?: ConnectionMap['statePaths'];
   };
   return {
@@ -85,6 +93,7 @@ export function deserializeConnectionMap(json: string): ConnectionMap {
     artifacts: map.artifacts,
     eventChannels: map.eventChannels,
     registryKeys: map.registryKeys ?? {},
+    metadataKeys: map.metadataKeys ?? {},
     statePaths: map.statePaths ?? {},
     unresolved: map.unresolved,
     relationships: canonicalRelationships(map.relationships),
@@ -106,6 +115,7 @@ export function convertV1ToV2(map: ConnectionMapV1): ConnectionMap {
     artifacts: map.artifacts,
     eventChannels: {},
     registryKeys: {},
+    metadataKeys: {},
     statePaths: {},
     unresolved: {},
     relationships: canonicalRelationships(map.relationships),

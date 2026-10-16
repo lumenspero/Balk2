@@ -2,9 +2,9 @@
  * Core type definitions for the Balk2 connection map graph model (schema version 2).
  *
  * The graph supports file, symbol and artifact nodes plus virtual nodes for indirect
- * mechanisms (event channels, registry keys, state paths) and diagnostics (unresolved
- * references), connected by
- * typed directional relationships. See docs/connection-map-schema.md.
+ * mechanisms (event channels, registry keys, state paths, metadata keys) and diagnostics
+ * (unresolved references), connected by typed directional relationships.
+ * See docs/v2/connection-map-schema.md.
  */
 
 // ── Node Types ──────────────────────────────────────────────
@@ -16,7 +16,8 @@ export type NodeKind =
   | 'event-channel'
   | 'unresolved-reference'
   | 'registry-key'
-  | 'state-path';
+  | 'state-path'
+  | 'metadata-key';
 
 /**
  * A code file node in the graph.
@@ -115,6 +116,20 @@ export interface RegistryKeyNode {
 }
 
 /**
+ * A virtual node for a `Reflect` metadata key configured in `protocols.metadata`. Keys are global:
+ * the same key name is one node wherever it is defined or read.
+ *
+ * Examples: metadata:route, metadata:design:paramtypes
+ */
+export interface MetadataKeyNode {
+  readonly kind: 'metadata-key';
+  /** Unique identifier: "metadata:<key>" */
+  readonly id: string;
+  /** The metadata key, exactly as passed to `Reflect` */
+  readonly key: string;
+}
+
+/**
  * What a state root is. `global` is the global object under any of its names (`globalThis`,
  * `window`, ...), so all of them share one root. `configured` is a root named in `.balk2.json`.
  * `singleton` is a module export declared as shared state in `.balk2.json`.
@@ -158,7 +173,8 @@ export type UnresolvedReason =
   | 'ambiguous-registry'
   | 'dynamic-state-path'
   | 'dynamic-module-specifier'
-  | 'unresolved-callback';
+  | 'unresolved-callback'
+  | 'unresolved-metadata-key';
 
 /**
  * A diagnostic-only node recording code that looks like a connection but could not be
@@ -190,6 +206,7 @@ export type GraphNode =
   | EventChannelNode
   | RegistryKeyNode
   | StatePathNode
+  | MetadataKeyNode
   | UnresolvedReferenceNode;
 
 /** A 1-based range in a repository file. */
@@ -232,6 +249,12 @@ export type EventRelationship = 'emits' | 'subscribes' | 'unsubscribes' | 'dispa
  */
 export type RegistryRelationship = 'registers' | 'resolves' | 'routesTo';
 
+/**
+ * Metadata relationships. `definesMetadata` runs from the target symbol to the metadata key it
+ * carries. `readsMetadata` runs from the enclosing owner of a read to the same key.
+ */
+export type MetadataRelationship = 'definesMetadata' | 'readsMetadata';
+
 /** Data relationships. `generatedBy` and `consumedBy` are legacy reverse links, as above. */
 export type DataRelationship =
   'generates' | 'generatedBy' | 'consumes' | 'consumedBy' | 'reads' | 'writes' | 'transforms';
@@ -269,6 +292,7 @@ export type RelationshipType =
   | EventRelationship
   | DataRelationship
   | RegistryRelationship
+  | MetadataRelationship
   | StateRelationship;
 
 export type Confidence = 'high' | 'medium' | 'low';
@@ -336,6 +360,8 @@ export interface ConnectionMap {
   readonly eventChannels: Record<string, EventChannelNode>;
   /** Registry-key nodes keyed by id */
   readonly registryKeys: Record<string, RegistryKeyNode>;
+  /** Metadata-key nodes keyed by id */
+  readonly metadataKeys: Record<string, MetadataKeyNode>;
   /** State-path nodes keyed by id */
   readonly statePaths: Record<string, StatePathNode>;
   /** Unresolved-reference diagnostics keyed by id */

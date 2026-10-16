@@ -39,6 +39,7 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
   const relationshipCount = relationships.length;
   const channelCount = Object.keys(map.eventChannels).length;
   const registryCount = Object.keys(map.registryKeys).length;
+  const metadataCount = Object.keys(map.metadataKeys).length;
   const unresolvedCount = Object.keys(map.unresolved).length;
 
   lines.push('## Repository Overview');
@@ -48,6 +49,7 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
   lines.push(`- **Data Artifacts**: ${artifactCount}`);
   if (channelCount > 0) lines.push(`- **Event Channels**: ${channelCount}`);
   if (registryCount > 0) lines.push(`- **Registry Keys**: ${registryCount}`);
+  if (metadataCount > 0) lines.push(`- **Metadata Keys**: ${metadataCount}`);
   const statePathCount = Object.keys(map.statePaths).length;
   if (statePathCount > 0) lines.push(`- **State Paths**: ${statePathCount}`);
   if (unresolvedCount > 0) lines.push(`- **Unresolved Observations**: ${unresolvedCount}`);
@@ -119,6 +121,7 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
       }
 
       pushCallbackLinks(lines, outRels, inRels);
+      pushMetadataLinks(lines, outRels);
       pushEventLinks(lines, outRels);
       pushRegistryLinks(lines, outRels);
 
@@ -130,6 +133,7 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
   const virtualIds = new Set([
     ...Object.keys(map.eventChannels),
     ...Object.keys(map.registryKeys),
+    ...Object.keys(map.metadataKeys),
     ...Object.keys(map.statePaths),
     ...Object.keys(map.unresolved),
   ]);
@@ -221,6 +225,7 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
       }
 
       pushCallbackLinks(lines, outRels, inRels);
+      pushMetadataLinks(lines, outRels);
       pushEventLinks(lines, outRels);
       pushRegistryLinks(lines, outRels);
 
@@ -304,7 +309,38 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
     }
   }
 
-  // 4c. Shared State Coupling: data coupling, kept apart from imports and calls
+  // 4d. Metadata Keys: Reflect metadata keys configured in protocols.metadata
+  const metadataIds = Object.keys(map.metadataKeys).sort();
+  if (metadataIds.length > 0) {
+    lines.push('## Metadata Keys');
+    lines.push('');
+
+    for (const keyId of metadataIds) {
+      const node = map.metadataKeys[keyId];
+      lines.push(`### ${keyId}`);
+      lines.push('');
+      if (node) lines.push(`Key: ${node.key}`);
+
+      const inRels = incomingMap.get(keyId) ?? [];
+      for (const [type, label] of METADATA_INCOMING) {
+        const sources = dedupe(
+          inRels
+            .filter((r) => r.type === type)
+            .map((r) => `${r.from}${annotate(r)}`)
+            .sort(),
+        );
+        if (sources.length === 0) continue;
+        lines.push(`${label}:`);
+        for (const source of sources) {
+          lines.push(`  ← ${source}`);
+        }
+      }
+
+      lines.push('');
+    }
+  }
+
+  // 4e. Shared State Coupling: data coupling, kept apart from imports and calls
   const coupled = getStateCoupling(map);
   if (coupled.length > 0) {
     lines.push('## Shared State Coupling');
@@ -504,6 +540,11 @@ const REGISTRY_INCOMING: ReadonlyArray<readonly [RegistryRelationship, string]> 
   ['routesTo', 'Routed to by'],
 ];
 
+const METADATA_INCOMING: ReadonlyArray<readonly [Relationship['type'], string]> = [
+  ['definesMetadata', 'Defined on'],
+  ['readsMetadata', 'Read by'],
+];
+
 /** Registry lookups that start at this node: the keys it resolves or routes to. */
 function pushRegistryLinks(lines: string[], outgoing: readonly Relationship[]): void {
   for (const [type, label] of REGISTRY_OUTGOING) {
@@ -511,6 +552,25 @@ function pushRegistryLinks(lines: string[], outgoing: readonly Relationship[]): 
     if (targets.length === 0) continue;
     lines.push(`${label}:`);
     for (const target of targets) {
+      lines.push(`  → ${target}`);
+    }
+  }
+}
+
+/** Metadata keys this node defines on a target or reads, shown from the owner's side. */
+function pushMetadataLinks(lines: string[], outgoing: readonly Relationship[]): void {
+  const defines = dedupe(annotatedTargets(outgoing, 'definesMetadata'));
+  if (defines.length > 0) {
+    lines.push('Defines metadata:');
+    for (const target of defines) {
+      lines.push(`  → ${target}`);
+    }
+  }
+
+  const reads = dedupe(annotatedTargets(outgoing, 'readsMetadata'));
+  if (reads.length > 0) {
+    lines.push('Reads metadata:');
+    for (const target of reads) {
       lines.push(`  → ${target}`);
     }
   }

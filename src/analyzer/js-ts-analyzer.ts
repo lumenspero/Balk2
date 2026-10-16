@@ -12,7 +12,9 @@ import type { RegistryProtocolOptions } from './registry-protocols.js';
 import type { EventProtocolOptions } from './event-protocols.js';
 import type { LoaderProtocol } from './loader-protocols.js';
 import type { CallbackProtocol } from './callback-protocols.js';
+import type { MetadataProtocol } from './metadata-protocols.js';
 import { collectCallbackRelationships } from './callback-flow.js';
+import { collectMetadataRelationships } from './metadata-reflect.js';
 import { collectModuleLoads, type ModuleLoad } from './module-loads.js';
 import { recordDynamicLoads } from './module-load-observations.js';
 import { collectGlobalReferences } from './global-references.js';
@@ -37,6 +39,8 @@ export interface RepositoryAnalysisOptions {
   readonly loaders?: readonly LoaderProtocol[];
   /** Callback-receiving functions from `protocols.callbacks` in `.balk2.json`. */
   readonly callbacks?: readonly CallbackProtocol[];
+  /** Reflect metadata keys from `protocols.metadata` in `.balk2.json`. */
+  readonly metadata?: readonly MetadataProtocol[];
   /** Shared-state behavior from the `state` section of `.balk2.json`. */
   readonly state?: StateConfig;
 }
@@ -104,6 +108,9 @@ export class JsTsAnalyzer implements Analyzer {
 
     // Callbacks passed to configured functions. Symbols from the per-file pass already exist.
     collectCallbackRelationships(repository, graph, options.callbacks ?? []);
+
+    // Reflect metadata with configured keys. Runs after the per-file pass, so targets exist.
+    collectMetadataRelationships(repository, graph, options.metadata ?? []);
 
     for (const globalSymbol of globalSymbols.effective()) {
       if (!graph.hasSymbol(globalSymbol.symbolId)) {
@@ -300,7 +307,9 @@ function recordModuleLoadEdges(loads: readonly ModuleLoad[], graph: ConnectionGr
 
     const alreadyLinked = graph
       .getRelationships(load.owner)
-      .some((rel) => rel.type === 'imports' && rel.from === load.owner && rel.to === load.target);
+      .some(
+        (rel) => rel.type === 'imports' && rel.from === load.owner && rel.to === load.target,
+      );
     if (alreadyLinked) continue;
 
     graph.addRelationship('imports', load.owner, load.target, 'high', {

@@ -7,6 +7,7 @@ import type {
   EventChannelNode,
   RegistryKeyNode,
   RegistryKeyType,
+  MetadataKeyNode,
   StatePathNode,
   StatePathSegment,
   StateRootKind,
@@ -45,6 +46,7 @@ export class ConnectionGraph {
   private readonly artifacts = new Map<string, ArtifactNode>();
   private readonly eventChannels = new Map<string, EventChannelNode>();
   private readonly registryKeys = new Map<string, RegistryKeyNode>();
+  private readonly metadataKeys = new Map<string, MetadataKeyNode>();
   private readonly statePaths = new Map<string, StatePathNode>();
   private readonly unresolved = new Map<string, UnresolvedReferenceNode>();
   private readonly relationships: Relationship[] = [];
@@ -122,6 +124,20 @@ export class ConnectionGraph {
       keyType,
     };
     this.registryKeys.set(id, node);
+    return node;
+  }
+
+  /**
+   * Add a metadata-key node: a `Reflect` metadata key, global across the repository. The id is
+   * `metadata:<key>`. Adding it again is a no-op.
+   */
+  addMetadataKey(key: string): MetadataKeyNode {
+    const id = metadataKeyId(key);
+    const existing = this.metadataKeys.get(id);
+    if (existing) return existing;
+
+    const node: MetadataKeyNode = { kind: 'metadata-key', id, key };
+    this.metadataKeys.set(id, node);
     return node;
   }
 
@@ -242,6 +258,11 @@ export class ConnectionGraph {
     return this.registryKeys.has(id);
   }
 
+  /** Returns true if a metadata-key node exists for the given id. */
+  hasMetadataKey(id: string): boolean {
+    return this.metadataKeys.has(id);
+  }
+
   /** Returns true if a state-path node exists for the given id. */
   hasStatePath(id: string): boolean {
     return this.statePaths.has(id);
@@ -287,6 +308,7 @@ export class ConnectionGraph {
       this.artifacts.size +
       this.eventChannels.size +
       this.registryKeys.size +
+      this.metadataKeys.size +
       this.statePaths.size +
       this.unresolved.size
     );
@@ -312,6 +334,7 @@ export class ConnectionGraph {
       artifacts: sortedRecord(this.artifacts),
       eventChannels: sortedRecord(this.eventChannels),
       registryKeys: sortedRecord(this.registryKeys),
+      metadataKeys: sortedRecord(this.metadataKeys),
       statePaths: sortedRecord(this.statePaths),
       unresolved: sortedRecord(this.unresolved),
       relationships: [...this.relationships].sort(compareRelationships),
@@ -338,6 +361,11 @@ export function registryKeyId(
 ): string {
   const tag = keyType === 'number' ? 'number:' : keyType === 'type' ? 'type:' : '';
   return `registry:${normalizePath(scope)}#${tag}${key}`;
+}
+
+/** Id of a metadata-key node; shared with analyzers that need to name metadata keys. */
+export function metadataKeyId(key: string): string {
+  return `metadata:${key}`;
 }
 
 const IDENTIFIER_SEGMENT = /^[A-Za-z_$][\w$]*$/;

@@ -8,9 +8,11 @@ import {
 } from '../analyzer/event-protocols.js';
 import type { CallbackProtocol } from '../analyzer/callback-protocols.js';
 import type { LoaderProtocol } from '../analyzer/loader-protocols.js';
+import type { MetadataProtocol } from '../analyzer/metadata-protocols.js';
 import type { ConfigProblem } from './config-problem.js';
 import { normalizeCallbacks } from './callbacks-config.js';
 import { normalizeLoaders } from './loaders-config.js';
+import { normalizeMetadata } from './metadata-config.js';
 import { normalizeRegistries, type RegistryProtocolsConfig } from './registry-protocols-config.js';
 import {
   argField,
@@ -25,12 +27,16 @@ import {
 /** Event conventions for a repository; see `protocols.events` in `.balk2.json`. */
 export type EventProtocolsConfig = EventProtocolOptions;
 
-/** The `protocols` section of `.balk2.json`: event, registry, loader and callback conventions. */
+/**
+ * The `protocols` section of `.balk2.json`: event, registry, loader, callback and metadata
+ * conventions.
+ */
 export interface ProtocolsConfig {
   readonly events?: EventProtocolsConfig;
   readonly registries?: RegistryProtocolsConfig;
   readonly loaders?: readonly LoaderProtocol[];
   readonly callbacks?: readonly CallbackProtocol[];
+  readonly metadata?: readonly MetadataProtocol[];
 }
 
 export interface NormalizedProtocolsConfig {
@@ -73,6 +79,7 @@ export function normalizeProtocolsConfig(value: unknown): NormalizedProtocolsCon
   let registries: RegistryProtocolsConfig | undefined;
   let loaders: readonly LoaderProtocol[] | undefined;
   let callbacks: readonly CallbackProtocol[] | undefined;
+  let metadata: readonly MetadataProtocol[] | undefined;
   for (const [key, entry] of Object.entries(value)) {
     if (key === 'events') {
       events = normalizeEvents(entry, problems);
@@ -82,11 +89,13 @@ export function normalizeProtocolsConfig(value: unknown): NormalizedProtocolsCon
       loaders = normalizeLoaders(entry, problems);
     } else if (key === 'callbacks') {
       callbacks = normalizeCallbacks(entry, problems);
+    } else if (key === 'metadata') {
+      metadata = normalizeMetadata(entry, problems);
     } else {
       problems.push({
         path: `protocols.${key}`,
         message:
-          'unknown protocol family ignored; only "events", "registries", "loaders" and "callbacks" are supported',
+          'unknown protocol family ignored; only "events", "registries", "loaders", "callbacks" and "metadata" are supported',
       });
     }
   }
@@ -96,6 +105,7 @@ export function normalizeProtocolsConfig(value: unknown): NormalizedProtocolsCon
     ...(registries ? { registries } : {}),
     ...(loaders ? { loaders } : {}),
     ...(callbacks ? { callbacks } : {}),
+    ...(metadata ? { metadata } : {}),
   };
   return { ...(Object.keys(config).length > 0 ? { config } : {}), problems };
 }
