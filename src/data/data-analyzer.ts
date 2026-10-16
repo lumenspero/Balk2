@@ -53,6 +53,29 @@ const READ_KEYWORDS = [
 ];
 
 /**
+ * True when the first `open(...)` call in the text has a single argument, so no mode is given. A
+ * comma at the call's own level means a mode follows. Commas inside nested calls do not count.
+ */
+function opensWithoutMode(text: string): boolean {
+  const start = text.search(/\bopen\s*\(/);
+  if (start < 0) return false;
+
+  let depth = 0;
+  for (let i = text.indexOf('(', start); i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '(') {
+      depth++;
+    } else if (ch === ')') {
+      depth--;
+      if (depth === 0) return true;
+    } else if (ch === ',' && depth === 1) {
+      return false;
+    }
+  }
+  return false;
+}
+
+/**
  * Infer whether a call context implies generating (writing) or consuming (reading) a data
  * artifact, and whether that inference rests on evidence in the context.
  */
@@ -74,6 +97,16 @@ export function inferDataDirection(callContext: string): InferredDirection {
 
   if (/(['"])(r|rb)\1/i.test(lower)) {
     return { type: 'consumes', certain: true };
+  }
+
+  // open(path) with no mode argument reads the file.
+  if (opensWithoutMode(lower)) {
+    return { type: 'consumes', certain: true };
+  }
+
+  // A name such as output_dir or out_file suggests a write. It is only a hint, so confidence stays low.
+  if (/\boutput|\bout_|\bdest/.test(lower)) {
+    return { type: 'generates', certain: false };
   }
 
   return { type: 'reads', certain: false };

@@ -3,7 +3,7 @@ import type { ConnectionGraph } from '../graph.js';
 import { normalizePath } from '../graph.js';
 import type { SymbolType } from '../types.js';
 import { inferDataDirection, addDataRelationship } from '../data/data-analyzer.js';
-import { isDataPathLiteral, isNonAccessBefore } from './data-literals.js';
+import { isDataPathLiteral, isNonAccessBefore, pathLiteralsInLine } from './data-literals.js';
 
 export class PythonAnalyzer implements Analyzer {
   readonly name = 'PythonAnalyzer';
@@ -41,6 +41,20 @@ export class PythonAnalyzer implements Analyzer {
 
       // Skip empty lines & comments
       if (!trimmed || trimmed.startsWith('#')) continue;
+
+      // ── Data Artifact References in Line ──────────────────────────
+      for (const { value, index } of pathLiteralsInLine(trimmed)) {
+        if (isDataPathLiteral(value) && !isNonAccessBefore(trimmed.slice(0, index))) {
+          const direction = inferDataDirection(trimmed);
+          addDataRelationship(
+            normalizedPath,
+            value,
+            direction.type,
+            graph,
+            direction.certain ? 'high' : 'low',
+          );
+        }
+      }
 
       const indent = line.search(/\S/);
 
@@ -150,26 +164,6 @@ export class PythonAnalyzer implements Analyzer {
         topLevelSymbols.set(varName, { id: varSym.id, type: 'constant' });
         if (!varName.startsWith('_')) {
           graph.addRelationship('exports', normalizedPath, varSym.id);
-        }
-      }
-
-      // ── Data Artifact References in Line ──────────────────────────
-      const stringMatches = trimmed.matchAll(/(?:'([^']+)'|"([^"]+)")/g);
-      for (const sm of stringMatches) {
-        const strVal = sm[1] ?? sm[2];
-        if (
-          strVal &&
-          isDataPathLiteral(strVal) &&
-          !isNonAccessBefore(trimmed.slice(0, sm.index ?? 0))
-        ) {
-          const direction = inferDataDirection(trimmed);
-          addDataRelationship(
-            normalizedPath,
-            strVal,
-            direction.type,
-            graph,
-            direction.certain ? 'high' : 'low',
-          );
         }
       }
     }
