@@ -17,6 +17,16 @@ export interface SourceAnnotationScan {
   readonly problems: SourceAnnotationProblem[];
 }
 
+/** A comment found in a source file: its text after the marker, and where it starts and ends. */
+export interface FoundComment {
+  /** The comment text after its marker (`//` or `#`), untrimmed. */
+  readonly body: string;
+  /** 1-based line the comment starts on. */
+  readonly line: number;
+  /** Character offset just after the comment, used to find the next token. */
+  readonly end: number;
+}
+
 const PREFIX = 'balk2:';
 const CONFIDENCE_PREFIX = 'confidence=';
 const CONFIDENCES: readonly string[] = ['high', 'medium', 'low'];
@@ -51,16 +61,9 @@ const RELATIONSHIP_TYPES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Read `// balk2: confidence=<level> <from> <type> <to>` directives from a source file.
- *
- * Only `//` comments are read. Block comments and text inside strings are never directives,
- * because only real comment trivia is scanned. A directive must sit directly above the statement
- * it annotates: the next token has to start on the line after the comment. A malformed directive
- * is reported with a path of `file:line`, plus `:confidence` or `:type` when that field is the
- * problem.
- *
- * This only reads the comments. It does not check that `from` is the enclosing owner, nor that
- * the edge exists; both are checked when the annotations are applied.
+ * Read `// balk2: confidence=<level> <from> <type> <to>` directives from a TypeScript or JavaScript
+ * file. Only `//` line comments are read; block comments and text inside strings are never
+ * directives.
  */
 export function scanSourceAnnotations(filePath: string, text: string): SourceAnnotationScan {
   const sourceFile = ts.createSourceFile(
@@ -82,27 +85,44 @@ export function scanSourceAnnotations(filePath: string, text: string): SourceAnn
   };
   visit(sourceFile);
 
+  const found: FoundComment[] = [...comments.values()]
+    .filter((range) => range.kind === ts.SyntaxKind.SingleLineCommentTrivia)
+    .sort((a, b) => a.pos - b.pos)
+    .map((range) => ({
+      body: text.slice(range.pos + 2, range.end),
+      line: sourceFile.getLineAndCharacterOfPosition(range.pos).line + 1,
+      end: range.end,
+    }));
+
+  return readDirectives(filePath, found, (from) => nextTokenLine(text, from));
+}
+
+/**
+ * Turn comments into directives. Shared by every language: a comment becomes a directive when its
+ * body starts with `balk2:`, and the directive must sit directly above the next token. `nextLine`
+ * reports the line of the next token after a character offset, so each language supplies its own
+ * notion of comments and whitespace.
+ */
+export function readDirectives(
+  filePath: string,
+  comments: readonly FoundComment[],
+  nextLine: (offset: number) => number,
+): SourceAnnotationScan {
   const annotations: SourceAnnotation[] = [];
   const problems: SourceAnnotationProblem[] = [];
 
-  const ordered = [...comments.values()]
-    .filter((range) => range.kind === ts.SyntaxKind.SingleLineCommentTrivia)
-    .sort((a, b) => a.pos - b.pos);
-
-  for (const range of ordered) {
-    const body = text.slice(range.pos + 2, range.end).trim();
+  for (const comment of comments) {
+    const body = comment.body.trim();
     if (!body.startsWith(PREFIX)) continue;
 
-    const line = sourceFile.getLineAndCharacterOfPosition(range.pos).line + 1;
-    const where = `${filePath}:${line}`;
-
+    const where = `${filePath}:${comment.line}`;
     const parsed = parseDirective(body.slice(PREFIX.length), where);
     if (!parsed.ok) {
       problems.push(parsed.problem);
       continue;
     }
 
-    if (nextTokenLine(text, sourceFile, range.end) !== line + 1) {
+    if (nextLine(comment.end) !== comment.line + 1) {
       problems.push({
         path: where,
         message: 'directive must sit directly above the statement it annotates',
@@ -110,7 +130,7 @@ export function scanSourceAnnotations(filePath: string, text: string): SourceAnn
       continue;
     }
 
-    annotations.push({ line, annotation: parsed.annotation });
+    annotations.push({ line: comment.line, annotation: parsed.annotation });
   }
 
   return { annotations, problems };
@@ -158,7 +178,7 @@ function fail(path: string, message: string): ParsedDirective {
  * The 1-based line of the first token after `from`, skipping whitespace and comments. A position
  * at the end of the file counts as the last line.
  */
-function nextTokenLine(text: string, sourceFile: ts.SourceFile, from: number): number {
+function nextTokenLine(text: string, from: number): number {
   let pos = from;
   while (pos < text.length) {
     if (/\s/.test(text[pos] ?? '')) {
@@ -173,7 +193,16 @@ function nextTokenLine(text: string, sourceFile: ts.SourceFile, from: number): n
       break;
     }
   }
-  return sourceFile.getLineAndCharacterOfPosition(pos).line + 1;
+  return lineOf(text, pos);
+}
+
+/** The 1-based line containing a character offset. */
+function lineOf(text: string, offset: number): number {
+  let line = 1;
+  for (let i = 0; i < offset && i < text.length; i++) {
+    if (text[i] === '\n') line++;
+  }
+  return line;
 }
 
 function scriptKindOf(filePath: string): ts.ScriptKind {

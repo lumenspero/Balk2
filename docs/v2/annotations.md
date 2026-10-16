@@ -63,6 +63,12 @@ Placement rules:
 A directive inside a class method names the method (`src/main.ts:Service.run`), not the class. A
 directive inside a nested block names the enclosing function.
 
+### In Python
+
+Python files use the same directive with a `#` comment. The rules are the same: directly above the
+statement, the owner must match, and a directive inside a triple-quoted string is ignored. See
+`python-protocols.md` for the Python coverage and its limits.
+
 ## What an annotation changes
 
 An applied annotation sets three things on the edge:

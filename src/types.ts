@@ -311,11 +311,13 @@ export type StateOperation =
  * - `worker`: `new Worker(new URL('./x', import.meta.url))`
  * - `url`: `new URL('./x', import.meta.url)` used outside a worker
  * - `loader`: a configured loader function (`protocols.loaders`)
+ * - `import-module`: `importlib.import_module('x')` (Python)`
  *
  * When one file is loaded in more than one way, the merged edge lists each kind, sorted and
  * comma-joined, so `"import-expression,require"`.
  */
-export type LoadKind = 'import-expression' | 'require' | 'worker' | 'url' | 'loader';
+export type LoadKind =
+  'import-expression' | 'require' | 'worker' | 'url' | 'loader' | 'import-module';
 
 export type RelationshipType =
   | CodeRelationship

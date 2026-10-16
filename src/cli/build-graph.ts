@@ -7,11 +7,12 @@ import {
   PythonAnalyzer,
   type Analyzer,
 } from '../analyzer/index.js';
-import { applyAnnotations } from '../analyzer/annotations.js';
+import { applyAnnotations, type Annotation } from '../analyzer/annotations.js';
 import {
   collectSourceAnnotations,
   type SourceAnnotationResult,
 } from '../analyzer/source-annotations-apply.js';
+import { collectPythonSourceAnnotations } from '../analyzer/python-source-apply.js';
 import { registerDataArtifacts } from '../data/formats.js';
 import { filterFilesWithConfig, applyExplicitLineage } from '../config/index.js';
 import type { Balk2Config } from '../config/balk2-config.js';
@@ -49,6 +50,7 @@ export function buildConnectionGraphDetailed(rootDir: string, config?: Balk2Conf
   const analyzers: Analyzer[] = [new PythonAnalyzer()];
   const graph = new ConnectionGraph();
   const problems: ConfigProblem[] = [];
+  const configAnnotations: readonly Annotation[] = config?.annotations ?? [];
 
   // 1. Scan directory for repository files & apply config filters
   const rawFiles = scanRepositoryFiles(rootDir);
@@ -64,10 +66,7 @@ export function buildConnectionGraphDetailed(rootDir: string, config?: Balk2Conf
 
   // 4. Parse and analyze JS/TS once through a shared repository session.
   //    Source annotations are read in the same session, so they see the same parsed files.
-  let sourceAnnotations: SourceAnnotationResult = {
-    annotations: config?.annotations ?? [],
-    problems: [],
-  };
+  let jsSource: SourceAnnotationResult = { annotations: configAnnotations, problems: [] };
   const jsTsFiles = allRelativeFiles.filter((filePath) => jsTsAnalyzer.canAnalyze(filePath));
   if (jsTsFiles.length > 0) {
     const repository = createRepositoryProgram({ rootDir, filePaths: jsTsFiles });
@@ -82,15 +81,18 @@ export function buildConnectionGraphDetailed(rootDir: string, config?: Balk2Conf
       state: config?.state,
     });
     problems.push(...analysis.stateProblems);
-    sourceAnnotations = collectSourceAnnotations(repository, config?.annotations ?? []);
+    jsSource = collectSourceAnnotations(repository, []);
   }
 
   // 5. Analyze files for language analyzers that do not yet use the shared session.
+  //    Python source directives are read from the same files the Python analyzer reads.
+  const pythonFiles: Record<string, string> = {};
   for (const relFile of allRelativeFiles) {
     for (const analyzer of analyzers) {
       if (analyzer.canAnalyze(relFile)) {
         try {
           const content = fs.readFileSync(path.join(rootDir, relFile), 'utf8');
+          pythonFiles[normalizePath(relFile)] = content;
           analyzer.analyzeFile(relFile, content, graph, {
             rootDir,
             knownFiles: allRelativeFiles,
@@ -101,15 +103,52 @@ export function buildConnectionGraphDetailed(rootDir: string, config?: Balk2Conf
       }
     }
   }
+  const pythonSource = collectPythonSourceAnnotations(pythonFiles, []);
 
   // 6. Apply project annotations last, so they see the final edges and no detector overwrites them.
-  //    Source comments take priority over .balk2.json annotations for the same edge.
+  //    Source comments (JS and Python) take priority over .balk2.json annotations for the same edge.
+  const sourceAnnotations = mergeSourceAnnotations(
+    [...jsSource.annotations, ...pythonSource.annotations],
+    configAnnotations,
+  );
+  for (const problem of [
+    ...jsSource.problems,
+    ...pythonSource.problems,
+    ...sourceAnnotations.problems,
+  ]) {
+    problems.push({ path: problem.path, message: problem.message });
+  }
   const annotationProblems = applyAnnotations(graph, sourceAnnotations.annotations);
-  for (const problem of [...sourceAnnotations.problems, ...annotationProblems]) {
+  for (const problem of annotationProblems) {
     problems.push({ path: problem.path, message: problem.message });
   }
 
   return { graph, problems };
+}
+
+/**
+ * Merge source-comment annotations with config annotations. A source annotation for an edge
+ * replaces any config annotation for the same edge, and the replaced config entry is reported.
+ */
+function mergeSourceAnnotations(
+  source: readonly Annotation[],
+  config: readonly Annotation[],
+): { annotations: Annotation[]; problems: { path: string; message: string }[] } {
+  const key = (a: Annotation): string => `${a.type}\u0000${a.from}\u0000${a.to}`;
+  const sourceKeys = new Set(source.map(key));
+  const problems: { path: string; message: string }[] = [];
+  const merged: Annotation[] = [...source];
+  for (const annotation of config) {
+    if (sourceKeys.has(key(annotation))) {
+      problems.push({
+        path: 'annotations',
+        message: `${annotation.type} from ${annotation.from} to ${annotation.to} is set in a source comment; the config annotation is ignored`,
+      });
+      continue;
+    }
+    merged.push(annotation);
+  }
+  return { annotations: merged, problems };
 }
 
 /** The connection graph alone, for callers that do not report problems. */

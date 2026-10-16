@@ -103,7 +103,7 @@ span), optional `candidates` when the problem is ambiguity, and an optional one-
 | `unknown-registry-receiver`  | a registry call's receiver is not a known registry               |
 | `ambiguous-registry`         | a lookup's key is absent from its registry but present elsewhere |
 | `dynamic-state-path`         | a state access has a computed property and wildcards are off     |
-| `dynamic-module-specifier`   | a dynamic module load's specifier is not a constant              |
+| `dynamic-module-specifier`   | a dynamic module load's specifier is not a constant or literal   |
 | `unresolved-callback`        | a configured callback is not a top-level function or variable    |
 | `unresolved-metadata-key`    | a metadata key is not a constant, or its target has no symbol    |
 | `dynamic-resource-specifier` | a loader's resource path is not a constant                       |
@@ -121,6 +121,7 @@ is "this code tried to call something and could not be resolved."
 - `metadata`: mechanism details, for example:
   - `{ "once": true }` on a `subscribes` edge;
   - `{ "loadKind": "worker" }` on an `imports` edge from a dynamic load;
+  - `{ "loadKind": "import-module" }` on an `imports` edge from a Python `importlib.import_module` call;
   - `{ "inline": true }` on a `passesCallback` edge from an inline callback;
   - `{ "injection": "constructor" }` on a `resolves` edge from a constructor parameter decorator;
   - `{ "resourceKind": "stylesheet", "mechanism": "import" }` on a `usesResource` edge;
@@ -179,13 +180,14 @@ four names remain in the type definitions only so older maps can be read, and
 Module loads that the analysis can see are recorded as `imports` relationships. The source of the
 load determines the edge:
 
-| Written as                                     | `loadKind`          | Edge                                                        |
-| ---------------------------------------------- | ------------------- | ----------------------------------------------------------- |
-| `import('./x')` with a constant specifier      | `import-expression` | owner → file, when the file resolves inside the repository  |
-| `new Worker(new URL('./x', import.meta.url))`  | `worker`            | owner → file                                                |
-| `new URL('./x', import.meta.url)` elsewhere    | `url`               | owner → file                                                |
-| A configured loader call (`protocols.loaders`) | `loader`            | owner → file                                                |
-| `require('./x')` (literal)                     | none                | file or owner → file; carries no `loadKind` in this version |
+| Written as                                       | `loadKind`          | Edge                                                        |
+| ------------------------------------------------ | ------------------- | ----------------------------------------------------------- |
+| `import('./x')` with a constant specifier        | `import-expression` | owner → file, when the file resolves inside the repository  |
+| `new Worker(new URL('./x', import.meta.url))`    | `worker`            | owner → file                                                |
+| `new URL('./x', import.meta.url)` elsewhere      | `url`               | owner → file                                                |
+| A configured loader call (`protocols.loaders`)   | `loader`            | owner → file                                                |
+| `importlib.import_module('x')` (Python, literal) | `import-module`     | owner → file, when the file is in the repository            |
+| `require('./x')` (literal)                       | none                | file or owner → file; carries no `loadKind` in this version |
 
 The owner is the enclosing symbol when there is one (for example `src/app.ts:loadPlugin`), and the
 file at top level.
@@ -282,6 +284,12 @@ handle the new values:
 - `CodeRelationship` gained `'passesCallback'`.
 - The relationship union gained `definesMetadata`, `readsMetadata` and `usesResource`.
 - `NodeKind` and `GraphNode` gained `'metadata-key'` and `'resource'`.
+- `LoadKind` gained `'import-module'`.
 
 Annotated relationships change `evidence` to `config`. A consumer that read `ast` or `ts-program`
 from an edge that is now annotated will see `config` instead.
+
+Existing outputs change in three places on regeneration: repositories that import stylesheets or
+templates gain `usesResource` edges and a `Resources` section; annotated edges show `config`
+evidence; and Python files that call `importlib.import_module` with a literal gain `import-module`
+edges. These belong in the release notes.

@@ -31,6 +31,8 @@ export class PythonAnalyzer implements Analyzer {
     const importsMap = new Map<string, { targetFile: string; importedName: string }>();
     const topLevelSymbols = new Map<string, { id: string; type: SymbolType }>();
     let currentClass: string | undefined;
+    // Names bound to importlib's import_module: `from importlib import import_module [as x]`.
+    const importModuleNames = new Set<string>();
 
     // Pass 1: Imports, Classes, Functions, Methods, Variables & Exports
     for (let i = 0; i < lines.length; i++) {
@@ -66,6 +68,16 @@ export class PythonAnalyzer implements Analyzer {
       if (fromImportMatch) {
         const moduleSpec = fromImportMatch[1]!;
         const importedItemsStr = fromImportMatch[2]!;
+
+        if (moduleSpec === 'importlib') {
+          for (const item of importedItemsStr.split(',')) {
+            const parts = item.trim().split(/\s+as\s+/);
+            if (parts[0]?.trim() === 'import_module') {
+              importModuleNames.add((parts[1] ?? parts[0]).trim());
+            }
+          }
+        }
+
         const targetFile = resolvePythonImport(normalizedPath, moduleSpec, knownFiles);
 
         if (targetFile) {
@@ -152,36 +164,27 @@ export class PythonAnalyzer implements Analyzer {
       }
     }
 
-    // Pass 2: Function & Method Call Relationships
-    let activeCallerId: string = normalizedPath;
-    let activeClass: string | undefined;
+    // Pass 2: Function & Method Call Relationships, and importlib module loads.
+    // Owners come from ownersByLine, the same function the source-annotation collector uses.
+    const owners = ownersByLine(content, normalizedPath);
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i]!;
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith('#')) continue;
 
-      const indent = line.search(/\S/);
-      if (indent === 0 && !line.startsWith('class ') && !line.startsWith('@')) {
-        activeClass = undefined;
-        activeCallerId = normalizedPath;
-      }
+      const activeCallerId = owners[i] ?? normalizedPath;
 
-      const classMatch = trimmed.match(/^class\s+([a-zA-Z0-9_]+)/);
-      if (classMatch && indent === 0) {
-        activeClass = classMatch[1]!;
-        activeCallerId = `${normalizedPath}:${activeClass}`;
-      }
-
-      const defMatch = trimmed.match(/^def\s+([a-zA-Z0-9_]+)/);
-      if (defMatch) {
-        const fnName = defMatch[1]!;
-        if (indent === 0) {
-          activeCallerId = `${normalizedPath}:${fnName}`;
-        } else if (activeClass) {
-          activeCallerId = `${normalizedPath}:${activeClass}.${fnName}`;
-        }
-      }
+      // importlib.import_module(...) and import_module(...) after a from-import
+      inspectImportModuleCalls(
+        trimmed,
+        activeCallerId,
+        normalizedPath,
+        i + 1,
+        importModuleNames,
+        knownFiles,
+        graph,
+      );
 
       // Detect function calls in line
       const callMatches = trimmed.matchAll(/\b([a-zA-Z0-9_]+)\s*\(/g);
@@ -220,6 +223,124 @@ export class PythonAnalyzer implements Analyzer {
       }
     }
   }
+}
+
+/**
+ * The owner id of every line of a Python file, indexed by 0-based line index: the enclosing
+ * `file:Class.method` or `file:function`, or the file itself at top level. This is the owner
+ * `analyzeFile` records for the calls on that line, so a source directive can be checked against
+ * the same owner the analyzer uses.
+ */
+export function ownersByLine(content: string, filePath: string): string[] {
+  const lines = content.replace(/\r\n/g, '\n').split('\n');
+  const owners: string[] = [];
+  let activeCaller: string = filePath;
+  let activeClass: string | undefined;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed && !trimmed.startsWith('#')) {
+      const indent = line.search(/\S/);
+      if (indent === 0 && !line.startsWith('class ') && !line.startsWith('@')) {
+        activeClass = undefined;
+        activeCaller = filePath;
+      }
+
+      const classMatch = trimmed.match(/^class\s+([a-zA-Z0-9_]+)/);
+      if (classMatch && indent === 0) {
+        activeClass = classMatch[1]!;
+        activeCaller = `${filePath}:${activeClass}`;
+      }
+
+      const defMatch = trimmed.match(/^def\s+([a-zA-Z0-9_]+)/);
+      if (defMatch) {
+        const fnName = defMatch[1]!;
+        if (indent === 0) {
+          activeCaller = `${filePath}:${fnName}`;
+        } else if (activeClass) {
+          activeCaller = `${filePath}:${activeClass}.${fnName}`;
+        }
+      }
+    }
+    owners.push(activeCaller);
+  }
+  return owners;
+}
+
+// ── importlib ───────────────────────────────────────────────────────
+
+/**
+ * `importlib.import_module(x)` or a bare `import_module(x)` bound by a from-import. A string
+ * literal names a module: an internal one is an `imports` edge with `loadKind: import-module`, an
+ * external or missing one is silent. Any other argument is a `dynamic-module-specifier` observation,
+ * linked from the owner at low confidence. `line` is the 1-based line the call is written on.
+ */
+function inspectImportModuleCalls(
+  trimmed: string,
+  owner: string,
+  filePath: string,
+  line: number,
+  importModuleNames: ReadonlySet<string>,
+  knownFiles: ReadonlySet<string> | undefined,
+  graph: ConnectionGraph,
+): void {
+  const pattern = /(?:\bimportlib\.import_module|\b([a-zA-Z_][a-zA-Z0-9_]*))\s*\(/g;
+  for (const match of trimmed.matchAll(pattern)) {
+    const bare = match[1];
+    if (bare !== undefined && !importModuleNames.has(bare)) continue;
+
+    const argStart = (match.index ?? 0) + match[0].length;
+    const argument = firstArgument(trimmed.slice(argStart));
+    if (argument === undefined) continue;
+
+    const literal = /^(['"])([^'"]+)\1$/.exec(argument);
+    if (literal) {
+      const moduleName = literal[2]!;
+      const targetFile = resolvePythonImport(filePath, moduleName, knownFiles);
+      if (targetFile) {
+        graph.addRelationship('imports', owner, targetFile, 'high', {
+          evidence: 'ts-program',
+          metadata: { loadKind: 'import-module' },
+        });
+      }
+      continue;
+    }
+
+    const column = (match.index ?? 0) + 1;
+    const unresolved = graph.addUnresolved({
+      reason: 'dynamic-module-specifier',
+      attempted: 'imports',
+      subject: `${match[0]}${argument})`,
+      location: {
+        filePath,
+        startLine: line,
+        startColumn: column,
+        endLine: line,
+        endColumn: column + match[0].length,
+      },
+      detail: 'the module name is not a string literal',
+    });
+    graph.addRelationship('imports', owner, unresolved.id, 'low', {
+      evidence: 'heuristic',
+      metadata: { loadKind: 'import-module' },
+    });
+  }
+}
+
+/** The text of the first argument in a call's remainder, up to a top-level comma or `)`. */
+function firstArgument(rest: string): string | undefined {
+  let depth = 0;
+  for (let i = 0; i < rest.length; i++) {
+    const ch = rest[i]!;
+    if (ch === '(' || ch === '[' || ch === '{') depth++;
+    else if (ch === ')' || ch === ']' || ch === '}') {
+      if (depth === 0) return rest.slice(0, i).trim() || undefined;
+      depth--;
+    } else if (ch === ',' && depth === 0) {
+      return rest.slice(0, i).trim() || undefined;
+    }
+  }
+  return undefined;
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────
