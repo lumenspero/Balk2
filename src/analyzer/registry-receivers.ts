@@ -152,7 +152,7 @@ function isPrivateStorage(declaration: ts.Declaration): boolean {
 }
 
 function hasModifier(node: ts.Node, kind: ts.SyntaxKind): boolean {
-  return (ts.canHaveModifiers(node) ? ts.getModifiers(node) ?? [] : []).some(
+  return (ts.canHaveModifiers(node) ? (ts.getModifiers(node) ?? []) : []).some(
     (modifier) => modifier.kind === kind,
   );
 }

@@ -13,30 +13,34 @@ function problemPathsOf(
 
 describe('lineage diagnostics', () => {
   it('reports a producer script that is not in the repository', () => {
-    const paths = problemPathsOf([{ producer: 'scripts/missing.py', output: 'data/a.json' }], [
-      'data/a.json',
-    ]);
+    const paths = problemPathsOf(
+      [{ producer: 'scripts/missing.py', output: 'data/a.json' }],
+      ['data/a.json'],
+    );
     expect(paths).toEqual(['data.lineage[0].producer']);
   });
 
   it('reports a consumer script that is not in the repository', () => {
-    const paths = problemPathsOf([{ consumer: 'src/gone.ts', input: 'data/a.json' }], [
-      'data/a.json',
-    ]);
+    const paths = problemPathsOf(
+      [{ consumer: 'src/gone.ts', input: 'data/a.json' }],
+      ['data/a.json'],
+    );
     expect(paths).toEqual(['data.lineage[0].consumer']);
   });
 
   it('does not report a missing output, because a pipeline may create it later', () => {
-    const paths = problemPathsOf([{ producer: 'scripts/make.py', output: 'data/new.json' }], [
-      'scripts/make.py',
-    ]);
+    const paths = problemPathsOf(
+      [{ producer: 'scripts/make.py', output: 'data/new.json' }],
+      ['scripts/make.py'],
+    );
     expect(paths).toEqual([]);
   });
 
   it('reports an input that no file and no lineage entry provides', () => {
-    const paths = problemPathsOf([{ consumer: 'src/load.ts', input: 'data/gone.parquet' }], [
-      'src/load.ts',
-    ]);
+    const paths = problemPathsOf(
+      [{ consumer: 'src/load.ts', input: 'data/gone.parquet' }],
+      ['src/load.ts'],
+    );
     expect(paths).toEqual(['data.lineage[0].input']);
   });
 

@@ -157,7 +157,11 @@ export function collectRegistryRelationships(
 
     if (key.kind === 'dynamic') {
       if (trusted) {
-        observe('dynamic-registry-key', key.reason, qualification.internal ? 'internal' : undefined);
+        observe(
+          'dynamic-registry-key',
+          key.reason,
+          qualification.internal ? 'internal' : undefined,
+        );
       }
       continue;
     }

@@ -4,10 +4,7 @@ import { JsTsAnalyzer } from './js-ts-analyzer.js';
 
 const DATA_RELATIONSHIPS = ['generates', 'consumes', 'reads'];
 
-function dataFactsOf(
-  filePath: string,
-  code: string,
-): { artifacts: string[]; edges: string[] } {
+function dataFactsOf(filePath: string, code: string): { artifacts: string[]; edges: string[] } {
   const graph = new ConnectionGraph();
   new JsTsAnalyzer().analyzeFile(filePath, code, graph, { knownFiles: [] });
   const map = graph.build({ generatedAt: 'test' });

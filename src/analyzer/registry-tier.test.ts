@@ -7,10 +7,7 @@ const lines = (...rows: string[]): string => rows.join('\n');
 
 // An untrusted registry produces no observations, so each fixture also registers a class under a
 // static key. That makes the registry trusted, and the dynamic key below is then reported.
-function dynamicKeyNodesOf(
-  name: string,
-  files: Record<string, string>,
-): UnresolvedReferenceNode[] {
+function dynamicKeyNodesOf(name: string, files: Record<string, string>): UnresolvedReferenceNode[] {
   const fixture: RegistryFixture = { name, files, pairs: [], observations: [] };
   const map = analyzeRegistryFixture(fixture);
   return Object.values(map.unresolved).filter((node) => node.reason === 'dynamic-registry-key');
