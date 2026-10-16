@@ -1,6 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import type { Annotation } from '../analyzer/annotations.js';
 import type { ConfigProblem } from './config-problem.js';
+import { normalizeAnnotations } from './annotations-config.js';
 import { normalizeProtocolsConfig, type ProtocolsConfig } from './protocols-config.js';
 import { normalizeStateConfig, type StateConfig } from './state-config.js';
 
@@ -52,6 +54,8 @@ export interface Balk2Config {
   readonly protocols?: ProtocolsConfig;
   /** What counts as shared state and how it is accessed */
   readonly state?: StateConfig;
+  /** Project decisions that set the confidence of existing relationships */
+  readonly annotations?: readonly Annotation[];
 }
 
 /** The loaded configuration plus everything in the file that was ignored or unusable. */
@@ -110,6 +114,7 @@ export function loadBalk2ConfigDetailed(
   delete config.globals;
   delete config.protocols;
   delete config.state;
+  delete config.annotations;
 
   if ('globals' in raw) {
     problems.push(...validateGlobalsConfig(raw.globals));
@@ -127,6 +132,11 @@ export function loadBalk2ConfigDetailed(
     const state = normalizeStateConfig(raw.state);
     problems.push(...state.problems);
     if (state.config) config.state = state.config;
+  }
+
+  if ('annotations' in raw) {
+    const annotations = normalizeAnnotations(raw.annotations, problems);
+    if (annotations) config.annotations = annotations;
   }
 
   return { config: config as Balk2Config, problems };

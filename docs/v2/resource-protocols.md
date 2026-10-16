@@ -9,11 +9,11 @@ Resources are kept apart from the other tables. A code file is a `file`, a data 
 
 ## What counts as a resource
 
-| Extension                                                 | `resourceKind` |
-| --------------------------------------------------------- | -------------- |
-| `.html`, `.htm`, `.hbs`, `.handlebars`, `.ejs`, `.mustache` | `template`   |
-| `.css`, `.scss`, `.sass`, `.less`                         | `stylesheet`   |
-| `*.schema.json`                                           | `schema`       |
+| Extension                                                   | `resourceKind` |
+| ----------------------------------------------------------- | -------------- |
+| `.html`, `.htm`, `.hbs`, `.handlebars`, `.ejs`, `.mustache` | `template`     |
+| `.css`, `.scss`, `.sass`, `.less`                           | `stylesheet`   |
+| `*.schema.json`                                             | `schema`       |
 
 A plain `.json` file is a data artifact, not a resource. A `*.schema.json` file is a schema and is
 not a data artifact, so it does not appear in the Data Connections section.

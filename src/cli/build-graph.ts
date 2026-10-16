@@ -7,6 +7,11 @@ import {
   PythonAnalyzer,
   type Analyzer,
 } from '../analyzer/index.js';
+import { applyAnnotations } from '../analyzer/annotations.js';
+import {
+  collectSourceAnnotations,
+  type SourceAnnotationResult,
+} from '../analyzer/source-annotations-apply.js';
 import { registerDataArtifacts } from '../data/formats.js';
 import { filterFilesWithConfig, applyExplicitLineage } from '../config/index.js';
 import type { Balk2Config } from '../config/balk2-config.js';
@@ -43,7 +48,7 @@ export function buildConnectionGraphDetailed(rootDir: string, config?: Balk2Conf
   const jsTsAnalyzer = new JsTsAnalyzer();
   const analyzers: Analyzer[] = [new PythonAnalyzer()];
   const graph = new ConnectionGraph();
-  let problems: readonly ConfigProblem[] = [];
+  const problems: ConfigProblem[] = [];
 
   // 1. Scan directory for repository files & apply config filters
   const rawFiles = scanRepositoryFiles(rootDir);
@@ -58,10 +63,15 @@ export function buildConnectionGraphDetailed(rootDir: string, config?: Balk2Conf
   }
 
   // 4. Parse and analyze JS/TS once through a shared repository session.
+  //    Source annotations are read in the same session, so they see the same parsed files.
+  let sourceAnnotations: SourceAnnotationResult = {
+    annotations: config?.annotations ?? [],
+    problems: [],
+  };
   const jsTsFiles = allRelativeFiles.filter((filePath) => jsTsAnalyzer.canAnalyze(filePath));
   if (jsTsFiles.length > 0) {
     const repository = createRepositoryProgram({ rootDir, filePaths: jsTsFiles });
-    problems = jsTsAnalyzer.analyzeRepository(repository, graph, {
+    const analysis = jsTsAnalyzer.analyzeRepository(repository, graph, {
       globals: config?.globals,
       events: config?.protocols?.events,
       registries: config?.protocols?.registries,
@@ -70,7 +80,9 @@ export function buildConnectionGraphDetailed(rootDir: string, config?: Balk2Conf
       metadata: config?.protocols?.metadata,
       resources: config?.protocols?.resources,
       state: config?.state,
-    }).stateProblems;
+    });
+    problems.push(...analysis.stateProblems);
+    sourceAnnotations = collectSourceAnnotations(repository, config?.annotations ?? []);
   }
 
   // 5. Analyze files for language analyzers that do not yet use the shared session.
@@ -88,6 +100,13 @@ export function buildConnectionGraphDetailed(rootDir: string, config?: Balk2Conf
         }
       }
     }
+  }
+
+  // 6. Apply project annotations last, so they see the final edges and no detector overwrites them.
+  //    Source comments take priority over .balk2.json annotations for the same edge.
+  const annotationProblems = applyAnnotations(graph, sourceAnnotations.annotations);
+  for (const problem of [...sourceAnnotations.problems, ...annotationProblems]) {
+    problems.push({ path: problem.path, message: problem.message });
   }
 
   return { graph, problems };

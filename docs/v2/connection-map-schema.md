@@ -5,23 +5,24 @@
 
 ## Top level
 
-| Field           | Type                                       | Notes                                   |
-| --------------- | ------------------------------------------ | --------------------------------------- |
-| `version`       | `2`                                        | Schema version                          |
-| `repository`    | `{ commit?: string, generatedAt: string }` | Generation metadata                     |
-| `files`         | `Record<path, FileNode>`                   | Code files                              |
-| `symbols`       | `Record<id, SymbolNode>`                   | `filePath:name`                         |
-| `artifacts`     | `Record<path, ArtifactNode>`               | Data files                              |
-| `eventChannels` | `Record<id, EventChannelNode>`             | Virtual nodes for event names           |
-| `registryKeys`  | `Record<id, RegistryKeyNode>`              | Virtual nodes for keys                  |
-| `metadataKeys`  | `Record<id, MetadataKeyNode>`              | Virtual nodes for Reflect metadata keys |
+| Field           | Type                                       | Notes                                             |
+| --------------- | ------------------------------------------ | ------------------------------------------------- |
+| `version`       | `2`                                        | Schema version                                    |
+| `repository`    | `{ commit?: string, generatedAt: string }` | Generation metadata                               |
+| `files`         | `Record<path, FileNode>`                   | Code files                                        |
+| `symbols`       | `Record<id, SymbolNode>`                   | `filePath:name`                                   |
+| `artifacts`     | `Record<path, ArtifactNode>`               | Data files                                        |
+| `eventChannels` | `Record<id, EventChannelNode>`             | Virtual nodes for event names                     |
+| `registryKeys`  | `Record<id, RegistryKeyNode>`              | Virtual nodes for registry keys                   |
+| `metadataKeys`  | `Record<id, MetadataKeyNode>`              | Virtual nodes for `Reflect` metadata keys         |
 | `resources`     | `Record<id, ResourceNode>`                 | Virtual nodes for templates, stylesheets, schemas |
-| `statePaths`    | `Record<id, StatePathNode>`                | Virtual nodes for shared state          |
-| `unresolved`    | `Record<id, UnresolvedReferenceNode>`      | Diagnostics for ambiguous/dynamic code  |
-| `relationships` | `Relationship[]`                           | Sorted by `(type, from, to)`            |
+| `statePaths`    | `Record<id, StatePathNode>`                | Virtual nodes for shared state                    |
+| `unresolved`    | `Record<id, UnresolvedReferenceNode>`      | Diagnostics for ambiguous or dynamic code         |
+| `relationships` | `Relationship[]`                           | Sorted by `(type, from, to)`                      |
 
 Every table is sorted by key and relationships by `(type, from, to)` using ordinal string
-comparison, so output is identical across machines for identical input.
+comparison, so output is identical across machines for identical input. The virtual tables are
+written in the order shown above.
 
 ## Virtual nodes
 
@@ -62,9 +63,11 @@ so a value stored from inside a function does not register that function.
 are global, so the same key name is one node across the repository. Fields: `kind`, `id`, `key`.
 Created only for keys that are configured and used.
 
-**Resource** — `resource:<path>`. A template, stylesheet or schema file that code uses, identified by
-its repository-relative path. Fields: `kind`, `id`, `path`, `resourceKind` (`template`,
-`stylesheet` or `schema`). Created only for files that exist in the repository and are used.
+**Resource** — `resource:<path>`. A template, stylesheet or schema file that code uses, identified
+by its repository-relative path. Fields: `kind`, `id`, `path`, `resourceKind` (`template`,
+`stylesheet` or `schema`). Created only for files that exist in the repository and are used. A
+plain `.json` file is a data artifact, not a resource; a `*.schema.json` file is a schema resource,
+not a data artifact.
 
 **State path** — `state:<root>` for a state container, `state:<root>#<path>` for a property under
 it, so reading a whole store and reading one field of it are different nodes. The root is the
@@ -85,13 +88,29 @@ access is an unresolved `dynamic-state-path` observation. Fields: `kind`, `id`, 
 for a wildcard).
 
 **Unresolved reference** — `unresolved:<reason>:<file>:<line>:<column>`. Records code that looks
-like a connection but cannot be resolved without guessing. Fields: `kind`, `id`, `reason`
-(`ambiguous-global`, `dynamic-event-name`, `unknown-event-receiver`, `dynamic-registry-key`,
-`unknown-registry-receiver`, `ambiguous-registry`, `dynamic-state-path`, `dynamic-module-specifier`,
-`unresolved-callback`, `unresolved-metadata-key`, `dynamic-resource-specifier`), `attempted` (the relationship type that would
-have been created), `subject`, `location` (a source span), and `candidates` when the problem is
-ambiguity, and an optional one-sentence `detail` saying why it could not be resolved. The owning
-symbol or file links to it with a `low`-confidence relationship of the attempted type.
+like a connection but cannot be resolved without guessing. Fields: `kind`, `id`, `reason`,
+`attempted` (the relationship type that would have been created), `subject`, `location` (a source
+span), optional `candidates` when the problem is ambiguity, and an optional one-sentence `detail`.
+
+`reason` is one of:
+
+| Reason                       | Raised when                                                      |
+| ---------------------------- | ---------------------------------------------------------------- |
+| `ambiguous-global`           | a global name is declared in several files without a target      |
+| `dynamic-event-name`         | an event name is not a constant                                  |
+| `unknown-event-receiver`     | an event call's receiver type is not known                       |
+| `dynamic-registry-key`       | a registry key, or an injected token, is not readable            |
+| `unknown-registry-receiver`  | a registry call's receiver is not a known registry               |
+| `ambiguous-registry`         | a lookup's key is absent from its registry but present elsewhere |
+| `dynamic-state-path`         | a state access has a computed property and wildcards are off     |
+| `dynamic-module-specifier`   | a dynamic module load's specifier is not a constant              |
+| `unresolved-callback`        | a configured callback is not a top-level function or variable    |
+| `unresolved-metadata-key`    | a metadata key is not a constant, or its target has no symbol    |
+| `dynamic-resource-specifier` | a loader's resource path is not a constant                       |
+
+The owning symbol or file links to an unresolved node with a `low`-confidence relationship of the
+attempted type. That link is an observation, not a resolution: a `calls` edge to an unresolved node
+is "this code tried to call something and could not be resolved."
 
 ## Relationships
 
@@ -103,7 +122,9 @@ symbol or file links to it with a `low`-confidence relationship of the attempted
   - `{ "once": true }` on a `subscribes` edge;
   - `{ "loadKind": "worker" }` on an `imports` edge from a dynamic load;
   - `{ "inline": true }` on a `passesCallback` edge from an inline callback;
-  - `{ "injection": "constructor" }` on a `resolves` edge from a constructor parameter decorator.
+  - `{ "injection": "constructor" }` on a `resolves` edge from a constructor parameter decorator;
+  - `{ "resourceKind": "stylesheet", "mechanism": "import" }` on a `usesResource` edge;
+  - `{ "annotated": true }` on any relationship a project annotation has decided.
 
 A relationship is identified by `(type, from, to)`. Repeated observations are merged: the
 highest confidence (and its evidence) wins, and spans are combined. Metadata is merged by key:
@@ -113,6 +134,10 @@ highest confidence (and its evidence) wins, and spans are combined. Metadata is 
 - `loadKind` is **combinable**. Its values are joined as a sorted, comma-separated list, so a file
   that is both required and dynamically imported from the same owner reads
   `"import-expression,require"`. The combinable keys are listed in `COMBINABLE_METADATA`.
+
+An annotated relationship carries `evidence: "config"` and `metadata.annotated: true`. The confidence
+is the one the project set, and may be higher or lower than the detector's. The original detector
+evidence is replaced, so the map does not keep it for an annotated edge. See `annotations.md`.
 
 Event relationships are `emits`, `dispatches`, `subscribes` and `unsubscribes`. They point from the
 publisher or listener owner **to** the channel.
@@ -129,10 +154,9 @@ read to the same key. A `definesMetadata` or `readsMetadata` edge whose target i
 `metadata-protocols.md`.
 
 Resource relationships are `usesResource`. It runs from the file or symbol that uses a resource to
-the resource node. `metadata.resourceKind` gives the kind, and `metadata.mechanism` gives how it is
-used: `import` for a static import, or `loader` for a configured loader call. A `usesResource` edge
-whose target is a `dynamic-resource-specifier` observation is a link to an unresolved use, not a
-resolved one. See `resource-protocols.md`.
+the resource node. `metadata.mechanism` is `import` for a static import or `loader` for a configured
+loader call. A `usesResource` edge whose target is a `dynamic-resource-specifier` observation is a
+link to an unresolved use. See `resource-protocols.md`.
 
 `passesCallback` runs from the function that passes a callback to the callback's symbol. See
 "Callbacks" below.
@@ -230,11 +254,11 @@ not channels and are never included.
 `deserializeConnectionMap` accepts version 1 and version 2.
 
 - A version 1 map is converted on read: its nodes are valid in version 2 unchanged,
-  `eventChannels`, `registryKeys`, `metadataKeys`, `statePaths` and `unresolved` start empty, and
-  stored reverse links are turned into the forward relationship they repeat, so each fact is held
-  once.
-- A version 2 map written before registry keys, metadata keys, or state paths existed reads with
-  the missing tables empty. A map with no `type` keys or metadata keys is unchanged.
+  `eventChannels`, `registryKeys`, `metadataKeys`, `resources`, `statePaths` and `unresolved` start
+  empty, and stored reverse links are turned into the forward relationship they repeat, so each fact
+  is held once.
+- A version 2 map written before any of the virtual tables existed reads with the missing tables
+  empty. A map with no `type` keys, metadata keys or resources is unchanged.
 - A version 2 map written while reverse links were still stored is cleaned the same way, so
   `deserializeConnectionMap` always returns relationships in canonical form.
 - Any other version is rejected with `Unsupported connection map version`.
@@ -244,14 +268,20 @@ not channels and are never included.
 
 ## Compatibility
 
-The exported `ConnectionMap` type now has `version: 2` and five new tables (`eventChannels`,
-`registryKeys`, `metadataKeys`, `statePaths`, `unresolved`), which is a breaking change for
-TypeScript consumers; `ConnectionMapV1` is exported for code that still handles the old shape. This
-change ships with the next major version.
+The exported `ConnectionMap` type now has `version: 2` and six new tables (`eventChannels`,
+`registryKeys`, `metadataKeys`, `resources`, `statePaths`, `unresolved`), which is a breaking change
+for TypeScript consumers; `ConnectionMapV1` is exported for code that still handles the old shape.
+This change ships with the next major version.
 
-`RegistryKeyType` gained `'type'`. Code that switches over `keyType` exhaustively must handle it.
-`UnresolvedReason` gained `'unresolved-callback'`, `'unresolved-metadata-key'` and
-`'dynamic-resource-specifier'`; `CodeRelationship` gained `'passesCallback'`; the relationship union
-gained `definesMetadata`, `readsMetadata` and `usesResource`; `NodeKind` and `GraphNode` gained
-`'metadata-key'` and `'resource'`. Code that switches over any of these exhaustively must handle the
-new values.
+The enumerated types changed as follows. Code that switches over any of them exhaustively must
+handle the new values:
+
+- `RegistryKeyType` gained `'type'`.
+- `UnresolvedReason` gained `'unresolved-callback'`, `'unresolved-metadata-key'` and
+  `'dynamic-resource-specifier'`.
+- `CodeRelationship` gained `'passesCallback'`.
+- The relationship union gained `definesMetadata`, `readsMetadata` and `usesResource`.
+- `NodeKind` and `GraphNode` gained `'metadata-key'` and `'resource'`.
+
+Annotated relationships change `evidence` to `config`. A consumer that read `ast` or `ts-program`
+from an edge that is now annotated will see `config` instead.

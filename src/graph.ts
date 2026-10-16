@@ -251,6 +251,33 @@ export class ConnectionGraph {
     return rel;
   }
 
+  /**
+   * Set the confidence of an existing relationship, recording that a project annotation decided
+   * it. Unlike `addRelationship`, this can lower confidence, since it is an explicit decision and
+   * not a merge of observations. Returns the updated relationship, or undefined when no
+   * relationship of that type runs from `from` to `to`.
+   */
+  setConfidence(
+    type: RelationshipType,
+    from: string,
+    to: string,
+    confidence: Confidence,
+  ): Relationship | undefined {
+    const key = `${type}\u0000${normalizePath(from)}\u0000${normalizePath(to)}`;
+    const index = this.relationshipIndex.get(key);
+    if (index === undefined) return undefined;
+
+    const existing = this.relationships[index] as Relationship;
+    const updated: Relationship = {
+      ...existing,
+      confidence,
+      evidence: 'config',
+      metadata: { ...(existing.metadata ?? {}), annotated: true },
+    };
+    this.relationships[index] = updated;
+    return updated;
+  }
+
   /** Returns true if a file node exists for the given path. */
   hasFile(path: string): boolean {
     return this.files.has(normalizePath(path));
