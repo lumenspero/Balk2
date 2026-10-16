@@ -206,6 +206,7 @@ export class ConnectionGraph {
       location: { ...location, filePath: normalizePath(location.filePath) },
       ...(input.candidates ? { candidates: [...input.candidates].sort(compareStrings) } : {}),
       ...(input.detail ? { detail: input.detail } : {}),
+      ...(input.tier ? { tier: input.tier } : {}),
     };
     this.unresolved.set(id, node);
     return node;

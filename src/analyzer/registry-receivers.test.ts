@@ -122,6 +122,11 @@ describe('qualifyRegistryReceiver', () => {
   });
 
   it('any qualifies every receiver without a type check', () => {
-    expect(qualify(3, 'any')).toEqual({ qualifies: true, evidence: 'ast', container: 'typed' });
+    expect(qualify(3, 'any')).toEqual({
+      qualifies: true,
+      evidence: 'ast',
+      container: 'typed',
+      internal: false,
+    });
   });
 });

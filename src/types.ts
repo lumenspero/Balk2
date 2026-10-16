@@ -220,6 +220,11 @@ export interface UnresolvedReferenceNode {
   readonly candidates?: readonly string[];
   /** Why it could not be resolved, in a sentence (for example "receiver type is not known") */
   readonly detail?: string;
+  /**
+   * `internal`: the observation is in a built-in container whose storage is private to its
+   * module or class, so no other code can reach the keys. Absent means actionable.
+   */
+  readonly tier?: 'internal';
 }
 
 export type GraphNode =

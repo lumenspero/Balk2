@@ -12,12 +12,20 @@ import { matchesNameOrType } from './receiver-rules.js';
  */
 export type RegistryContainer = 'object' | 'typed';
 
-export interface RegistryQualification {
+export interface ReceiverQualification {
   readonly qualifies: boolean;
   /** `ast`: the method name was enough; `ts-program`: type evidence; `config`: a configured rule */
   readonly evidence: Evidence;
   readonly container: RegistryContainer;
   readonly reason?: string;
+}
+
+export interface RegistryQualification extends ReceiverQualification {
+  /**
+   * True when the receiver is a built-in container whose storage cannot be reached from outside
+   * its module or class (a private member, or a module-level variable that is not exported).
+   */
+  readonly internal: boolean;
 }
 
 /** Decide whether a receiver is a registry under a protocol's receiver rule. */
@@ -27,9 +35,22 @@ export function qualifyRegistryReceiver(
   catalog: RegistryProtocolCatalog,
   checker: ts.TypeChecker,
 ): RegistryQualification {
+  const type = checker.getNonNullableType(checker.getTypeAtLocation(receiver));
+  return {
+    ...qualifyReceiver(rule, receiver, catalog, checker, type),
+    internal: isInternalStorage(type, receiver, checker),
+  };
+}
+
+function qualifyReceiver(
+  rule: RegistryRule,
+  receiver: ts.Expression,
+  catalog: RegistryProtocolCatalog,
+  checker: ts.TypeChecker,
+  type: ts.Type,
+): ReceiverQualification {
   if (rule === 'any') return { qualifies: true, evidence: 'ast', container: 'typed' };
 
-  const type = checker.getNonNullableType(checker.getTypeAtLocation(receiver));
   const shape = shapeOf(type, checker, catalog);
 
   if (rule === 'registry-like') {
@@ -84,4 +105,54 @@ function shapeOf(type: ts.Type, checker: ts.TypeChecker, catalog: RegistryProtoc
     registry: !arrayLike && (indexed || setLike || (registers && looksUp)),
     container: indexed && !arrayLike && !registers && !looksUp ? 'object' : 'typed',
   };
+}
+
+/**
+ * A built-in container (Map, Set, and other types declared by the TypeScript standard library)
+ * whose storage is private: its keys are bookkeeping, not an interface other code can use.
+ * Anything reachable from outside its module, or of unknown origin, is not internal.
+ */
+function isInternalStorage(
+  type: ts.Type,
+  receiver: ts.Expression,
+  checker: ts.TypeChecker,
+): boolean {
+  if (!isBuiltInContainer(type)) return false;
+
+  const target = ts.isPropertyAccessExpression(receiver) ? receiver.name : receiver;
+  if (!ts.isIdentifier(target) && !ts.isPrivateIdentifier(target)) return false;
+
+  const declaration = checker.getSymbolAtLocation(target)?.valueDeclaration;
+  return declaration !== undefined && isPrivateStorage(declaration);
+}
+
+function isBuiltInContainer(type: ts.Type): boolean {
+  const declarations = type.getSymbol()?.getDeclarations() ?? [];
+  return declarations.length > 0 && declarations.every((d) => d.getSourceFile().hasNoDefaultLib);
+}
+
+function isPrivateStorage(declaration: ts.Declaration): boolean {
+  if (ts.isVariableDeclaration(declaration)) {
+    // Exported only when a module-level `export` statement declares it.
+    const statement = declaration.parent?.parent;
+    const exported =
+      statement !== undefined &&
+      ts.isVariableStatement(statement) &&
+      ts.isSourceFile(statement.parent) &&
+      hasModifier(statement, ts.SyntaxKind.ExportKeyword);
+    return !exported;
+  }
+  if (ts.isPropertyDeclaration(declaration)) {
+    return (
+      ts.isPrivateIdentifier(declaration.name) ||
+      hasModifier(declaration, ts.SyntaxKind.PrivateKeyword)
+    );
+  }
+  return false;
+}
+
+function hasModifier(node: ts.Node, kind: ts.SyntaxKind): boolean {
+  return (ts.canHaveModifiers(node) ? ts.getModifiers(node) ?? [] : []).some(
+    (modifier) => modifier.kind === kind,
+  );
 }

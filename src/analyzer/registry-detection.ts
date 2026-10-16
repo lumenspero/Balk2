@@ -140,13 +140,14 @@ export function collectRegistryRelationships(
     const span = spanOf(node, filePath);
     const owner = enclosingOwner(node, filePath);
 
-    const observe = (reason: UnresolvedReason, detail: string): void => {
+    const observe = (reason: UnresolvedReason, detail: string, tier?: 'internal'): void => {
       const unresolved = graph.addUnresolved({
         reason,
         attempted: protocol.relationship,
         subject: snippetOf(node),
         location: span,
         detail,
+        ...(tier ? { tier } : {}),
       });
       graph.addRelationship(protocol.relationship, owner, unresolved.id, 'low', {
         evidence: 'ts-program',
@@ -155,7 +156,9 @@ export function collectRegistryRelationships(
     };
 
     if (key.kind === 'dynamic') {
-      if (trusted) observe('dynamic-registry-key', key.reason);
+      if (trusted) {
+        observe('dynamic-registry-key', key.reason, qualification.internal ? 'internal' : undefined);
+      }
       continue;
     }
 
