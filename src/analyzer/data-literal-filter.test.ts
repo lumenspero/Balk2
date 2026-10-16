@@ -16,6 +16,15 @@ function dataFactsOf(filePath: string, code: string): { artifacts: string[]; edg
   };
 }
 
+function dataEdgesWithConfidence(filePath: string, code: string): string[] {
+  const graph = new ConnectionGraph();
+  new JsTsAnalyzer().analyzeFile(filePath, code, graph, { knownFiles: [] });
+  const map = graph.build({ generatedAt: 'test' });
+  return map.relationships
+    .filter((rel) => DATA_RELATIONSHIPS.includes(rel.type))
+    .map((rel) => `${rel.type} ${rel.from} -> ${rel.to} ${rel.confidence}`);
+}
+
 describe('data artifact literals', () => {
   it('ignores a label string that ends in a data extension but contains whitespace', () => {
     const facts = dataFactsOf(
@@ -30,5 +39,43 @@ describe('data artifact literals', () => {
     const facts = dataFactsOf('scripts/reader.js', "fs.readFileSync('data/raw.json', 'utf8');");
     expect(facts.artifacts).toContain('data/raw.json');
     expect(facts.edges).toEqual(['consumes scripts/reader.js -> data/raw.json']);
+  });
+
+  it('ignores an extension alone, as used in endsWith checks', () => {
+    const facts = dataFactsOf(
+      'src/cli/resolve.ts',
+      "if (resolved.endsWith('.json')) return resolved.slice(0, -5);",
+    );
+    expect(facts.artifacts).toEqual([]);
+    expect(facts.edges).toEqual([]);
+  });
+
+  it('ignores a data path that is only compared, not accessed', () => {
+    const facts = dataFactsOf('src/cli/check.ts', "if (name === 'out/report.json') return true;");
+    expect(facts.artifacts).toEqual([]);
+  });
+
+  it('judges a path built with path.join by the call that opens it', () => {
+    const edges = dataEdgesWithConfidence(
+      'scripts/writer.js',
+      "fs.writeFileSync(path.join(dir, 'out/report.json'), data);",
+    );
+    expect(edges).toEqual(['generates scripts/writer.js -> out/report.json high']);
+  });
+
+  it('judges a path built with path.join for a read by the reading call', () => {
+    const edges = dataEdgesWithConfidence(
+      'scripts/loader.js',
+      "fs.readFileSync(path.join(dir, 'data/in.json'), 'utf8');",
+    );
+    expect(edges).toEqual(['consumes scripts/loader.js -> data/in.json high']);
+  });
+
+  it('records a path with no read or write context at low confidence', () => {
+    const edges = dataEdgesWithConfidence(
+      'src/cli/generate.ts',
+      "const jsonPath = path.join(rootDir, 'connection-map/report.json');",
+    );
+    expect(edges).toEqual(['reads src/cli/generate.ts -> connection-map/report.json low']);
   });
 });

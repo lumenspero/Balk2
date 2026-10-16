@@ -9,3 +9,6 @@ coverage/
 .balk2.json
 connection-map.json
 connection-map.md
+
+# tsup leaves these behind if a build is interrupted
+tsup.config.bundled_*

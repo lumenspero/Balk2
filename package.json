@@ -29,6 +29,7 @@
   ],
   "scripts": {
     "build": "tsup && node scripts/copy-schema.mjs",
+    "prebuild": "node scripts/clean-tsup-leftovers.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

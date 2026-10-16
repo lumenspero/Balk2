@@ -70,7 +70,7 @@ export function generateConnectionMap(options: GenerateOptions = {}): GenerateRe
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
-function resolveOutputPaths(
+export function resolveOutputPaths(
   rootDir: string,
   outputOption?: string,
 ): { jsonPath: string; mdPath: string } {

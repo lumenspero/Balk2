@@ -2,8 +2,8 @@ import type { Analyzer, AnalyzerOptions } from './types.js';
 import type { ConnectionGraph } from '../graph.js';
 import { normalizePath } from '../graph.js';
 import type { SymbolType } from '../types.js';
-import { isDataArtifact } from '../data/formats.js';
-import { inferDataRelationshipType, addDataRelationship } from '../data/data-analyzer.js';
+import { inferDataDirection, addDataRelationship } from '../data/data-analyzer.js';
+import { isDataPathLiteral, isNonAccessBefore } from './data-literals.js';
 
 export class PythonAnalyzer implements Analyzer {
   readonly name = 'PythonAnalyzer';
@@ -157,9 +157,19 @@ export class PythonAnalyzer implements Analyzer {
       const stringMatches = trimmed.matchAll(/(?:'([^']+)'|"([^"]+)")/g);
       for (const sm of stringMatches) {
         const strVal = sm[1] ?? sm[2];
-        if (strVal && isDataArtifact(strVal)) {
-          const relType = inferDataRelationshipType(trimmed);
-          addDataRelationship(normalizedPath, strVal, relType, graph, 'high');
+        if (
+          strVal &&
+          isDataPathLiteral(strVal) &&
+          !isNonAccessBefore(trimmed.slice(0, sm.index ?? 0))
+        ) {
+          const direction = inferDataDirection(trimmed);
+          addDataRelationship(
+            normalizedPath,
+            strVal,
+            direction.type,
+            graph,
+            direction.certain ? 'high' : 'low',
+          );
         }
       }
     }

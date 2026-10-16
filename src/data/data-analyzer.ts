@@ -14,6 +14,18 @@ export interface DataReference {
   readonly confidence: Confidence;
 }
 
+export type DataDirection = 'generates' | 'consumes' | 'reads';
+
+/** A direction and whether the context actually said so. */
+export interface InferredDirection {
+  readonly type: DataDirection;
+  /**
+   * True when a read or write keyword or mode flag named the direction. False when the direction
+   * is only the fallback, so the caller should record it with lower confidence.
+   */
+  readonly certain: boolean;
+}
+
 const WRITE_KEYWORDS = [
   'write',
   'writefile',
@@ -41,29 +53,37 @@ const READ_KEYWORDS = [
 ];
 
 /**
- * Infer whether a function/method call context implies generating (writing) or consuming (reading) a data artifact.
+ * Infer whether a call context implies generating (writing) or consuming (reading) a data
+ * artifact, and whether that inference rests on evidence in the context.
  */
-export function inferDataRelationshipType(callContext: string): 'generates' | 'consumes' | 'reads' {
+export function inferDataDirection(callContext: string): InferredDirection {
   const lower = callContext.toLowerCase();
 
   for (const kw of WRITE_KEYWORDS) {
-    if (lower.includes(kw)) return 'generates';
+    if (lower.includes(kw)) return { type: 'generates', certain: true };
   }
 
   for (const kw of READ_KEYWORDS) {
-    if (lower.includes(kw)) return 'consumes';
+    if (lower.includes(kw)) return { type: 'consumes', certain: true };
   }
 
   // Check for file opening mode flags e.g. open('foo.json', 'w')
   if (/(['"])(w|wb|a|w\+|wb\+)\1/i.test(lower)) {
-    return 'generates';
+    return { type: 'generates', certain: true };
   }
 
   if (/(['"])(r|rb)\1/i.test(lower)) {
-    return 'consumes';
+    return { type: 'consumes', certain: true };
   }
 
-  return 'reads';
+  return { type: 'reads', certain: false };
+}
+
+/**
+ * Infer whether a function/method call context implies generating (writing) or consuming (reading) a data artifact.
+ */
+export function inferDataRelationshipType(callContext: string): DataDirection {
+  return inferDataDirection(callContext).type;
 }
 
 /**

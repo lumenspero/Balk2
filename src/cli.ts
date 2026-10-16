@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { generateConnectionMap } from './cli/generate.js';
 import { installGitHook, uninstallGitHook } from './cli/hook-installer.js';
 import { checkConnectionMap } from './cli/check.js';
+import { QUERY_USAGE, runQuery } from './cli/query.js';
 
 const packageMetadata = createRequire(import.meta.url)('../package.json') as { version: string };
 
@@ -17,6 +18,11 @@ function main(): void {
       outputOption = args[i + 1];
       break;
     }
+  }
+
+  if (command === 'query' && (args.includes('-h') || args.includes('--help'))) {
+    console.log(`Usage:\n  ${QUERY_USAGE}`);
+    process.exit(0);
   }
 
   if (args.includes('-h') || args.includes('--help')) {
@@ -68,6 +74,14 @@ function main(): void {
       break;
     }
 
+    case 'query': {
+      const res = runQuery(args.slice(1));
+      for (const line of res.stderr) console.error(line);
+      for (const line of res.stdout) console.log(line);
+      if (res.exitCode !== 0) process.exit(res.exitCode);
+      break;
+    }
+
     default: {
       console.error(`Unknown command: ${command}`);
       printHelp();
@@ -88,11 +102,14 @@ Commands:
   install               Install Git pre-commit hook for automatic map regeneration
   uninstall             Remove installed Git pre-commit hook
   check                 Check whether connection map is current with repository state
+  query                 Show relationships from connection-map.json, optionally around a file or node
 
 Options:
   -o, --output <path>   Output directory or base file path (default: connection-map)
   -h, --help            Show help
   -v, --version         Show version
+
+Run "balk2 query --help" for query options.
 `);
 }
 

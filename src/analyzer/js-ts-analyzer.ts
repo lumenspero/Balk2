@@ -27,8 +27,8 @@ import { resolveImportPath } from './resolver.js';
 import type { ConnectionGraph } from '../graph.js';
 import { normalizePath } from '../graph.js';
 import type { SymbolType } from '../types.js';
-import { isDataArtifact } from '../data/formats.js';
-import { inferDataRelationshipType, addDataRelationship } from '../data/data-analyzer.js';
+import { inferDataDirection, addDataRelationship } from '../data/data-analyzer.js';
+import { accessContext, isDataPathLiteral, isNonAccessLiteral } from './data-literals.js';
 
 export interface RepositoryAnalysisOptions {
   /** Global-symbol behavior from `.balk2.json`. */
@@ -260,12 +260,17 @@ export class JsTsAnalyzer implements Analyzer {
       // ── Data Artifact References ────────────────────────────────────
       if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
         const text = node.text;
-        // A data path has no whitespace. A label such as "[data/raw.json] build.js | ..." that ends
-        // in an extension is prose or output, not a file the code reads or writes.
-        if (!/\s/.test(text) && isDataArtifact(text)) {
-          const context = node.parent ? node.parent.getText(sourceFile) : '';
-          const relType = inferDataRelationshipType(context);
-          addDataRelationship(normalizedPath, text, relType, graph, 'high');
+        // Label text such as "[data/raw.json] build.js | ..." is prose, and an extension alone is
+        // not a file. A literal that is searched or compared is not an access either.
+        if (isDataPathLiteral(text) && !isNonAccessLiteral(node)) {
+          const direction = inferDataDirection(accessContext(node, sourceFile));
+          addDataRelationship(
+            normalizedPath,
+            text,
+            direction.type,
+            graph,
+            direction.certain ? 'high' : 'low',
+          );
         }
       }
 
