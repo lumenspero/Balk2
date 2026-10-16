@@ -76,8 +76,23 @@ describe('queryRelationships', () => {
     expectEdges(result.relationships, ['a.ts-imports-b.ts', 'b.ts-imports-c.ts']);
   });
 
-  it('extends the neighborhood with depth and stops at the boundary', () => {
+  it('extends the neighborhood along structural edges and stops at the boundary', () => {
     const result = queryRelationships(map, { focus: 'a.ts', depth: 2 });
+    expectEdges(result.relationships, ['a.ts-imports-b.ts', 'b.ts-imports-c.ts', 'a.ts-emits-evt']);
+    expect(edgesOf(result.relationships)).not.toContain('c.ts-imports-d.ts');
+  });
+
+  it('lists an indirect node without following it unless its family is traversed', () => {
+    const result = queryRelationships(map, { focus: 'a.ts', depth: 2 });
+    expect(edgesOf(result.relationships)).not.toContain('c.ts-subscribes-evt');
+  });
+
+  it('follows event edges when the events family is traversed', () => {
+    const result = queryRelationships(map, {
+      focus: 'a.ts',
+      depth: 2,
+      traverse: ['code', 'events'],
+    });
     expectEdges(result.relationships, [
       'a.ts-imports-b.ts',
       'b.ts-imports-c.ts',
@@ -85,6 +100,16 @@ describe('queryRelationships', () => {
       'c.ts-subscribes-evt',
     ]);
     expect(edgesOf(result.relationships)).not.toContain('c.ts-imports-d.ts');
+  });
+
+  it('expands through the traversed family and lists the structural edges of what it reaches', () => {
+    const result = queryRelationships(map, { focus: 'a.ts', depth: 3, traverse: ['events'] });
+    expectEdges(result.relationships, [
+      'a.ts-imports-b.ts',
+      'a.ts-emits-evt',
+      'c.ts-subscribes-evt',
+      'b.ts-imports-c.ts',
+    ]);
   });
 
   it('accepts a backslash path for a file focus', () => {
@@ -120,6 +145,53 @@ describe('queryRelationships', () => {
   });
 });
 
+describe('queryRelationships degree bound', () => {
+  // x is a hub with five relationships: a imports it, and it imports four leaves.
+  const hubMap = buildMap({ files: ['a.ts', 'x.ts', 'p1.ts', 'p2.ts', 'p3.ts', 'p4.ts'] }, [
+    rel('imports', 'a.ts', 'x.ts'),
+    rel('imports', 'x.ts', 'p1.ts'),
+    rel('imports', 'x.ts', 'p2.ts'),
+    rel('imports', 'x.ts', 'p3.ts'),
+    rel('imports', 'x.ts', 'p4.ts'),
+  ]);
+
+  it('lists a hub through its reaching edge but does not expand it', () => {
+    const result = queryRelationships(hubMap, { focus: 'a.ts', depth: 2, maxDegree: 3 });
+    expectEdges(result.relationships, ['a.ts-imports-x.ts']);
+  });
+
+  it('expands the hub when the bound is raised', () => {
+    const result = queryRelationships(hubMap, { focus: 'a.ts', depth: 2, maxDegree: 5 });
+    expect(result.relationships).toHaveLength(5);
+  });
+
+  it('always expands the focus itself, even above the bound', () => {
+    const result = queryRelationships(hubMap, { focus: 'x.ts', depth: 1, maxDegree: 3 });
+    expect(result.relationships).toHaveLength(5);
+  });
+
+  it('rejects a bound of zero or a fraction', () => {
+    expect(() => queryRelationships(hubMap, { maxDegree: 0 })).toThrow(QueryError);
+    expect(() => queryRelationships(hubMap, { maxDegree: 2.5 })).toThrow(QueryError);
+  });
+});
+
+describe('queryRelationships cycles', () => {
+  // a and b import each other, and b and c form a loop back to a.
+  const cycleMap = buildMap({ files: ['a.ts', 'b.ts', 'c.ts'] }, [
+    rel('imports', 'a.ts', 'b.ts'),
+    rel('imports', 'b.ts', 'a.ts'),
+    rel('imports', 'b.ts', 'c.ts'),
+    rel('imports', 'c.ts', 'a.ts'),
+  ]);
+
+  it('terminates on a cycle and lists each relationship once', () => {
+    const result = queryRelationships(cycleMap, { focus: 'a.ts', depth: 50 });
+    expect(result.relationships).toHaveLength(4);
+    expect(new Set(edgesOf(result.relationships)).size).toBe(4);
+  });
+});
+
 describe('queryRelationships limit', () => {
   it('caps the result and reports the total that matched', () => {
     const result = queryRelationships(map, { limit: 2, minConfidence: 'low' });
@@ -148,7 +220,7 @@ describe('queryRelationships limit', () => {
   it('keeps the relationships nearest the focus when truncating', () => {
     const result = queryRelationships(map, { focus: 'a.ts', depth: 2, limit: 2 });
     expectEdges(result.relationships, ['a.ts-imports-b.ts', 'a.ts-emits-evt']);
-    expect(result.total).toBe(4);
+    expect(result.total).toBe(3);
     expect(result.truncated).toBe(true);
   });
 

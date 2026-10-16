@@ -44,6 +44,18 @@ export const DEFAULT_LIMIT = 200;
  */
 export const DEFAULT_MIN_CONFIDENCE: Confidence = 'medium';
 
+/**
+ * Families a focused query follows outward. Direct structural edges come first. Indirect
+ * mechanisms (events, data, registries, state) are listed as leaves unless asked for.
+ */
+export const DEFAULT_TRAVERSE: readonly RelationshipFamily[] = ['code'];
+
+/**
+ * A node with more relationships than this is listed but not expanded, so a hub does not pull in
+ * the whole repository. The focus itself is always expanded. Pass Infinity to remove the bound.
+ */
+export const DEFAULT_MAX_DEGREE = 50;
+
 const FAMILY_TYPES: Readonly<Record<RelationshipFamily, readonly RelationshipType[]>> = {
   code: [
     'imports',
@@ -75,6 +87,13 @@ export interface QueryOptions {
   readonly focus?: string;
   /** How many hops out from the focus to follow. Defaults to 1. */
   readonly depth?: number;
+  /**
+   * Families followed outward from the focus. Each node reached lists all its relationships, but
+   * only these families lead onward. Defaults to code.
+   */
+  readonly traverse?: readonly RelationshipFamily[];
+  /** Nodes with more relationships than this are listed but not expanded. Defaults to 50. */
+  readonly maxDegree?: number;
   /**
    * Most relationships to return. Defaults to DEFAULT_LIMIT. Pass Infinity for no limit. With a
    * focus, the relationships nearest the focus are kept first.
@@ -115,8 +134,9 @@ export function nodeKindOf(map: ConnectionMap, id: string): NodeKind | undefined
 
 /**
  * Filter the map's relationships and, when a focus is given, keep only the neighborhood of that
- * node. The neighborhood follows relationships in either direction for `depth` hops, so both
- * what the focus uses and what uses it are included. The result is capped at `limit`.
+ * node. The neighborhood follows relationships in either direction for `depth` hops, expanding
+ * only through the traversal families and never through nodes above the degree bound. The result
+ * is capped at `limit`.
  */
 export function queryRelationships(map: ConnectionMap, options: QueryOptions = {}): QueryResult {
   const depth = options.depth ?? 1;
@@ -125,8 +145,13 @@ export function queryRelationships(map: ConnectionMap, options: QueryOptions = {
   }
 
   const limit = options.limit ?? DEFAULT_LIMIT;
-  if (!(limit === Infinity || (Number.isInteger(limit) && limit >= 1))) {
+  if (!isPositiveWholeOrInfinity(limit)) {
     throw new QueryError('limit must be a positive whole number');
+  }
+
+  const maxDegree = options.maxDegree ?? DEFAULT_MAX_DEGREE;
+  if (!isPositiveWholeOrInfinity(maxDegree)) {
+    throw new QueryError('maxDegree must be a positive whole number');
   }
 
   let seed: string | undefined;
@@ -136,6 +161,7 @@ export function queryRelationships(map: ConnectionMap, options: QueryOptions = {
   }
 
   const types = typesFor(options.families);
+  const traversable = typesFor(options.traverse ?? DEFAULT_TRAVERSE);
   const minRank = CONFIDENCE_RANK[options.minConfidence ?? DEFAULT_MIN_CONFIDENCE];
   const kinds = options.nodeKinds ? new Set<NodeKind>(options.nodeKinds) : undefined;
   const endpointAllowed = (id: string): boolean => {
@@ -153,7 +179,9 @@ export function queryRelationships(map: ConnectionMap, options: QueryOptions = {
   );
 
   const ordered =
-    seed === undefined ? kept : orderByDistance(kept, neighborhood(kept, seed, depth));
+    seed === undefined
+      ? kept
+      : orderByDistance(kept, neighborhood(kept, seed, depth, traversable, maxDegree));
   const relationships = ordered.slice(0, limit);
 
   return {
@@ -162,6 +190,10 @@ export function queryRelationships(map: ConnectionMap, options: QueryOptions = {
     total: ordered.length,
     truncated: ordered.length > relationships.length,
   };
+}
+
+function isPositiveWholeOrInfinity(value: number): boolean {
+  return value === Infinity || (Number.isInteger(value) && value >= 1);
 }
 
 function resolveFocus(map: ConnectionMap, focus: string): string | undefined {
@@ -177,13 +209,18 @@ function typesFor(families?: readonly RelationshipFamily[]): ReadonlySet<Relatio
 }
 
 /**
- * Relationships incident to nodes within `depth` hops of `seed`, treating edges as undirected.
- * Each is mapped to the hop count at which it was first reached.
+ * Relationships incident to expanded nodes within `depth` hops of `seed`, treating edges as
+ * undirected. A node is expanded when it is the seed or has at most `maxDegree` relationships.
+ * Every relationship on an expanded node is listed, but only traversable ones lead onward, so an
+ * indirect node such as an event channel is listed without its other connections. Each listed
+ * relationship maps to the hop count at which it was first reached.
  */
 function neighborhood(
   relationships: readonly Relationship[],
   seed: string,
   depth: number,
+  traversable: ReadonlySet<RelationshipType>,
+  maxDegree: number,
 ): Map<Relationship, number> {
   const incident = new Map<string, Relationship[]>();
   const attach = (id: string, rel: Relationship): void => {
@@ -206,8 +243,14 @@ function neighborhood(
     const hops = distance.get(id) ?? 0;
     if (hops >= depth) continue;
 
-    for (const rel of incident.get(id) ?? []) {
+    const edges = incident.get(id) ?? [];
+    // A hub is listed through the edge that reached it, but its own edges are not expanded.
+    if (id !== seed && edges.length > maxDegree) continue;
+
+    for (const rel of edges) {
       if (!reached.has(rel)) reached.set(rel, hops + 1);
+      if (!traversable.has(rel.type)) continue;
+
       const other = rel.from === id ? rel.to : rel.from;
       if (!distance.has(other)) {
         distance.set(other, hops + 1);

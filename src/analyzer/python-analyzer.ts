@@ -4,6 +4,7 @@ import { normalizePath } from '../graph.js';
 import type { SymbolType } from '../types.js';
 import { inferDataDirection, addDataRelationship } from '../data/data-analyzer.js';
 import { isDataPathLiteral, isNonAccessBefore, pathLiteralsInLine } from './data-literals.js';
+import { selfDirectories, selfJoinSpans } from './python-self-dirs.js';
 
 export class PythonAnalyzer implements Analyzer {
   readonly name = 'PythonAnalyzer';
@@ -27,6 +28,9 @@ export class PythonAnalyzer implements Analyzer {
     const knownFiles = options?.knownFiles ? toSet(options.knownFiles) : undefined;
     const lines = content.replace(/\r\n/g, '\n').split('\n');
 
+    // Directories stored on self, so self.<attr> / "name" can be joined into a full path.
+    const selfDirs = selfDirectories(lines);
+
     // Context tracking
     const importsMap = new Map<string, { targetFile: string; importedName: string }>();
     const topLevelSymbols = new Map<string, { id: string; type: SymbolType }>();
@@ -43,7 +47,14 @@ export class PythonAnalyzer implements Analyzer {
       if (!trimmed || trimmed.startsWith('#')) continue;
 
       // ── Data Artifact References in Line ──────────────────────────
-      for (const { value, index } of pathLiteralsInLine(trimmed)) {
+      const selfJoins = selfJoinSpans(trimmed, selfDirs);
+      const literals = [
+        ...selfJoins.map(({ value, index }) => ({ value, index })),
+        ...pathLiteralsInLine(trimmed).filter(
+          (lit) => !selfJoins.some((join) => lit.index >= join.index && lit.index < join.end),
+        ),
+      ];
+      for (const { value, index } of literals) {
         if (isDataPathLiteral(value) && !isNonAccessBefore(trimmed.slice(0, index))) {
           const direction = inferDataDirection(trimmed);
           addDataRelationship(

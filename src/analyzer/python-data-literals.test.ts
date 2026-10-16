@@ -82,6 +82,54 @@ describe('python data artifact literals', () => {
     expect(edges).toEqual(['generates scripts/collect.py -> target_15k_app_ids.json low']);
   });
 
+  it('joins a path built on a directory stored on self, and drops the bare name', () => {
+    const code = [
+      'class TargetIdCollector:',
+      '    def __init__(self, output_dir: str = "data/targets"):',
+      '        self.output_dir = Path(output_dir)',
+      '    def collect(self):',
+      '        out_file = self.output_dir / "target_15k_app_ids.json"',
+      '',
+    ].join('\n');
+    const edges = dataEdges('scripts/collect_target_ids.py', code);
+    expect(edges).toEqual([
+      'generates scripts/collect_target_ids.py -> data/targets/target_15k_app_ids.json low',
+    ]);
+  });
+
+  it('joins a path on a self attribute set to a literal directory, with write mode', () => {
+    const code = [
+      'class Report:',
+      '    def __init__(self):',
+      '        self.out = "reports"',
+      '    def save(self):',
+      '        with open(self.out / "summary.json", "w") as f:',
+      '            pass',
+      '',
+    ].join('\n');
+    const edges = dataEdges('scripts/report.py', code);
+    expect(edges).toEqual(['generates scripts/report.py -> reports/summary.json high']);
+  });
+
+  it('reads a default written on its own line inside a multi-line signature', () => {
+    const code = [
+      'class TargetIdCollector:',
+      '    def __init__(',
+      '        self,',
+      '        output_dir: str = "data/targets",',
+      '        rate_limit_delay: float = 1.0,',
+      '    ):',
+      '        self.output_dir = Path(output_dir)',
+      '    def collect(self):',
+      '        out_file = self.output_dir / "target_15k_app_ids.json"',
+      '',
+    ].join('\n');
+    const edges = dataEdges('scripts/collect_target_ids.py', code);
+    expect(edges).toEqual([
+      'generates scripts/collect_target_ids.py -> data/targets/target_15k_app_ids.json low',
+    ]);
+  });
+
   it('ignores a URL', () => {
     const edges = dataEdges(
       'scripts/inspect_r2.py',

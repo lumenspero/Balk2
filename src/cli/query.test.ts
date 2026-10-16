@@ -162,6 +162,93 @@ describe('balk2 query', () => {
     expect(result.stderr[0]).toContain('--min-confidence must be one of high, medium, low');
   });
 
+  describe('traversal', () => {
+    /** Replace the map on disk with the given files, relationships, and event channels. */
+    const writeMap = (
+      files: string[],
+      relationships: Relationship[],
+      eventChannels: string[] = [],
+    ): void => {
+      const map = buildMap({ files, eventChannels }, relationships);
+      fs.writeFileSync(path.join(tmpDir, 'connection-map.json'), serializeConnectionMap(map));
+    };
+
+    it('does not follow an event channel outward by default', () => {
+      writeMap(
+        ['src/a.ts', 'src/c.ts'],
+        [rel('emits', 'src/a.ts', 'evt'), rel('subscribes', 'src/c.ts', 'evt')],
+        ['evt'],
+      );
+      const result = runQuery(['--focus', 'src/a.ts', '--depth', '2'], tmpDir);
+      expect(result.stdout).toContain('src/a.ts --emits--> evt [high]');
+      expect(result.stdout).not.toContain('src/c.ts --subscribes--> evt [high]');
+    });
+
+    it('follows an event channel outward with --traverse events', () => {
+      writeMap(
+        ['src/a.ts', 'src/c.ts'],
+        [rel('emits', 'src/a.ts', 'evt'), rel('subscribes', 'src/c.ts', 'evt')],
+        ['evt'],
+      );
+      const result = runQuery(
+        ['--focus', 'src/a.ts', '--depth', '2', '--traverse', 'code,events'],
+        tmpDir,
+      );
+      expect(result.stdout).toContain('src/c.ts --subscribes--> evt [high]');
+    });
+
+    it('lists but does not expand a hub above --max-degree', () => {
+      const leaves = ['src/leaf0.ts', 'src/leaf1.ts', 'src/leaf2.ts', 'src/leaf3.ts'];
+      writeMap(
+        ['src/a.ts', 'src/hub.ts', ...leaves],
+        [
+          rel('imports', 'src/a.ts', 'src/hub.ts'),
+          ...leaves.map((leaf) => rel('imports', 'src/hub.ts', leaf)),
+        ],
+      );
+      const bounded = runQuery(
+        ['--focus', 'src/a.ts', '--depth', '2', '--max-degree', '3'],
+        tmpDir,
+      );
+      expect(bounded.stdout).toContain('src/a.ts --imports--> src/hub.ts [high]');
+      expect(bounded.stdout).not.toContain('src/hub.ts --imports--> src/leaf0.ts [high]');
+    });
+
+    it('expands the hub with --no-max-degree', () => {
+      const leaves = ['src/leaf0.ts', 'src/leaf1.ts', 'src/leaf2.ts', 'src/leaf3.ts'];
+      writeMap(
+        ['src/a.ts', 'src/hub.ts', ...leaves],
+        [
+          rel('imports', 'src/a.ts', 'src/hub.ts'),
+          ...leaves.map((leaf) => rel('imports', 'src/hub.ts', leaf)),
+        ],
+      );
+      const unbounded = runQuery(
+        ['--focus', 'src/a.ts', '--depth', '2', '--no-max-degree'],
+        tmpDir,
+      );
+      expect(unbounded.stdout).toContain('src/hub.ts --imports--> src/leaf0.ts [high]');
+    });
+
+    it('rejects an unknown traversal family', () => {
+      const result = runQuery(['--focus', 'src/a.ts', '--traverse', 'imports'], tmpDir);
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr[0]).toContain('--traverse: unknown value "imports"');
+    });
+
+    it('rejects a zero --max-degree', () => {
+      const result = runQuery(['--max-degree', '0'], tmpDir);
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr[0]).toContain('--max-degree must be a whole number of at least 1');
+    });
+
+    it('rejects --max-degree combined with --no-max-degree', () => {
+      const result = runQuery(['--max-degree', '5', '--no-max-degree'], tmpDir);
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr[0]).toContain('cannot be used together');
+    });
+  });
+
   describe('limit', () => {
     it('caps output at the default limit and says how to see more', () => {
       writeHubMap(DEFAULT_LIMIT + 10);

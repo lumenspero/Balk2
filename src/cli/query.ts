@@ -3,6 +3,7 @@ import { loadBalk2Config } from '../config/balk2-config.js';
 import {
   CONFIDENCE_LEVELS,
   DEFAULT_LIMIT,
+  DEFAULT_MAX_DEGREE,
   NODE_KINDS,
   QueryError,
   RELATIONSHIP_FAMILIES,
@@ -25,6 +26,10 @@ export const QUERY_USAGE = `balk2 query [options]
 
   --focus <file|node>      Limit output to the neighborhood of a file path or node id
   --depth <n>              Hops from the focus to follow (default 1)
+  --traverse <list>        Families followed outward from --focus (default code). Other families are
+                           listed for each node reached but not expanded further
+  --max-degree <n>         Nodes with more relationships are listed but not expanded (default ${DEFAULT_MAX_DEGREE})
+  --no-max-degree          Expand every node regardless of how many relationships it has
   --family <list>          Comma-separated: ${RELATIONSHIP_FAMILIES.join(', ')}
   --min-confidence <level> One of: ${CONFIDENCE_LEVELS.join(', ')} (default medium)
   --node-kind <list>       Comma-separated node kinds at both ends: ${NODE_KINDS.join(', ')}
@@ -36,6 +41,8 @@ export const QUERY_USAGE = `balk2 query [options]
 const VALUE_FLAGS: ReadonlySet<string> = new Set([
   '--focus',
   '--depth',
+  '--traverse',
+  '--max-degree',
   '--family',
   '--min-confidence',
   '--node-kind',
@@ -101,6 +108,7 @@ function parseArgs(args: readonly string[]): ParsedArgs {
   const values = new Map<string, string>();
   let json = false;
   let noLimit = false;
+  let noMaxDegree = false;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -111,6 +119,10 @@ function parseArgs(args: readonly string[]): ParsedArgs {
     }
     if (arg === '--no-limit') {
       noLimit = true;
+      continue;
+    }
+    if (arg === '--no-max-degree') {
+      noMaxDegree = true;
       continue;
     }
 
@@ -131,10 +143,25 @@ function parseArgs(args: readonly string[]): ParsedArgs {
   const confidence = values.get('--min-confidence');
   const nodeKind = values.get('--node-kind');
   const limitText = values.get('--limit');
+  const traverse = values.get('--traverse');
+  const maxDegreeText = values.get('--max-degree');
   const output = values.get('-o') ?? values.get('--output');
 
   if (noLimit && limitText !== undefined) {
     throw new QueryError('--limit and --no-limit cannot be used together');
+  }
+
+  if (noMaxDegree && maxDegreeText !== undefined) {
+    throw new QueryError('--max-degree and --no-max-degree cannot be used together');
+  }
+  let maxDegree: number | undefined;
+  if (noMaxDegree) {
+    maxDegree = Infinity;
+  } else if (maxDegreeText !== undefined) {
+    if (!/^\d+$/.test(maxDegreeText) || Number(maxDegreeText) < 1) {
+      throw new QueryError('--max-degree must be a whole number of at least 1');
+    }
+    maxDegree = Number(maxDegreeText);
   }
 
   let depth: number | undefined;
@@ -165,6 +192,10 @@ function parseArgs(args: readonly string[]): ParsedArgs {
     ...(focus !== undefined ? { focus } : {}),
     ...(depth !== undefined ? { depth } : {}),
     ...(limit !== undefined ? { limit } : {}),
+    ...(traverse !== undefined
+      ? { traverse: parseList(traverse, RELATIONSHIP_FAMILIES, '--traverse') }
+      : {}),
+    ...(maxDegree !== undefined ? { maxDegree } : {}),
     ...(family !== undefined
       ? { families: parseList(family, RELATIONSHIP_FAMILIES, '--family') }
       : {}),
