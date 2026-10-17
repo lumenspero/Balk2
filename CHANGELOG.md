@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.0.0 (unreleased)
+## 2.0.0
 
 ### Breaking changes
 
@@ -52,3 +52,7 @@
 ### Known limits
 
 - Connection Paths in the Markdown output show only indirect chains through shared artifacts, event channels and registry keys. Direct structural edges are shown in the File Connections section.
+- **Events.** A class that emits to itself is not connected when its emitter is heard through an instance variable. An emitter passed to a function as a parameter is not followed. A shared emitter reached through a factory function is not connected; each call is reported instead.
+- **Module loads.** A loader called through an alias of a configured object is not matched to its receiver.
+- **Registries.** Element reads such as `routes[name]` are not lookups yet. A lookup through a parameter is not joined to the registry passed in.
+- **Shared state.** A write through a passed-in state object is not traced. Only `const` aliases are followed, so `let` bindings are not. A reference held in an object literal is not traced to its property.
