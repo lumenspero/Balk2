@@ -44,6 +44,4 @@
 
 ### Known limits
 
-- The Phase 8 plan lists a `moduleResolution` configuration section. It is not in the published schema and is not documented.
-- Configuration sections do not yet carry a per-section version field.
-- Connection Paths in the Markdown output show only indirect chains through shared artifacts and event channels. Direct structural edges are shown in the File Connections section.
+- Connection Paths in the Markdown output show only indirect chains through shared artifacts, event channels and registry keys. Direct structural edges are shown in the File Connections section.

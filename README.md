@@ -203,6 +203,8 @@ Besides `include`, `exclude`, `output` and `data`, `.balk2.json` has sections fo
 
 Entries that cannot be used are reported as `config` diagnostics and ignored, so a mistyped setting does not silently do nothing.
 
+Set a top-level `"version": 2` to pin the configuration format of 2.0.0. The key is optional; any other value is reported as a config diagnostic.
+
 ---
 
 ## Programmatic API

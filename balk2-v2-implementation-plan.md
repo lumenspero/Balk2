@@ -171,7 +171,7 @@ Make the richer graph useful without turning `connection-map.md` into an unbound
 - Add query filters for relationship families, confidence thresholds, node kinds, and neighborhood depth. The CLI should support focused output for a file or symbol.
 - Bound path traversal by relationship family, depth, cycle handling, and node degree. Default paths should favor direct structural edges, then optionally reveal indirect mechanisms.
 - Emit deterministic diagnostics for parse failures, ambiguous resolution, unsupported dynamic constructs, and ignored configuration. Provide a strict CI mode that fails on selected diagnostics.
-- Extend `.balk2.json` with versioned sections for `moduleResolution`, `globals`, `protocols.events`, `protocols.registries`, `state`, `annotations`, and output controls. Validate it with a published schema.
+- Extend `.balk2.json` with sections for `globals`, `protocols.events`, `protocols.registries`, `state`, `annotations`, and output controls, plus a top-level `version` (2 for the 2.0.0 format). Validate it with a published schema.
 
 Exit criterion: users can understand why a connection exists, filter to the relationships relevant to a change, and configure project conventions without editing Balk2 source.
 

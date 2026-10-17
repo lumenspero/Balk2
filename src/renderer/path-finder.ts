@@ -12,9 +12,9 @@ export interface FormattedPath {
 export interface PathFinderOptions {
   /** Maximum number of relationships in one path (default: 4) */
   readonly maxDepth?: number;
-  /** Maximum number of paths to generate per target (default: 3) */
+  /** Maximum number of paths to generate per target (default: no limit) */
   readonly maxPathsPerTarget?: number;
-  /** Maximum total number of path sections in markdown output (default: 10) */
+  /** Maximum total number of path sections in markdown output (default: no limit) */
   readonly maxTotalPaths?: number;
   /**
    * Shared nodes with more producers and consumers than this are not passed through, so a hub
@@ -68,8 +68,8 @@ export function findConnectionPaths(
   options?: PathFinderOptions,
 ): readonly FormattedPath[] {
   const maxDepth = options?.maxDepth ?? 4;
-  const maxPaths = options?.maxPathsPerTarget ?? 3;
-  const maxTotal = options?.maxTotalPaths ?? 10;
+  const maxPaths = options?.maxPathsPerTarget ?? Infinity;
+  const maxTotal = options?.maxTotalPaths ?? Infinity;
   const includeChannels = options?.includeEventChannels ?? true;
   const includeRegistries = options?.includeRegistryKeys ?? true;
   const maxDegree = options?.maxDegree ?? 50;

@@ -109,6 +109,12 @@ export function loadBalk2ConfigDetailed(
   const raw = parsed as Record<string, unknown>;
   const problems: ConfigProblem[] = [];
   const config: Record<string, unknown> = { ...raw };
+  if ('version' in raw && raw.version !== 2) {
+    problems.push({
+      path: 'version',
+      message: 'unsupported configuration version; this release reads version 2',
+    });
+  }
   delete config.globals;
   delete config.protocols;
   delete config.state;

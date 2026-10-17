@@ -52,3 +52,16 @@ describe('findConnectionPaths degree bound', () => {
     expect(paths.some((p) => p.target === 'data/hub.json')).toBe(true);
   });
 });
+
+describe('findConnectionPaths default limits', () => {
+  it('lists every target path, with no cap', () => {
+    const names = Array.from({ length: 12 }, (_, i) => `data/f${String(i).padStart(2, '0')}.json`);
+    const base = buildMap(
+      { files: ['a.py', 'b.py'] },
+      names.flatMap((name) => [rel('writes', 'a.py', name), rel('reads', 'b.py', name)]),
+    );
+    const artifacts = Object.fromEntries(names.map((name) => [name, {} as ArtifactNode]));
+    const paths = findConnectionPaths({ ...base, artifacts });
+    expect(new Set(paths.map((p) => p.target)).size).toBe(12);
+  });
+});
