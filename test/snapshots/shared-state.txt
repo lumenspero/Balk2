@@ -1,0 +1,24 @@
+# nodes: files
+store.ts
+use.ts
+# nodes: symbols
+store.ts:cache
+store.ts:store
+use.ts:load
+use.ts:save
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+state:store.ts:store#user
+# nodes: unresolved
+# relationships
+exports store.ts -> store.ts:cache [high]
+exports store.ts -> store.ts:store [high]
+exports use.ts -> use.ts:load [high]
+exports use.ts -> use.ts:save [high]
+imports use.ts -> store.ts [high]
+readsState use.ts:load -> state:store.ts:store#user [high]
+writesState use.ts:save -> state:store.ts:store#user [high]

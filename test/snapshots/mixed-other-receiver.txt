@@ -1,0 +1,46 @@
+# nodes: files
+emitter.ts
+order-service.ts
+publisher.ts
+registry.ts
+subscriber.ts
+# nodes: symbols
+emitter.ts:Emitter
+emitter.ts:Emitter.emit
+emitter.ts:Emitter.off
+emitter.ts:Emitter.on
+emitter.ts:Emitter.once
+emitter.ts:bus
+emitter.ts:other
+order-service.ts:OrderService
+order-service.ts:OrderService.handle
+publisher.ts:place
+registry.ts:services
+subscriber.ts:wire
+# nodes: artifacts
+# nodes: eventChannels
+event:emitter.ts:bus#order:placed
+event:emitter.ts:other#order:placed
+# nodes: registryKeys
+registry:registry.ts:services#order
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+calls emitter.ts -> emitter.ts:Emitter [high]
+emits publisher.ts:place -> event:emitter.ts:other#order:placed [high]
+exports emitter.ts -> emitter.ts:Emitter [high]
+exports emitter.ts -> emitter.ts:bus [high]
+exports emitter.ts -> emitter.ts:other [high]
+exports order-service.ts -> order-service.ts:OrderService [high]
+exports publisher.ts -> publisher.ts:place [high]
+exports registry.ts -> registry.ts:services [high]
+exports subscriber.ts -> subscriber.ts:wire [high]
+imports publisher.ts -> emitter.ts [high]
+imports registry.ts -> order-service.ts [high]
+imports subscriber.ts -> emitter.ts [high]
+imports subscriber.ts -> registry.ts [high]
+registers registry:registry.ts:services#order -> order-service.ts:OrderService [high]
+resolves subscriber.ts:wire -> registry:registry.ts:services#order [high]
+subscribes subscriber.ts:wire -> event:emitter.ts:bus#order:placed [high]

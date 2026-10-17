@@ -1,0 +1,17 @@
+# nodes: files
+lib.js
+main.js
+# nodes: symbols
+lib.js:boot
+main.js:run
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+exports main.js -> main.js:run [high]
+references main.js -> lib.js [high]
+references main.js:run -> lib.js:boot [high]

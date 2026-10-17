@@ -1,0 +1,31 @@
+# nodes: files
+container.ts
+order.ts
+user.ts
+# nodes: symbols
+container.ts:container
+container.ts:loadOrder
+container.ts:loadUser
+order.ts:Order
+user.ts:User
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+registry:container.ts:container#order
+registry:container.ts:container#user
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+exports container.ts -> container.ts:container [high]
+exports container.ts -> container.ts:loadOrder [high]
+exports container.ts -> container.ts:loadUser [high]
+exports order.ts -> order.ts:Order [high]
+exports user.ts -> user.ts:User [high]
+imports container.ts -> order.ts [high]
+imports container.ts -> user.ts [high]
+registers registry:container.ts:container#order -> order.ts:Order [high]
+registers registry:container.ts:container#user -> user.ts:User [high]
+resolves container.ts:loadOrder -> registry:container.ts:container#order [high]
+resolves container.ts:loadUser -> registry:container.ts:container#user [high]

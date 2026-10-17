@@ -1,0 +1,57 @@
+# nodes: files
+bus.ts
+log.ts
+net.ts
+ui.ts
+view.ts
+# nodes: symbols
+bus.ts:Emitter
+bus.ts:Emitter.emit
+bus.ts:Emitter.off
+bus.ts:Emitter.on
+bus.ts:Emitter.once
+bus.ts:bus
+log.ts:logReady
+net.ts:connect
+net.ts:disconnect
+ui.ts:cleanup
+ui.ts:init
+ui.ts:onClosed
+ui.ts:onReady
+view.ts:mount
+view.ts:render
+# nodes: artifacts
+# nodes: eventChannels
+event:bus.ts:bus#closed
+event:bus.ts:bus#loaded
+event:bus.ts:bus#ready
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+calls bus.ts -> bus.ts:Emitter [high]
+emits net.ts:connect -> event:bus.ts:bus#ready [high]
+emits net.ts:disconnect -> event:bus.ts:bus#closed [high]
+emits ui.ts:onReady -> event:bus.ts:bus#loaded [high]
+exports bus.ts -> bus.ts:Emitter [high]
+exports bus.ts -> bus.ts:bus [high]
+exports log.ts -> log.ts:logReady [high]
+exports net.ts -> net.ts:connect [high]
+exports net.ts -> net.ts:disconnect [high]
+exports ui.ts -> ui.ts:cleanup [high]
+exports ui.ts -> ui.ts:init [high]
+exports ui.ts -> ui.ts:onClosed [high]
+exports ui.ts -> ui.ts:onReady [high]
+exports view.ts -> view.ts:mount [high]
+exports view.ts -> view.ts:render [high]
+imports log.ts -> bus.ts [high]
+imports net.ts -> bus.ts [high]
+imports ui.ts -> bus.ts [high]
+imports view.ts -> bus.ts [high]
+subscribes log.ts:logReady -> event:bus.ts:bus#ready [high]
+subscribes ui.ts:onClosed -> event:bus.ts:bus#closed [high]
+subscribes ui.ts:onReady -> event:bus.ts:bus#ready [high]
+subscribes view.ts:render -> event:bus.ts:bus#loaded [high]
+unsubscribes ui.ts:cleanup -> event:bus.ts:bus#ready [high]

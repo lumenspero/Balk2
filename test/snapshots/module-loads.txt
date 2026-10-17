@@ -1,0 +1,23 @@
+# nodes: files
+a.ts
+b.ts
+main.ts
+# nodes: symbols
+a.ts:a
+b.ts:b
+main.ts:loadA
+main.ts:loadB
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+exports a.ts -> a.ts:a [high]
+exports b.ts -> b.ts:b [high]
+exports main.ts -> main.ts:loadA [high]
+exports main.ts -> main.ts:loadB [high]
+imports main.ts:loadA -> a.ts [high]
+imports main.ts:loadB -> b.ts [high]
