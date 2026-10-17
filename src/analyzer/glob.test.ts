@@ -21,4 +21,11 @@ describe('compileGlob', () => {
     expect(glob.test('cmd12.ts')).toBe(false);
     expect(compileGlob('a.ts').test('aXts')).toBe(false);
   });
+
+  it('never lets ? match a slash, so it stays within one segment', () => {
+    const glob = compileGlob('src/?.ts');
+    expect(glob.test('src/a.ts')).toBe(true);
+    expect(glob.test('src/a/.ts')).toBe(false);
+    expect(glob.test('src//.ts')).toBe(false);
+  });
 });

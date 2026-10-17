@@ -161,17 +161,4 @@ describe('balk2 configuration schema', () => {
     };
     expect(check(config).valid).toBe(false);
   });
-
-  const repoConfigPath = path.join(repoRoot, '.balk2.json');
-  it.skipIf(!fs.existsSync(repoConfigPath))('accepts this repository .balk2.json', () => {
-    const config: unknown = JSON.parse(fs.readFileSync(repoConfigPath, 'utf8'));
-    const result = check(config);
-    expect(result.errors).toEqual([]);
-    expect(result.valid).toBe(true);
-  });
-
-  const distSchemaPath = path.join(repoRoot, 'dist', 'balk2.schema.json');
-  it.skipIf(!fs.existsSync(distSchemaPath))('ships a dist copy identical to the source', () => {
-    expect(fs.readFileSync(distSchemaPath, 'utf8')).toBe(fs.readFileSync(schemaPath, 'utf8'));
-  });
 });

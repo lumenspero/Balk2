@@ -57,6 +57,10 @@ describe('enclosingOwner', () => {
     ).toEqual(['src/a.ts:inner', 'src/a.ts:outer', 'src/a.ts:nested']);
   });
 
+  it('uses the file for methods of an anonymous class, which has no owner name', () => {
+    expect(ownersOfProbes('export default class { run() { probe(); } }')).toEqual(['src/a.ts']);
+  });
+
   it('attributes a callback inside a method to that method', () => {
     expect(ownersOfProbes('class A { go() { setTimeout(() => probe(), 0); } }')).toEqual([
       'src/a.ts:A.go',

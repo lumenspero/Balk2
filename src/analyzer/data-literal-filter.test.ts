@@ -41,6 +41,18 @@ describe('data artifact literals', () => {
     expect(facts.edges).toEqual(['consumes scripts/reader.js -> data/raw.json']);
   });
 
+  it('ignores a web-root path, which the app serves rather than the repository', () => {
+    const facts = dataFactsOf('src/app.ts', "fetch('/manifest.json').then((r) => r.json());");
+    expect(facts.artifacts).toEqual([]);
+    expect(facts.edges).toEqual([]);
+  });
+
+  it('ignores a bare extension passed to an access call, which names no file', () => {
+    const facts = dataFactsOf('scripts/reader.js', "fs.readFileSync('.json', 'utf8');");
+    expect(facts.artifacts).toEqual([]);
+    expect(facts.edges).toEqual([]);
+  });
+
   it('ignores an extension alone, as used in endsWith checks', () => {
     const facts = dataFactsOf(
       'src/cli/resolve.ts',

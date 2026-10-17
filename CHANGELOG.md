@@ -34,6 +34,13 @@
 - **`.balk2.json` sections are validated by a published schema.** The schema ships at `dist/balk2.schema.json`. Reference it with `"$schema"` for editor completion.
 - **Clarified `--output`.** The option accepts a directory, or a `.json` or `.md` file path. This is a documentation change; the behavior is unchanged.
 
+### Package entry points
+
+- **One supported entry point.** `@lumenspero/balk2` has ESM and CommonJS builds, each with TypeScript declarations. Deep imports such as `@lumenspero/balk2/dist/...` are not supported.
+- **Supported API.** The names exported from the package root are the public API. Anything else is internal and may change in any release.
+- **Supported CLI.** The `balk2` command is the supported command-line interface.
+- **Editor schema.** `dist/balk2.schema.json` is for editor validation through `"$schema"`, not for imports.
+
 ### Migration
 
 1. Remove `data.extensions` from `.balk2.json`, if present.

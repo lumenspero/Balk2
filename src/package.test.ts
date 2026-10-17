@@ -50,6 +50,9 @@ function installConsumer(name: string): string {
   return consumerDir;
 }
 
+// These tests pack and install the real tarball, so they are gated on BALK2_PACKAGE_TEST.
+// Run them through `npm run test:package` (part of `npm run verify`), which builds first and
+// sets the variable. Plain `npm test` skips this block on purpose.
 const describePackage = process.env.BALK2_PACKAGE_TEST === 'true' ? describe : describe.skip;
 
 describePackage('packed package contract', () => {
@@ -141,6 +144,22 @@ console.log(map.version);
 
     const tsc = path.join(consumerDir, 'node_modules', 'typescript', 'bin', 'tsc');
     run(process.execPath, [tsc, '--project', 'tsconfig.json'], consumerDir);
+  });
+
+  it('ships the same schema as the source in the installed package', () => {
+    const consumerDir = installConsumer('schema-consumer');
+    const shipped = path.join(
+      consumerDir,
+      'node_modules',
+      '@lumenspero',
+      'balk2',
+      'dist',
+      'balk2.schema.json',
+    );
+
+    expect(fs.readFileSync(shipped, 'utf8')).toBe(
+      fs.readFileSync(path.join(projectRoot, 'schemas', 'balk2.schema.json'), 'utf8'),
+    );
   });
 
   it('runs the installed CLI and reports its package version', () => {

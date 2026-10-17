@@ -70,6 +70,30 @@ describe.each(TSCONFIGS)('Phase 3: global symbol traversal [%s]', (_label, compi
       expect(index.all().map((s) => s.name)).not.toContain('helper');
     });
 
+    it('treats .mjs and .cts files as modules, so their declarations are not globals', () => {
+      const index = collectGlobalSymbols(
+        open({
+          'a.mjs': 'function fromMjs() {}',
+          'b.cts': 'function fromCts() {}',
+        }),
+      );
+      expect(index.all()).toEqual([]);
+    });
+
+    it('ignores assignments through a computed key, which name no global', () => {
+      const index = collectGlobalSymbols(
+        open({
+          'a.js': 'export {};\nfunction f(key) { window[key] = 1; window[key + 1].x = 2; }',
+        }),
+      );
+      expect(index.all()).toEqual([]);
+    });
+
+    it('does not treat a bare assignment to a global root as a named global', () => {
+      const index = collectGlobalSymbols(open({ 'a.js': 'export {};\nwindow = {};' }));
+      expect(index.all()).toEqual([]);
+    });
+
     it('collects declarations inside `declare global`', () => {
       const index = collectGlobalSymbols(
         open({ 'a.ts': 'export {};\ndeclare global { function ext(): void; }' }),
