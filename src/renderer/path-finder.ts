@@ -16,6 +16,12 @@ export interface PathFinderOptions {
   readonly maxPathsPerTarget?: number;
   /** Maximum total number of path sections in markdown output (default: 10) */
   readonly maxTotalPaths?: number;
+  /**
+   * Shared nodes with more producers and consumers than this are not passed through, so a hub
+   * does not join every pipeline in the repository. The path target itself is always traced.
+   * (default: 50; pass Infinity to remove the bound)
+   */
+  readonly maxDegree?: number;
   /** Also trace paths through event channels (default: true) */
   readonly includeEventChannels?: boolean;
   /** Also trace paths through registry keys: caller → key → target (default: true) */
@@ -66,6 +72,7 @@ export function findConnectionPaths(
   const maxTotal = options?.maxTotalPaths ?? 10;
   const includeChannels = options?.includeEventChannels ?? true;
   const includeRegistries = options?.includeRegistryKeys ?? true;
+  const maxDegree = options?.maxDegree ?? 50;
 
   const producersOf = new Map<string, Relationship[]>();
   const consumersOf = new Map<string, Relationship[]>();
@@ -82,6 +89,9 @@ export function findConnectionPaths(
       push(consumersOf, rel.to, rel);
     }
   }
+
+  const degreeOf = (id: string): number =>
+    (producersOf.get(id)?.length ?? 0) + (consumersOf.get(id)?.length ?? 0);
 
   const isSharedNode = (id: string): boolean =>
     map.artifacts[id] !== undefined || (includeChannels && map.eventChannels[id] !== undefined);
@@ -139,7 +149,9 @@ export function findConnectionPaths(
       let extended = false;
       if (edgeCount + 2 <= maxDepth) {
         for (const out of producedBy.get(node) ?? []) {
-          if (visited.has(out.to) || !isSharedNode(out.to)) continue;
+          if (visited.has(out.to) || !isSharedNode(out.to) || degreeOf(out.to) > maxDegree) {
+            continue;
+          }
           for (const next of consumersOf.get(out.to) ?? []) {
             if (visited.has(next.from)) continue;
             extended = true;

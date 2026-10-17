@@ -71,6 +71,30 @@ describe('data artifact literals', () => {
     expect(edges).toEqual(['consumes scripts/loader.js -> data/in.json high']);
   });
 
+  it('joins a path.join with trailing literal pieces into one relative path', () => {
+    const edges = dataEdgesWithConfidence(
+      'scripts/load.js',
+      "fs.readFileSync(path.join(root, 'data', 'raw', 'x.json'), 'utf8');",
+    );
+    expect(edges).toEqual(['consumes scripts/load.js -> data/raw/x.json high']);
+  });
+
+  it('judges a joined write by the call that writes it', () => {
+    const edges = dataEdgesWithConfidence(
+      'scripts/write.js',
+      "fs.writeFileSync(path.join(dir, 'out', 'x.json'), data);",
+    );
+    expect(edges).toEqual(['generates scripts/write.js -> out/x.json high']);
+  });
+
+  it('records nothing for a joined path that leaves the repository', () => {
+    const edges = dataEdgesWithConfidence(
+      'scripts/outside.js',
+      "fs.readFileSync(path.join(__dirname, '..', 'data', 'x.json'));",
+    );
+    expect(edges).toEqual([]);
+  });
+
   it('records a path with no read or write context at low confidence', () => {
     const edges = dataEdgesWithConfidence(
       'src/cli/generate.ts',

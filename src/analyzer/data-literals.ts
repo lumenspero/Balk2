@@ -1,4 +1,5 @@
 import * as ts from 'typescript';
+import * as nodePath from 'node:path';
 import { isDataArtifact } from '../data/formats.js';
 
 /** String methods whose arguments are text being searched or changed, not a file being opened. */
@@ -143,4 +144,50 @@ function isPathBuilderCall(node: ts.Node): boolean {
   if (!ts.isCallExpression(node)) return false;
   const callee = node.expression;
   return ts.isPropertyAccessExpression(callee) && PATH_BUILDERS.has(callee.name.text);
+}
+
+/** Objects whose `join` and `resolve` build a path, as in `path.join(...)` or `posix.join(...)`. */
+const PATH_OBJECTS: ReadonlySet<string> = new Set(['path', 'posix']);
+
+/** A path built by `path.join` or `path.resolve` from a run of string-literal arguments. */
+export interface JoinedPath {
+  /** The literal arguments that form the path. The first one carries the path. */
+  readonly members: readonly ts.Node[];
+  /** The joined relative path, or undefined when it leaves the repository and so names nothing */
+  readonly value: string | undefined;
+}
+
+/**
+ * The joined path a string literal belongs to, when it is one of the trailing string arguments of
+ * `path.join(...)` or `path.resolve(...)` and at least two such arguments trail. A lone trailing
+ * piece has no known directory, so it is not joined and the caller treats it as written.
+ */
+export function joinedPathOf(literal: ts.Node): JoinedPath | undefined {
+  const call = literal.parent;
+  if (!call || !ts.isCallExpression(call)) return undefined;
+
+  const callee = call.expression;
+  if (
+    !ts.isPropertyAccessExpression(callee) ||
+    !PATH_BUILDERS.has(callee.name.text) ||
+    !ts.isIdentifier(callee.expression) ||
+    !PATH_OBJECTS.has(callee.expression.text)
+  ) {
+    return undefined;
+  }
+
+  const args: readonly ts.Expression[] = call.arguments;
+  let first = args.length;
+  while (first > 0 && isStringArgument(args[first - 1])) first--;
+  const run = args.slice(first);
+  if (run.length < 2 || !run.includes(literal as ts.Expression)) return undefined;
+
+  const pieces = run.map((arg) => (arg as ts.StringLiteral).text);
+  const joined = nodePath.posix.join(...pieces);
+  const outside = joined.startsWith('..') || joined.startsWith('/');
+  return { members: run, value: outside ? undefined : joined };
+}
+
+function isStringArgument(arg: ts.Expression | undefined): boolean {
+  return arg !== undefined && (ts.isStringLiteral(arg) || ts.isNoSubstitutionTemplateLiteral(arg));
 }

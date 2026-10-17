@@ -28,7 +28,12 @@ import type { ConnectionGraph } from '../graph.js';
 import { normalizePath } from '../graph.js';
 import type { SymbolType } from '../types.js';
 import { inferDataDirection, addDataRelationship } from '../data/data-analyzer.js';
-import { accessContext, isDataPathLiteral, isNonAccessLiteral } from './data-literals.js';
+import {
+  accessContext,
+  isDataPathLiteral,
+  isNonAccessLiteral,
+  joinedPathOf,
+} from './data-literals.js';
 
 export interface RepositoryAnalysisOptions {
   /** Global-symbol behavior from `.balk2.json`. */
@@ -259,10 +264,18 @@ export class JsTsAnalyzer implements Analyzer {
 
       // ── Data Artifact References ────────────────────────────────────
       if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
-        const text = node.text;
+        // A path built with path.join or path.resolve is recorded once, under its first piece.
+        const joined = joinedPathOf(node);
+        const covered = joined !== undefined && node !== joined.members[0];
+        const text = joined ? joined.value : node.text;
         // Label text such as "[data/raw.json] build.js | ..." is prose, and an extension alone is
         // not a file. A literal that is searched or compared is not an access either.
-        if (isDataPathLiteral(text) && !isNonAccessLiteral(node)) {
+        if (
+          !covered &&
+          text !== undefined &&
+          isDataPathLiteral(text) &&
+          !isNonAccessLiteral(node)
+        ) {
           const direction = inferDataDirection(accessContext(node, sourceFile));
           addDataRelationship(
             normalizedPath,
