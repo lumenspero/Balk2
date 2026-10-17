@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildMap } from '../testing/connection-map-builder.js';
-import type { UnresolvedReferenceNode } from '../types.js';
+import type { ConnectionMap, UnresolvedReferenceNode } from '../types.js';
 import { collectDiagnostics, DIAGNOSTIC_KINDS, failureLines, parseFailOn } from './diagnostics.js';
 
 const unresolved = (
@@ -19,7 +19,7 @@ const unresolved = (
   ...extra,
 });
 
-function mapWithUnresolved(nodes: UnresolvedReferenceNode[]) {
+function mapWithUnresolved(nodes: UnresolvedReferenceNode[]): ConnectionMap {
   const map = buildMap({ files: ['src/a.ts'] }, []);
   return {
     ...map,

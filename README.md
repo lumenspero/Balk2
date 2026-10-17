@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/molly.png" alt="Balk2 — Repository Connection Map for AI Agents" width="100%">
+  <img src="assets/molly-2.png" alt="Balk2 — Repository Connection Map for AI Agents" width="100%">
 </p>
 
 # Balk2 — Repository Connection Map
@@ -43,6 +43,8 @@ Balk2 scans your codebase and generates two canonical artifacts:
 - **Git Integration & Automation**:
   - One-command pre-commit Git hook setup (`npx balk2 install`).
   - Automatically records Git commit hash metadata (`git rev-parse --short HEAD`).
+- **Focused Queries** (`balk2 query`): relationships around one file or node, filtered by family, confidence and node kind, with bounded traversal.
+- **CI Diagnostics** (`--fail-on`): fail a `generate` or `check` run on syntax errors, ignored configuration, or selected unresolved references.
 
 ---
 
@@ -85,7 +87,7 @@ Scans the repository, builds the connection graph, and writes `connection-map.js
 # Default generation
 npx @lumenspero/balk2
 
-# Custom output directory or base filename
+# Output directory, or a .json or .md file path
 npx @lumenspero/balk2 --output build/connection-map
 npx @lumenspero/balk2 -o custom-dir/
 ```
@@ -114,6 +116,48 @@ Validates configuration and checks whether `connection-map.json` is up to date w
 npx @lumenspero/balk2 check
 ```
 
+With `--fail-on`, `check` also exits `1` when a selected diagnostic is found (see below).
+
+### `balk2 query`
+
+Prints relationships from `connection-map.json` without regenerating it. Run `balk2` first.
+
+```bash
+# Relationships touching one file: one hop, medium confidence and above
+npx @lumenspero/balk2 query --focus src/main.ts
+
+# Two hops out, following code and data edges, including low-confidence guesses
+npx @lumenspero/balk2 query --focus scripts/collect.py --depth 2 --traverse code,data --min-confidence low
+
+# Only event relationships, as JSON
+npx @lumenspero/balk2 query --family events --json
+```
+
+| Option                                | Meaning                                                                                                                      |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `--focus <file or node>`              | Limit output to the neighborhood of a file path or node id                                                                   |
+| `--depth <n>`                         | Hops from the focus to follow (default `1`)                                                                                  |
+| `--traverse <list>`                   | Families followed outward from the focus (default `code`). Other families are listed for each node reached, but not expanded |
+| `--max-degree <n>`, `--no-max-degree` | Nodes with more than `n` relationships are listed but not expanded (default `50`)                                            |
+| `--family <list>`                     | Keep only these families: `code`, `events`, `data`, `registry`, `metadata`, `resources`, `state`                             |
+| `--min-confidence <level>`            | `high`, `medium` or `low` (default `medium`)                                                                                 |
+| `--node-kind <list>`                  | Keep relationships whose two ends are these node kinds                                                                       |
+| `--limit <n>`, `--no-limit`           | Most relationships to print (default `200`)                                                                                  |
+| `--json`                              | Print JSON instead of text lines                                                                                             |
+| `-o, --output <path>`                 | Where `connection-map.json` was written                                                                                      |
+
+Exit codes: `0` on success, `1` when the map is missing or the focus matches nothing, `2` for bad arguments.
+
+### Failing CI on diagnostics (`--fail-on`)
+
+`generate` and `check` report three kinds of diagnostic: `syntax` (a source file did not parse), `config` (an entry in `.balk2.json` was ignored), and unresolved references, named by reason, such as `ambiguous-global` or `dynamic-event-name`. Pass `--fail-on` with the kinds that should fail the run:
+
+```bash
+npx @lumenspero/balk2 generate --fail-on syntax,config,ambiguous-global
+```
+
+Only the selected diagnostics are printed to stderr, in a fixed order, followed by a summary. The run exits `1` when any selected diagnostic is found, and outputs are still written. Unknown kinds exit `2` and list the valid ones. Without `--fail-on`, output is unchanged.
+
 ---
 
 ## Configuration (`.balk2.json`)
@@ -126,18 +170,6 @@ You can optionally place a `.balk2.json` configuration file in the root of your 
   "exclude": ["node_modules/**", "dist/**", "build/**", "coverage/**"],
   "output": "connection-map",
   "data": {
-    "extensions": [
-      ".json",
-      ".jsonl",
-      ".csv",
-      ".tsv",
-      ".parquet",
-      ".yaml",
-      ".yml",
-      ".toml",
-      ".xml",
-      ".sqlite"
-    ],
     "lineage": [
       {
         "producer": "scripts/collect.py",
@@ -159,6 +191,20 @@ You can optionally place a `.balk2.json` configuration file in the root of your 
 
 ---
 
+### Other configuration sections
+
+Besides `include`, `exclude`, `output` and `data`, `.balk2.json` has sections for `globals`, `protocols` (events, registries, loaders, callbacks, metadata and resources), `state` and `annotations`. Each is described in [`docs/v2`](docs/v2), and the whole file is checked against the published JSON Schema. The schema ships in the package at `dist/balk2.schema.json`. Reference it for editor completion and validation:
+
+```json
+{
+  "$schema": "./node_modules/@lumenspero/balk2/dist/balk2.schema.json"
+}
+```
+
+Entries that cannot be used are reported as `config` diagnostics and ignored, so a mistyped setting does not silently do nothing.
+
+---
+
 ## Programmatic API
 
 Balk2 provides a complete TypeScript / JavaScript API for programmatic usage:
@@ -175,7 +221,7 @@ import {
 } from '@lumenspero/balk2';
 
 // High-level API: Generate map for a directory
-const { jsonPath, mdPath, map } = generateConnectionMap({
+const { jsonPath, mdPath, map, diagnostics } = generateConnectionMap({
   cwd: './my-repo',
   output: 'connection-map',
 });
@@ -211,6 +257,8 @@ const { ConnectionGraph } = require('@lumenspero/balk2');
 ```
 
 Direct imports from `@lumenspero/balk2/dist/*` are not part of the public API.
+
+The `ConnectionMap` type is version 2 and is not compatible with version 1. Version 1 maps are still read by `deserializeConnectionMap`. See [CHANGELOG.md](CHANGELOG.md) for the migration.
 
 ---
 

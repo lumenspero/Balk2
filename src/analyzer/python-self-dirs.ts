@@ -8,7 +8,7 @@
  */
 
 /** A `name: type = "literal"` default on a def line. */
-const DEFAULT_PARAM = /\b(\w+)\s*(?::\s*[\w\[\], .]+)?\s*=\s*(["'])([^"'\s]+)\2/g;
+const DEFAULT_PARAM = /\b(\w+)\s*(?::\s*[\w[\], .]+)?\s*=\s*(["'])([^"'\s]+)\2/g;
 /** `self.attr = "literal"` or `self.attr = Path("literal")`. */
 const SELF_FROM_LITERAL = /\bself\.(\w+)\s*=\s*(?:Path\(\s*)?(["'])([^"'\s]+)\2/;
 /** `self.attr = param` or `self.attr = Path(param)`, the whole line. */
