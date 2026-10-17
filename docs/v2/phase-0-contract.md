@@ -76,7 +76,7 @@ The analyzer emits a high-confidence edge only when it can establish a binding, 
 
 ## Fixture and Accuracy Baseline
 
-The fixture catalog is maintained in `test/fixtures/v2/fixture-catalog.json`. Each fixture records its intended relationship family, expected facts, and negative cases.
+The fixtures are the corpora in `src/testing/`: `event-corpus.ts`, `registry-corpus.ts`, `state-corpus.ts`, `module-load-corpus.ts`, `global-corpus.ts` and `mixed-corpus.ts`. Each fixture records its expected pairs, observations and exact edges, and a known limit where the tool falls short. The accuracy suites in `src/analyzer/*-accuracy.test.ts` check them on every run. Negative cases are fixtures whose expected pairs, edges or observations are empty or specific.
 
 The release gate measures:
 
