@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { generateConnectionMap } from './cli/generate.js';
 import { installGitHook, uninstallGitHook } from './cli/hook-installer.js';
 import { checkConnectionMap } from './cli/check.js';
+import { failureLines, parseFailOn, type DiagnosticKind } from './cli/diagnostics.js';
 import { QUERY_USAGE, runQuery } from './cli/query.js';
 
 const packageMetadata = createRequire(import.meta.url)('../package.json') as { version: string };
@@ -17,6 +18,21 @@ function main(): void {
     if (args[i] === '-o' || args[i] === '--output') {
       outputOption = args[i + 1];
       break;
+    }
+  }
+
+  let failOnText: string | undefined;
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--fail-on') failOnText = args[i + 1] ?? '';
+    else if (args[i]?.startsWith('--fail-on=')) failOnText = args[i]!.slice('--fail-on='.length);
+  }
+  let failOn: DiagnosticKind[] | undefined;
+  if (failOnText !== undefined) {
+    try {
+      failOn = parseFailOn(failOnText);
+    } catch (error) {
+      console.error(`balk2: ${error instanceof Error ? error.message : String(error)}`);
+      process.exit(2);
     }
   }
 
@@ -40,6 +56,11 @@ function main(): void {
       try {
         const res = generateConnectionMap({ output: outputOption });
         for (const line of res.warnings) console.warn(line);
+        if (failOn) {
+          const failures = failureLines(res.diagnostics, failOn);
+          for (const line of failures) console.error(line);
+          if (failures.length > 0) process.exit(1);
+        }
         console.log(`Generated repository connection map:`);
         console.log(`  JSON: ${res.jsonPath}`);
         console.log(`  Markdown: ${res.mdPath}`);
@@ -69,6 +90,11 @@ function main(): void {
     case 'check': {
       const res = checkConnectionMap({ output: outputOption });
       for (const line of res.warnings) console.warn(line);
+      if (failOn) {
+        const failures = failureLines(res.diagnostics, failOn);
+        for (const line of failures) console.error(line);
+        if (failures.length > 0) process.exit(1);
+      }
       console.log(res.message);
       if (!res.isCurrent) process.exit(1);
       break;
@@ -105,7 +131,9 @@ Commands:
   query                 Show relationships from connection-map.json, optionally around a file or node
 
 Options:
-  -o, --output <path>   Output directory or base file path (default: connection-map)
+  -o, --output <path>   Output directory, or a .json or .md file path (default: connection-map)
+  --fail-on <kinds>     With generate or check, exit 1 when a selected diagnostic is found. Comma-separated
+                        kinds: syntax, config, or an unresolved reason such as ambiguous-global
   -h, --help            Show help
   -v, --version         Show version
 

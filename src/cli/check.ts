@@ -4,6 +4,7 @@ import { deserializeConnectionMap, serializeConnectionMap } from '../serialize.j
 import { loadBalk2ConfigDetailed } from '../config/index.js';
 import { buildConnectionGraphDetailed } from './build-graph.js';
 import { formatConfigWarnings, formatSyntaxWarnings } from './problem-warnings.js';
+import { collectDiagnostics, type Diagnostic } from './diagnostics.js';
 
 export interface CheckOptions {
   readonly cwd?: string;
@@ -15,6 +16,8 @@ export interface CheckResult {
   readonly message: string;
   /** One line per configuration entry that was dropped; printed to stderr by the CLI */
   readonly warnings: readonly string[];
+  /** Diagnostics from the fresh analysis; empty when no map exists or it could not be read */
+  readonly diagnostics: readonly Diagnostic[];
 }
 
 /**
@@ -31,6 +34,7 @@ export function checkConnectionMap(options: CheckOptions = {}): CheckResult {
       isCurrent: false,
       message: 'connection-map.json does not exist. Run "balk2" to generate.',
       warnings,
+      diagnostics: [],
     };
   }
 
@@ -49,6 +53,11 @@ export function checkConnectionMap(options: CheckOptions = {}): CheckResult {
       commit: existingMap.repository.commit,
       generatedAt: existingMap.repository.generatedAt,
     });
+    const diagnostics = collectDiagnostics(
+      freshMap,
+      [...loaded.problems, ...built.problems],
+      built.syntaxErrors,
+    );
 
     const freshJson = serializeConnectionMap(freshMap);
 
@@ -57,12 +66,14 @@ export function checkConnectionMap(options: CheckOptions = {}): CheckResult {
         isCurrent: true,
         message: 'connection-map.json is current with repository state.',
         warnings,
+        diagnostics,
       };
     } else {
       return {
         isCurrent: false,
         message: 'connection-map.json is out of date. Run "balk2" to regenerate.',
         warnings,
+        diagnostics,
       };
     }
   } catch (err) {
@@ -70,6 +81,7 @@ export function checkConnectionMap(options: CheckOptions = {}): CheckResult {
       isCurrent: false,
       message: `Failed to read or parse existing connection map: ${err instanceof Error ? err.message : String(err)}`,
       warnings,
+      diagnostics: [],
     };
   }
 }

@@ -7,6 +7,7 @@ import { loadBalk2ConfigDetailed } from '../config/index.js';
 import { buildConnectionGraphDetailed } from './build-graph.js';
 import { formatConfigWarnings, formatSyntaxWarnings } from './problem-warnings.js';
 import type { ConnectionMap } from '../types.js';
+import { collectDiagnostics, type Diagnostic } from './diagnostics.js';
 
 export interface GenerateOptions {
   /** Target root directory to analyze (default: process.cwd()) */
@@ -23,6 +24,8 @@ export interface GenerateResult {
   readonly map: ConnectionMap;
   /** One line per configuration entry that was dropped; printed to stderr by the CLI */
   readonly warnings: readonly string[];
+  /** Diagnostics for this run, in deterministic order */
+  readonly diagnostics: readonly Diagnostic[];
 }
 
 /**
@@ -65,7 +68,12 @@ export function generateConnectionMap(options: GenerateOptions = {}): GenerateRe
   fs.writeFileSync(jsonPath, jsonContent, 'utf8');
   fs.writeFileSync(mdPath, mdContent, 'utf8');
 
-  return { jsonPath, mdPath, map, warnings };
+  const diagnostics = collectDiagnostics(
+    map,
+    [...loaded.problems, ...built.problems],
+    built.syntaxErrors,
+  );
+  return { jsonPath, mdPath, map, warnings, diagnostics };
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────
