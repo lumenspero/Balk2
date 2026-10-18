@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { loadBalk2Config } from './balk2-config.js';
+import { loadBalk2Config, loadBalk2ConfigDetailed } from './balk2-config.js';
 import { applyExplicitLineage } from './lineage-processor.js';
 import { filterFilesWithConfig, matchPattern } from './file-matcher.js';
 import { ConnectionGraph } from '../graph.js';
@@ -41,6 +41,16 @@ describe('.balk2.json Configuration & Data Lineage', () => {
       expect(config?.include).toEqual(['src/**', 'scripts/**']);
       expect(config?.output).toBe('custom-map');
       expect(config?.data?.lineage).toHaveLength(1);
+    });
+
+    it('reports keys in data that are not read, such as data.extensions from 1.x', () => {
+      fs.writeFileSync(
+        path.join(tmpDir, '.balk2.json'),
+        JSON.stringify({ data: { extensions: ['.json'], lineage: [] } }),
+      );
+
+      const { problems } = loadBalk2ConfigDetailed(tmpDir);
+      expect(problems).toEqual([{ path: 'data.extensions', message: 'unknown key ignored' }]);
     });
 
     it('returns undefined if .balk2.json does not exist', () => {

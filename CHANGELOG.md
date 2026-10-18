@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.1
+
+- **Unknown `data` keys are reported.** A `.balk2.json` with a key the loader does not read in `data`, such as `data.extensions` from 1.x, now produces a warning, for example `data.extensions: unknown key ignored`. Map output is unchanged.
+- **README configuration.** The configuration section starts from a minimal `.balk2.json` and documents each key. The previous example used one project's file names and was not valid JSON.
+
 ## 2.0.0
 
 ### Breaking changes

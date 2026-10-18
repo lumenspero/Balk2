@@ -143,7 +143,24 @@ export function loadBalk2ConfigDetailed(
     if (annotations) config.annotations = annotations;
   }
 
+  if ('data' in raw) {
+    problems.push(...validateDataConfig(raw.data));
+  }
+
   return { config: config as Balk2Config, problems };
+}
+
+/**
+ * Keys in `data` that the loader does not read. `data.extensions` was removed in 2.0.0, so a
+ * configuration copied from 1.x is otherwise ignored without a word.
+ */
+export function validateDataConfig(value: unknown): ConfigProblem[] {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return [{ path: 'data', message: 'must be an object' }];
+  }
+  return Object.keys(value)
+    .filter((key) => key !== 'lineage')
+    .map((key) => ({ path: `data.${key}`, message: 'unknown key ignored' }));
 }
 
 const IDENTIFIER_PATTERN = /^[A-Za-z_$][\w$]*$/;

@@ -162,32 +162,44 @@ Only the selected diagnostics are printed to stderr, in a fixed order, followed 
 
 ## Configuration (`.balk2.json`)
 
-You can optionally place a `.balk2.json` configuration file in the root of your repository to customize include/exclude rules, output locations, and explicit data pipeline rules.
+Balk2 works without a configuration file. To change what it scans or where it writes, add a `.balk2.json` to the root of your repository. The minimal file sets the output location, which is also the default:
+
+```json
+{
+  "output": "connection-map"
+}
+```
+
+Every key is optional. The available keys are:
+
+- **`include`**: glob patterns for the files to scan, such as `["src/**", "scripts/**"]`. When omitted, every file is considered.
+- **`exclude`**: glob patterns for files to skip, applied after `include`, such as `["**/*.generated.ts"]`. Balk2 always skips `node_modules`, `dist`, `build`, `coverage`, `.git`, `.github`, `.idea`, `.vscode`, and the default `connection-map` files.
+- **`output`**: where `generate` writes `connection-map.json` and `connection-map.md`. Use an existing directory to write both files inside it, or a path ending in `.json` or `.md`. Any other value falls back to the repository root.
+- **`data.lineage`**: explicit links that Balk2 cannot infer from the code, such as a script that writes a data file which another file reads. Each entry names a `producer` and its `output`, or a `consumer` and its `input`. Both paths must exist in the repository, or Balk2 reports a `config` diagnostic. Add entries only for links your repository actually has.
+
+A fuller example:
 
 ```json
 {
   "include": ["src/**", "scripts/**", "data/**"],
-  "exclude": ["node_modules/**", "dist/**", "build/**", "coverage/**"],
-  "output": "connection-map",
+  "exclude": ["**/*.test.ts"],
+  "output": "docs/connection-map.json",
   "data": {
     "lineage": [
       {
-        "producer": "scripts/collect.py",
-        "output": "data/raw.json"
+        "producer": "scripts/export_report.py",
+        "output": "data/report.json"
       },
       {
-        "producer": "scripts/build_parquet.py",
-        "input": "data/raw.json",
-        "output": "data/titles.parquet"
-      },
-      {
-        "consumer": "src/data/loadTitles.ts",
-        "input": "data/titles.parquet"
+        "consumer": "src/report/render.ts",
+        "input": "data/report.json"
       }
     ]
   }
 }
 ```
+
+Edit the paths to match your repository. A lineage path that does not exist is reported as a `config` diagnostic.
 
 ---
 
