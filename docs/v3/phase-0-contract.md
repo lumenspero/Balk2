@@ -1,0 +1,137 @@
+# Balk2 V3 Phase 0 Contract
+
+Status: **Decided.** D1–D9 are settled, and the pending-marker gating rule is approved. Phase 1 starts once the Phase 0 tests are green on the user's machine.
+
+## Product Outcome
+
+JavaScript/TypeScript, Python and Rust are equally supported languages. The same graph contract, mechanism families, accuracy budgets and release gates apply to each. The authoritative per-mechanism status is `docs/v3/language-parity.md`.
+
+## Current Package Snapshot
+
+Observed at commit `35ba930` (package `@lumenspero/balk2` 2.0.1):
+
+- Runtime: ESM and CJS builds, selected through the `exports` map. Node `>=18`.
+- Only runtime dependency: `typescript`.
+- CLI: `balk2` → `dist/cli.js`.
+- Languages analyzed today: JS/TS (`JsTsAnalyzer`, whole-repository through `RepositoryProgram`) and Python (`PythonAnalyzer`, per-file, line-based regex).
+- Rust: not analyzed.
+- Connection map: `version: 2`.
+- CI matrix: Node 18, 20, 22 on `ubuntu-latest` only.
+
+## Decisions
+
+| ID  | Decision                           | Status                | Summary                                                                                                                                                              |
+| --- | ---------------------------------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1  | Parsers for Python and Rust        | **Decided: A**        | Hand-written TypeScript tokenizers and parsers. Synchronous, no dependencies, same behavior on every platform.                                                       |
+| D2  | TOML parsing                       | **Decided: A**        | Add one small synchronous TOML parser as a runtime dependency. Verified from the packed tarball.                                                                     |
+| D3  | Versioning                         | **Decided: A**        | Connection map `version: 3`, package `3.0.0`, config `version` accepts `2` or `3`.                                                                                   |
+| D4  | Package representation             | **Decided: A**        | One `package` node kind for npm, Python and Cargo.                                                                                                                   |
+| D5  | Test code                          | **Decided: A**        | Analyzed and tagged in every language. `include.tests: false` excludes it for all languages.                                                                         |
+| D6  | Method naming                      | **Decided: A**        | `Type.method` for class and inherent methods. Rust trait impls use `Type[Trait].method`. Nested classes use `Outer.Inner`.                                           |
+| D7  | Shared detectors                   | **Decided: A**        | JS/TS detectors move onto the facts layer, one family at a time, each gated by zero-diff snapshots. B is the fallback only for a family that cannot reach zero diff. |
+| D8  | Module-level state                 | **Decided: A**        | A module-level binding reassigned inside a function is state in every language. JS/TS gains new edges, listed in the release notes.                                  |
+| D9  | Re-exports produce `exports` edges | **Decided: approved** | Keep the file-level `imports` edge and add an `exports` edge for each re-exported name, in all three languages. Changes JS/TS output, listed in the release notes.   |
+
+All of D1–D8 were confirmed by the user. D9 (re-exports) is approved.
+
+## Inventory of Current JS/TS Behavior (Phase 0.3)
+
+Verified against `src/analyzer/js-ts-analyzer.ts`, `owner.ts`, `global-symbols.ts` and `registry-*.ts`. Each item says what the shared representation becomes. Where the plan assumed a representation that does not exist today, the difference is marked **Change**.
+
+| Concern                                                       | Current JS/TS behavior                                                                                                                                          | V3 shared representation                                                                                                                                                                                                           |
+| ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Re-exports (`export { a } from './x'`, `export * from './x'`) | Adds one file→file `imports` edge. No `exports` edge is recorded for the re-exported names.                                                                     | **Change (proposed, D9):** keep the file-level `imports` edge, and add an `exports` edge from the re-exporting file to each re-exported symbol. Python `__init__.py` and Rust `pub use` use the same rule. Confirm before Phase 5. |
+| Type-only imports (`import type`)                             | Recorded as an ordinary `imports` edge. Not distinguished.                                                                                                      | **Change:** `imports` carries `metadata.typeOnly: true` for `import type`, TS `TYPE_CHECKING` in Python, and type-only Rust uses where applicable.                                                                                 |
+| Enums                                                         | JsTsAnalyzer records no enum symbol. `global-symbols.ts` collects enums only for the global index.                                                              | **Change:** an `enum` symbol type is added, and JS/TS enums become symbols in every language. Listed in the release notes.                                                                                                         |
+| Interfaces and type aliases                                   | Recorded as symbols of type `type`.                                                                                                                             | Unchanged. Rust `type` aliases use `type` too.                                                                                                                                                                                     |
+| Owners                                                        | `ownerOf` covers named function declarations, class declarations, methods of top-level classes, and variables initialized with an arrow or function expression. | Shared owner rule. Nested-class methods and object-literal methods are **Change**: they gain owners in every language.                                                                                                             |
+| Nested classes                                                | Not recorded as `Outer.Inner`.                                                                                                                                  | **Change:** named `Outer.Inner` per D6.                                                                                                                                                                                            |
+| Decorators                                                    | Registration decorators (`RegistryDecoratorRule`) and parameter decorators (`RegistryParameterDecoratorRule`) are read from configured names.                   | Decorator facts move to the shared facts layer. Python decorators and Rust attributes use the same configuration form.                                                                                                             |
+| Dynamic `import()` and `require()`                            | Literal specifiers resolve to file edges. Non-literal specifiers are observations.                                                                              | Unchanged behavior, moved to the shared module-load engine.                                                                                                                                                                        |
+| Data direction                                                | `WRITE_KEYWORDS`/`READ_KEYWORDS` in `data-analyzer.ts`, matched as text, shared by JS and Python.                                                               | Replaced by catalog entries that match resolved APIs (Phase 11). **Change** for JS/TS and Python.                                                                                                                                  |
+
+Each **Change** is recorded in `docs/v3/language-parity.md` and must appear in the release notes.
+
+## Analysis Boundaries
+
+These carry over from V2 and now apply to every language.
+
+- Local scope and module resolution take precedence over global-name lookup.
+- Matching event names do not connect systems unless their receiver identities are compatible.
+- Matching registry keys do not connect systems unless their registry identities are compatible.
+- Dynamic values, duplicate candidates, unresolved imports and unsupported constructs become diagnostics or annotations, never guessed edges.
+- A method call on a receiver whose type cannot be established emits no edge.
+- Type facts are graded by source: checker type (JS/TS only), declared annotation (high), constructor or resolved-return inference (medium). The matrix states where Python and Rust depth differs.
+- Every conditional branch is analyzed, and each condition is kept as metadata. Conditions are never evaluated.
+- No toolchain is run at generate time: not `tsc`, `python`, `cargo`, `rustc` or a language server.
+
+## Public API Inventory (Phase 0.1)
+
+Current root exports are listed in `docs/v2/phase-0-contract.md`. V3 changes are:
+
+| Export                                                                                                                      | V3 change                                                                                                                   |
+| --------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `PythonAnalyzer`                                                                                                            | Retained. Its `analyzeFile` becomes a deprecated compatibility wrapper over the Python front end.                           |
+| `RustAnalyzer`                                                                                                              | New. Same wrapper pattern.                                                                                                  |
+| `LanguageFrontEnd` (type)                                                                                                   | New. The internal contract for each language. Exported only if needed by tests and not documented as a stable API in 3.0.0. |
+| `NodeKind`, `SymbolType`, `RelationshipType`, `Evidence`, `LoadKind`, `StateRootKind`, `UnresolvedReason`, `DiagnosticKind` | Extended. Exhaustive `switch` statements in consumer code must handle the new values.                                       |
+| `PackageNode`, `ConnectionMap`                                                                                              | `ConnectionMap` gains `packages`. `PackageNode` is new.                                                                     |
+| `ConnectionMapV1`, `ConnectionMapV2` (type)                                                                                 | Retained so older maps can be typed.                                                                                        |
+
+## Runtime Matrix
+
+| Dimension                                  | V3 target                                                                                             |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| Node.js                                    | 18, 20, 22                                                                                            |
+| OS                                         | Linux (`ubuntu-latest`) and Windows (`windows-latest`). Windows is new in V3.                         |
+| Module systems                             | ESM and CJS through the packed tarball.                                                               |
+| TypeScript consumers                       | Node16, NodeNext and Bundler resolution.                                                              |
+| Languages analyzed                         | JS/TS, Python, Rust.                                                                                  |
+| Oracles (CI only, not required at runtime) | TypeScript `resolveModuleName`, CPython `ast` and `importlib.util.find_spec`, `rustc` dep-info files. |
+
+## Corpora and Fixtures (Phase 0.4–0.6)
+
+| Corpus              | File                                                                       | Purpose                                                                                                                               |
+| ------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Parity              | `src/testing/parity-corpus.ts`                                             | Language-neutral scenarios, each with a JS/TS, Python and Rust rendition.                                                             |
+| Python-specific     | `src/testing/python-corpus.ts`                                             | Python-only forms and negatives.                                                                                                      |
+| Rust-specific       | `src/testing/rust-corpus.ts`                                               | Rust-only forms and negatives.                                                                                                        |
+| Python baseline     | `test/fixtures/python-baseline/` with `test/snapshots/python-baseline.txt` | Phase 0.8 floor. Every edge in this snapshot must survive Phase 5, or be recorded as a false positive in `docs/v3/python-changes.md`. |
+| Existing V2 corpora | `src/testing/*-corpus.ts`                                                  | Unchanged. Continue to gate JS/TS.                                                                                                    |
+
+### Rules for corpus expectations
+
+- Each expectation is written from what the code means, never copied from tool output.
+- Expectations use placeholders: `{sym:a.helper}`, `{file:pkg/util.py}`, `{event:ready}`.
+- A language may be skipped only where `language-parity.md` says Not applicable, and that row must give a reason.
+- A fixture that is expected to fail before its phase is marked `pending: '<phase>'` and listed in `src/testing/parity-corpus.ts`. It is **not** a failing test in `npm test`. Each phase removes its own `pending` markers, so the suite stays green throughout.
+
+### Gating decision (flagged)
+
+The plan said Python and Rust expectations would be failing tests at the end of Phase 0. That would turn `npm test` red for the rest of the project. This contract uses `pending` markers instead, with a CI report that counts how many pending expectations remain per language. The count is the progress measure. It must reach zero for a language before that language's release gate.
+
+## Accuracy and Performance Budgets (Phase 0.7)
+
+Applied to every language and every mechanism family.
+
+| Measure                                                           | Budget                                                                                                                                           |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Expected high-confidence edge recall                              | 100% of declared edges                                                                                                                           |
+| Declared false positives                                          | 0                                                                                                                                                |
+| Declared observations                                             | 100% produced with the declared reason                                                                                                           |
+| Determinism                                                       | Byte-identical JSON and Markdown across repeated runs, on Linux and Windows                                                                      |
+| Synthetic repository, 1,000 files, about 150k lines, per language | Scan completes within a runtime budget, recorded in the CI report on the CI runner. The budget is set as 1.5× the first measured run, then held. |
+| Repository with `target/`, `.venv` or `node_modules`              | Scan time within 10% of the same repository without those directories                                                                            |
+
+## Change Control
+
+- Changes to a Not applicable cell in `language-parity.md` require a reason and a reviewer.
+- Each **Change** in the inventory above is recorded in the release notes and in `docs/v3/python-changes.md` or the matching language document.
+- The graph schema is versioned. `docs/v3/connection-map-schema.md` is the source of truth for field names.
+
+## Phase 1 Entry Criteria
+
+- This contract is accepted, including D1–D6 and D9.
+- `docs/v3/language-parity.md`, `docs/v3/connection-map-schema.md` and the corpora are committed.
+- The Python baseline snapshot is committed and passes on Linux and Windows.
+- The existing V2 test suite is green on the baseline commit.
