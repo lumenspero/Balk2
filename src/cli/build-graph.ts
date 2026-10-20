@@ -1,12 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { ConnectionGraph, normalizePath } from '../graph.js';
-import {
-  createRepositoryProgram,
-  JsTsAnalyzer,
-  PythonAnalyzer,
-  type Analyzer,
-} from '../analyzer/index.js';
+import { createRepositoryProgram, JsTsAnalyzer } from '../analyzer/index.js';
+import { LegacyPythonFrontEnd } from '../analyzer/legacy-python-front-end.js';
 import { applyAnnotations, type Annotation } from '../analyzer/annotations.js';
 import {
   collectSourceAnnotations,
@@ -50,7 +46,6 @@ export interface BuiltGraph {
  */
 export function buildConnectionGraphDetailed(rootDir: string, config?: Balk2Config): BuiltGraph {
   const jsTsAnalyzer = new JsTsAnalyzer();
-  const analyzers: Analyzer[] = [new PythonAnalyzer()];
   const graph = new ConnectionGraph();
   const problems: ConfigProblem[] = [];
   let syntaxErrors: readonly SyntaxErrorNote[] = [];
@@ -91,25 +86,15 @@ export function buildConnectionGraphDetailed(rootDir: string, config?: Balk2Conf
     syntaxErrors = repository.syntaxErrors();
   }
 
-  // 5. Analyze files for language analyzers that do not yet use the shared session.
-  //    Python source directives are read from the same files the Python analyzer reads.
-  const pythonFiles: Record<string, string> = {};
-  for (const relFile of allRelativeFiles) {
-    for (const analyzer of analyzers) {
-      if (analyzer.canAnalyze(relFile)) {
-        try {
-          const content = fs.readFileSync(path.join(rootDir, relFile), 'utf8');
-          pythonFiles[normalizePath(relFile)] = content;
-          analyzer.analyzeFile(relFile, content, graph, {
-            rootDir,
-            knownFiles: allRelativeFiles,
-          });
-        } catch {
-          // Skip unreadable files gracefully
-        }
-      }
-    }
-  }
+  // 5. Python, through the temporary per-file adapter (Phase 1.1, removed in Phase 5.7).
+  //    The adapter's source texts feed the temporary Python source-annotation collector, which
+  //    reads the same files the Python analyzer reads (removed in Phase 12.7).
+  const pythonResult = new LegacyPythonFrontEnd().analyze(
+    { rootDir, files: allRelativeFiles, config },
+    graph,
+  );
+  problems.push(...pythonResult.problems);
+  const pythonFiles: Record<string, string> = Object.fromEntries(pythonResult.sourceTexts ?? []);
   const pythonSource = collectPythonSourceAnnotations(pythonFiles, []);
 
   // 6. Apply project annotations last, so they see the final edges and no detector overwrites them.
