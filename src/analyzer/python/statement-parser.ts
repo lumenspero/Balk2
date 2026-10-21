@@ -1,5 +1,5 @@
 import type { Alias, ExceptHandler, Expr, MatchCase, Stmt, TypeParam, WithItem } from './ast.js';
-import { PythonSyntaxError, TokenCursor } from './cursor.js';
+import { PythonSyntaxError, TokenCursor, type ParseNote } from './cursor.js';
 import {
   canStartExpression,
   parseBitOr,
@@ -32,17 +32,69 @@ const AUGMENTED_OPERATORS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Parses a module. Throws PythonSyntaxError at the first problem; error recovery
- * at statement boundaries is added in 3.3.
+ * Parses a module, recovering from syntax errors. Every problem becomes a note,
+ * and the statements around it are still parsed. Never throws on malformed input.
  */
-export function parseModule(source: string): Stmt[] {
-  const { tokens, errors } = tokenize(source);
+export function parseModuleRecovering(source: string): ModuleParse {
+  const tokenized = tokenize(source);
+  const cursor = new TokenCursor(tokenized.tokens);
+  for (const note of tokenized.errors) cursor.addNote(note);
+  const body: Stmt[] = [];
+  while (!cursor.is('endmarker')) body.push(...parseStatementRecovering(cursor));
+  const errors = [...cursor.notes].sort((a, b) => a.line - b.line || a.column - b.column);
+  return { body, errors };
+}
+
+/**
+ * Parses a module and throws the first problem found. Used where a single
+ * error is wanted, such as tests and tools that handle one file at a time.
+ */
+export function parseModule(source: string): readonly Stmt[] {
+  const { body, errors } = parseModuleRecovering(source);
   const first = errors[0];
   if (first !== undefined) throw new PythonSyntaxError(first.message, first.line, first.column);
-  const cursor = new TokenCursor(tokens);
-  const body: Stmt[] = [];
-  while (!cursor.is('endmarker')) body.push(...parseStatement(cursor));
   return body;
+}
+
+export interface ModuleParse {
+  readonly body: readonly Stmt[];
+  readonly errors: readonly ParseNote[];
+}
+
+/** Parses one statement. On a syntax error, records the note and skips past the broken statement. */
+function parseStatementRecovering(c: TokenCursor): Stmt[] {
+  const start = c.position();
+  try {
+    return parseStatement(c);
+  } catch (error) {
+    if (!(error instanceof PythonSyntaxError)) throw error;
+    c.addNote({ message: error.message, line: error.line, column: error.column });
+    recoverPastStatement(c, start);
+    return [];
+  }
+}
+
+/**
+ * Skips the rest of a broken statement: its tokens up to the end of the line, and
+ * the indented block it introduced. It stops at a dedent, which closes the enclosing
+ * block. It always consumes at least one token, so recovery cannot loop.
+ */
+function recoverPastStatement(c: TokenCursor, start: number): void {
+  while (!c.is('newline') && !c.is('endmarker') && !c.is('indent') && !c.is('dedent')) c.advance();
+  if (c.is('newline')) c.advance();
+  if (c.is('indent')) skipIndentedBlock(c);
+  if (c.position() === start && !c.is('endmarker')) c.advance();
+}
+
+/** Skips an indented block, including nested blocks. The cursor must be on an indent. */
+function skipIndentedBlock(c: TokenCursor): void {
+  let depth = 0;
+  while (!c.is('endmarker')) {
+    if (c.is('indent')) depth += 1;
+    else if (c.is('dedent')) depth -= 1;
+    c.advance();
+    if (depth === 0) return;
+  }
 }
 
 /** One compound statement, or one line of simple statements. */
@@ -82,7 +134,7 @@ export function parseBlock(c: TokenCursor): Stmt[] {
   if (c.match('newline') === undefined) return parseSimpleStatements(c);
   c.expect('indent', undefined, 'expected an indented block');
   const body: Stmt[] = [];
-  while (!c.is('dedent') && !c.is('endmarker')) body.push(...parseStatement(c));
+  while (!c.is('dedent') && !c.is('endmarker')) body.push(...parseStatementRecovering(c));
   c.match('dedent');
   return body;
 }

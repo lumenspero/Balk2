@@ -14,6 +14,13 @@ export class PythonSyntaxError extends Error {
   }
 }
 
+/** A problem found while parsing. Line and column are 1-based. */
+export interface ParseNote {
+  readonly message: string;
+  readonly line: number;
+  readonly column: number;
+}
+
 const END_TOKEN: Token = {
   kind: 'endmarker',
   value: '',
@@ -28,6 +35,8 @@ export class TokenCursor {
   private readonly tokens: readonly Token[];
   private index = 0;
   private lastToken: Token = END_TOKEN;
+  /** Every problem found so far. Two problems at the same position are reported once. */
+  readonly notes: ParseNote[] = [];
 
   constructor(tokens: readonly Token[]) {
     this.tokens = tokens.filter((t) => t.kind !== 'nl');
@@ -85,6 +94,12 @@ export class TokenCursor {
       endLine: this.lastToken.endLine,
       endColumn: this.lastToken.endColumn,
     };
+  }
+
+  /** Records a problem, unless one is already recorded at the same position. */
+  addNote(note: ParseNote): void {
+    if (this.notes.some((n) => n.line === note.line && n.column === note.column)) return;
+    this.notes.push(note);
   }
 
   fail(message: string, token: Token = this.peek()): never {
