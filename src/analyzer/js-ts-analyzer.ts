@@ -15,8 +15,8 @@ import type { CallbackProtocol } from './callback-protocols.js';
 import type { MetadataProtocol } from './metadata-protocols.js';
 import { collectCallbackRelationships } from './callback-flow.js';
 import { collectMetadataRelationships } from './metadata-reflect.js';
-import { collectModuleLoads, type ModuleLoad } from './module-loads.js';
-import { recordDynamicLoads } from './module-load-observations.js';
+import { collectModuleLoads } from './module-loads.js';
+import { applyModuleLoads } from './module-load-apply.js';
 import { collectGlobalReferences } from './global-references.js';
 import { collectStateRelationships } from './state-relationships.js';
 import type { ResourceProtocol } from './resource-protocols.js';
@@ -112,8 +112,7 @@ export class JsTsAnalyzer implements Analyzer {
     // Dynamic module loads. Internal and loader loads add edges; `require` edges from the
     // per-file pass are not restamped, so an existing static import keeps its edge unchanged.
     const loads = collectModuleLoads(repository, options.loaders ?? []);
-    recordModuleLoadEdges(loads, graph);
-    recordDynamicLoads(loads, graph);
+    applyModuleLoads(loads, graph);
 
     // Callbacks passed to configured functions. Symbols from the per-file pass already exist.
     collectCallbackRelationships(repository, graph, options.callbacks ?? []);
@@ -320,30 +319,6 @@ export class JsTsAnalyzer implements Analyzer {
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────
-
-/**
- * Add an `imports` edge for each internal dynamic load (`import()`, worker, URL, loader).
- *
- * A load whose owner already has an `imports` edge to the same file keeps that edge exactly as it
- * was; the dynamic load is not merged into it, so no existing edge gains `loadKind`. Otherwise the
- * load creates one, carrying its `loadKind`.
- */
-function recordModuleLoadEdges(loads: readonly ModuleLoad[], graph: ConnectionGraph): void {
-  for (const load of loads) {
-    if (load.status !== 'internal') continue;
-
-    const alreadyLinked = graph
-      .getRelationships(load.owner)
-      .some((rel) => rel.type === 'imports' && rel.from === load.owner && rel.to === load.target);
-    if (alreadyLinked) continue;
-
-    graph.addRelationship('imports', load.owner, load.target, 'high', {
-      evidence: 'ts-program',
-      spans: [load.span],
-      metadata: { loadKind: load.loadKind },
-    });
-  }
-}
 
 function isTypeScript(path: string): boolean {
   const p = path.toLowerCase();

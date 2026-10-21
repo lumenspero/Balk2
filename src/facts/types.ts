@@ -1,5 +1,6 @@
 import type {
   Confidence,
+  LoadKind,
   SourceSpan,
   StatePathSegment,
   StateRootKind,
@@ -29,6 +30,7 @@ interface FactBase {
 /** A target that a fact resolved to, or could not resolve. */
 export type FactTarget =
   | { readonly kind: 'symbol'; readonly id: string }
+  | { readonly kind: 'file'; readonly path: string }
   | { readonly kind: 'external'; readonly name: string }
   | { readonly kind: 'unresolved'; readonly reason: UnresolvedReason; readonly subject: string };
 
@@ -56,6 +58,8 @@ export interface ModuleEdge extends FactBase {
   readonly kind: 'module-edge';
   readonly owner: string | null;
   readonly form: ModuleEdgeForm;
+  /** How a dynamic load happens (`import()`, worker, URL, loader). Set for `load` edges only. */
+  readonly loadKind?: LoadKind;
   /** The specifier as written in the source. */
   readonly specifier: string;
   readonly target: FactTarget;
