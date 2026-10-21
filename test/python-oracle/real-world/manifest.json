@@ -1,72 +1,72 @@
 [
-    {
-        "path":  "argparse.py",
-        "sha256":  "8cfce14fba1859a653fc093f396d6789fa32c7b502d78703507429d1d7adf862",
-        "source":  "C:\\Users\\shino\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\argparse.py",
-        "license":  "PSF-2.0",
-        "python":  "3.12.10"
-    },
-    {
-        "path":  "dataclasses.py",
-        "sha256":  "3a445bf68189aa04546431ff21084971adfe07bf0bf6639105472c855d0e053b",
-        "source":  "C:\\Users\\shino\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\dataclasses.py",
-        "license":  "PSF-2.0",
-        "python":  "3.12.10"
-    },
-    {
-        "path":  "pathlib.py",
-        "sha256":  "cd1557dedcaa1be0459cd59760c5ebac83a3e412e0e1b5bc0b1a82a19563a090",
-        "source":  "C:\\Users\\shino\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\pathlib.py",
-        "license":  "PSF-2.0",
-        "python":  "3.12.10"
-    },
-    {
-        "path":  "enum.py",
-        "sha256":  "5f6126ee55609a8fc27be206803703597e2efdcaad1fb80ab975ecd0e63cd6aa",
-        "source":  "C:\\Users\\shino\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\enum.py",
-        "license":  "PSF-2.0",
-        "python":  "3.12.10"
-    },
-    {
-        "path":  "functools.py",
-        "sha256":  "f0ca5dd563498f8971e410fe9f37083cfcff2052a0f48efcfbe07d6975754864",
-        "source":  "C:\\Users\\shino\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\functools.py",
-        "license":  "PSF-2.0",
-        "python":  "3.12.10"
-    },
-    {
-        "path":  "json__decoder.py",
-        "sha256":  "9f4cc83197bf1b13fee3ce71a044a4b4987a7eeecd8768206abd31a78e0a3d16",
-        "source":  "C:\\Users\\shino\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\json\\decoder.py",
-        "license":  "PSF-2.0",
-        "python":  "3.12.10"
-    },
-    {
-        "path":  "json__encoder.py",
-        "sha256":  "497cc84d2b3936f2a25ec6e561a9a3266c4bc4c9661f5841c3b6ec31eaa0edb9",
-        "source":  "C:\\Users\\shino\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\json\\encoder.py",
-        "license":  "PSF-2.0",
-        "python":  "3.12.10"
-    },
-    {
-        "path":  "asyncio__tasks.py",
-        "sha256":  "c9501733827182d5eab6638ef7117367c5fe5db0191e45bf96f9faa463127e83",
-        "source":  "C:\\Users\\shino\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\asyncio\\tasks.py",
-        "license":  "PSF-2.0",
-        "python":  "3.12.10"
-    },
-    {
-        "path":  "typing.py",
-        "sha256":  "26506916777c5fb375f98d13824895adb110565a12a9674c03cb596332e13c43",
-        "source":  "C:\\Users\\shino\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\typing.py",
-        "license":  "PSF-2.0",
-        "python":  "3.12.10"
-    },
-    {
-        "path":  "shutil.py",
-        "sha256":  "de2f5819114464949b55229b137ac9deed85ce16955ead2dc725e45805ba098c",
-        "source":  "C:\\Users\\shino\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\shutil.py",
-        "license":  "PSF-2.0",
-        "python":  "3.12.10"
-    }
+  {
+    "path": "argparse.py",
+    "sha256": "8cfce14fba1859a653fc093f396d6789fa32c7b502d78703507429d1d7adf862",
+    "source": "C:\\Users\\shino\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\argparse.py",
+    "license": "PSF-2.0",
+    "python": "3.12.10"
+  },
+  {
+    "path": "dataclasses.py",
+    "sha256": "3a445bf68189aa04546431ff21084971adfe07bf0bf6639105472c855d0e053b",
+    "source": "C:\\Users\\shino\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\dataclasses.py",
+    "license": "PSF-2.0",
+    "python": "3.12.10"
+  },
+  {
+    "path": "pathlib.py",
+    "sha256": "cd1557dedcaa1be0459cd59760c5ebac83a3e412e0e1b5bc0b1a82a19563a090",
+    "source": "C:\\Users\\shino\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\pathlib.py",
+    "license": "PSF-2.0",
+    "python": "3.12.10"
+  },
+  {
+    "path": "enum.py",
+    "sha256": "5f6126ee55609a8fc27be206803703597e2efdcaad1fb80ab975ecd0e63cd6aa",
+    "source": "C:\\Users\\shino\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\enum.py",
+    "license": "PSF-2.0",
+    "python": "3.12.10"
+  },
+  {
+    "path": "functools.py",
+    "sha256": "f0ca5dd563498f8971e410fe9f37083cfcff2052a0f48efcfbe07d6975754864",
+    "source": "C:\\Users\\shino\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\functools.py",
+    "license": "PSF-2.0",
+    "python": "3.12.10"
+  },
+  {
+    "path": "json__decoder.py",
+    "sha256": "9f4cc83197bf1b13fee3ce71a044a4b4987a7eeecd8768206abd31a78e0a3d16",
+    "source": "C:\\Users\\shino\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\json\\decoder.py",
+    "license": "PSF-2.0",
+    "python": "3.12.10"
+  },
+  {
+    "path": "json__encoder.py",
+    "sha256": "497cc84d2b3936f2a25ec6e561a9a3266c4bc4c9661f5841c3b6ec31eaa0edb9",
+    "source": "C:\\Users\\shino\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\json\\encoder.py",
+    "license": "PSF-2.0",
+    "python": "3.12.10"
+  },
+  {
+    "path": "asyncio__tasks.py",
+    "sha256": "c9501733827182d5eab6638ef7117367c5fe5db0191e45bf96f9faa463127e83",
+    "source": "C:\\Users\\shino\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\asyncio\\tasks.py",
+    "license": "PSF-2.0",
+    "python": "3.12.10"
+  },
+  {
+    "path": "typing.py",
+    "sha256": "26506916777c5fb375f98d13824895adb110565a12a9674c03cb596332e13c43",
+    "source": "C:\\Users\\shino\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\typing.py",
+    "license": "PSF-2.0",
+    "python": "3.12.10"
+  },
+  {
+    "path": "shutil.py",
+    "sha256": "de2f5819114464949b55229b137ac9deed85ce16955ead2dc725e45805ba098c",
+    "source": "C:\\Users\\shino\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\shutil.py",
+    "license": "PSF-2.0",
+    "python": "3.12.10"
+  }
 ]
