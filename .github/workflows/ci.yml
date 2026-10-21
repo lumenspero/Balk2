@@ -28,13 +28,6 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Diagnose line endings and prettier
-        run: |
-          git rev-parse HEAD
-          npx prettier --version
-          git ls-files --eol | head -5
-          file package.json .prettierrc
-
       - name: Format check
         run: npm run format:check
 
