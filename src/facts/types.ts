@@ -1,5 +1,6 @@
 import type {
   Confidence,
+  EventRelationship,
   Evidence,
   RegistryKeyType,
   RegistryRelationship,
@@ -254,6 +255,56 @@ export interface RegistryConfiguredKey {
   readonly target?: string;
 }
 
+/** The direction a protocol call takes on an event channel. */
+export type EventDirectionFact = 'subscribe' | 'unsubscribe' | 'emit' | 'dispatch';
+
+/** An event name as read from source: static, dynamic with its reason, or an argument that cannot be a name. */
+export type EventNameFact =
+  | { readonly kind: 'static'; readonly name: string }
+  | { readonly kind: 'dynamic'; readonly reason: string }
+  | { readonly kind: 'not-a-name' };
+
+/** Listener flags an options argument sets, recorded only when known to be `true`. */
+export type EventListenerFlags = Readonly<
+  Partial<Record<'once' | 'capture' | 'passive' | 'abortable', true>>
+>;
+
+/** The receiver of an event call: its identity, and whether it qualifies as an emitter. */
+export interface EventReceiverFact {
+  readonly identity:
+    | { readonly kind: 'resolved'; readonly scope: string; readonly confidence: Confidence }
+    | { readonly kind: 'unknown'; readonly reason: string };
+  readonly qualifies: boolean;
+  readonly qualificationEvidence: Evidence;
+  /** Why the receiver does not qualify, when the front end knows. */
+  readonly reason?: string;
+}
+
+/**
+ * A method call that an event protocol may describe. Claimed calls are included, flagged, because
+ * they still count as evidence that a receiver is an emitter.
+ */
+export interface EventCallFact extends FactBase {
+  readonly kind: 'event-call';
+  readonly owner: string;
+  readonly subject: string;
+  readonly direction: EventDirectionFact;
+  readonly relationship: EventRelationship;
+  readonly protocolSource: 'built-in' | 'config';
+  /** The protocol's receiver rule is `event-like`: the receiver's type must look like an emitter. */
+  readonly eventLikeReceiver: boolean;
+  /** The listener runs at most once. */
+  readonly once: boolean;
+  /** State claimed the call, so it is not an event. */
+  readonly claimed: boolean;
+  readonly receiver: EventReceiverFact;
+  readonly name: EventNameFact;
+  /** The listener's symbol, when a subscribe or unsubscribe names one in the graph. */
+  readonly listener?: string;
+  /** The listener options, for a subscribe or unsubscribe that passes them. */
+  readonly options?: EventListenerFlags;
+}
+
 /** A `# balk2:` or `// balk2:` source annotation, before it is applied. */
 export interface Directive extends FactBase {
   readonly kind: 'directive';
@@ -271,6 +322,7 @@ export type Fact =
   | RegistryCallFact
   | RegistryDeclarationFact
   | RegistryInjectionFact
+  | EventCallFact
   | Directive;
 
 /** The kinds of fact, as discriminants. */

@@ -14,6 +14,7 @@ function kindOf(fact: Fact): FactKind {
     case 'registry-call':
     case 'registry-declaration':
     case 'registry-injection':
+    case 'event-call':
     case 'directive':
       return fact.kind;
     default: {
