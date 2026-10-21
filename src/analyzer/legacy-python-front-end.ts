@@ -9,10 +9,12 @@ import type {
   LanguageFrontEnd,
 } from './front-end.js';
 import { PythonAnalyzer } from './python-analyzer.js';
+import { collectPythonSourceAnnotations } from './python-source-apply.js';
 
 /**
  * TEMPORARY adapter (Phase 1.1, removed in Phase 5.7). Runs the line-based PythonAnalyzer one file
- * at a time behind LanguageFrontEnd. Behavior matches the per-file loop it replaces.
+ * at a time behind LanguageFrontEnd. It also reads Python source annotations through the legacy
+ * collector, which is removed in Phase 12.7.
  */
 export class LegacyPythonFrontEnd implements LanguageFrontEnd {
   readonly name = 'LegacyPythonFrontEnd';
@@ -24,12 +26,12 @@ export class LegacyPythonFrontEnd implements LanguageFrontEnd {
   }
 
   analyze(input: FrontEndInput, graph: ConnectionGraph): FrontEndResult {
-    const sourceTexts = new Map<string, string>();
+    const sourceTexts: Record<string, string> = {};
     for (const relFile of input.files) {
       if (!this.canHandle(relFile)) continue;
       try {
         const content = fs.readFileSync(path.join(input.rootDir, relFile), 'utf8');
-        sourceTexts.set(normalizePath(relFile), content);
+        sourceTexts[normalizePath(relFile)] = content;
         this.analyzer.analyzeFile(relFile, content, graph, {
           rootDir: input.rootDir,
           knownFiles: input.files,
@@ -38,6 +40,10 @@ export class LegacyPythonFrontEnd implements LanguageFrontEnd {
         // Skip unreadable files gracefully, as the former per-file loop did.
       }
     }
-    return { problems: [], syntaxErrors: [], sourceTexts };
+    return {
+      problems: [],
+      syntaxErrors: [],
+      sourceAnnotations: collectPythonSourceAnnotations(sourceTexts, []),
+    };
   }
 }

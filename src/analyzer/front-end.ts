@@ -1,6 +1,7 @@
 import type { ConnectionGraph } from '../graph.js';
 import type { Balk2Config } from '../config/balk2-config.js';
 import type { ConfigProblem } from '../config/config-problem.js';
+import type { Annotation, AnnotationProblem } from './annotations.js';
 import type { SyntaxErrorNote } from './repository-program.js';
 
 /** Languages a front end can analyze. Rust joins in Phase 6. */
@@ -15,16 +16,19 @@ export interface FrontEndInput {
   readonly config?: Balk2Config;
 }
 
+/** `# balk2:` or `// balk2:` directives read from one front end's files. */
+export interface FrontEndSourceAnnotations {
+  readonly annotations: readonly Annotation[];
+  readonly problems: readonly AnnotationProblem[];
+}
+
 export interface FrontEndResult {
   /** Configured entries this front end could not use. */
   readonly problems: readonly ConfigProblem[];
   /** Syntax errors recovered from in this front end's files. */
   readonly syntaxErrors: readonly SyntaxErrorNote[];
-  /**
-   * TEMPORARY (Phase 1.1 until Phase 12.7). Source text of the files this front end analyzed,
-   * keyed by normalized path, for the legacy Python source-annotation collector.
-   */
-  readonly sourceTexts?: ReadonlyMap<string, string>;
+  /** Source-comment directives from this front end's files. Undefined when it had no files. */
+  readonly sourceAnnotations?: FrontEndSourceAnnotations;
 }
 
 /**

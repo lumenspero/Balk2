@@ -1,14 +1,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { ConnectionGraph, normalizePath } from '../graph.js';
-import { createRepositoryProgram, JsTsAnalyzer } from '../analyzer/index.js';
-import { LegacyPythonFrontEnd } from '../analyzer/legacy-python-front-end.js';
 import { applyAnnotations, type Annotation } from '../analyzer/annotations.js';
-import {
-  collectSourceAnnotations,
-  type SourceAnnotationResult,
-} from '../analyzer/source-annotations-apply.js';
-import { collectPythonSourceAnnotations } from '../analyzer/python-source-apply.js';
+import type { FrontEndInput, FrontEndSourceAnnotations } from '../analyzer/front-end.js';
+import { JsTsFrontEnd } from '../analyzer/js-ts-front-end.js';
+import { LegacyPythonFrontEnd } from '../analyzer/legacy-python-front-end.js';
 import { registerDataArtifacts } from '../data/formats.js';
 import { filterFilesWithConfig, applyExplicitLineage } from '../config/index.js';
 import type { Balk2Config } from '../config/balk2-config.js';
@@ -43,68 +39,67 @@ export interface BuiltGraph {
  * This is the single analysis path shared by `generate` and `check`. Both
  * commands must produce byte-identical graphs for identical input, so no
  * analysis logic may live outside this function.
+ *
+ * The steps run in a fixed order that does not depend on language (V3 plan, Phase 1.2):
+ * scan, package discovery, front ends, binding index, cross-language resolution, mechanism
+ * engines, explicit lineage, annotations.
  */
 export function buildConnectionGraphDetailed(rootDir: string, config?: Balk2Config): BuiltGraph {
-  const jsTsAnalyzer = new JsTsAnalyzer();
   const graph = new ConnectionGraph();
   const problems: ConfigProblem[] = [];
-  let syntaxErrors: readonly SyntaxErrorNote[] = [];
   const configAnnotations: readonly Annotation[] = config?.annotations ?? [];
 
-  // 1. Scan directory for repository files & apply config filters
+  // 1. Scan. Every later step sees only these files, after the configured include/exclude filters.
   const rawFiles = scanRepositoryFiles(rootDir);
-  const allRelativeFiles = filterFilesWithConfig(rawFiles, config?.include, config?.exclude);
+  const files = filterFilesWithConfig(rawFiles, config?.include, config?.exclude);
 
-  // 2. Register data artifacts
-  registerDataArtifacts(allRelativeFiles, graph);
+  // 2. Package discovery. Empty until Phase 4 (Python) and Phase 7 (Cargo and npm) add packages.
 
-  // 3. Apply explicit data lineage rules from .balk2.json
+  // 3. Front ends, in a fixed order: JS/TS, then Python. Data artifacts are registered first so
+  //    the front ends see them.
+  registerDataArtifacts(files, graph);
+  const input: FrontEndInput = { rootDir, files, config };
+  const jsTsResult = new JsTsFrontEnd().analyze(input, graph);
+  const pythonResult = new LegacyPythonFrontEnd().analyze(input, graph);
+  problems.push(...jsTsResult.problems, ...pythonResult.problems);
+  const syntaxErrors: readonly SyntaxErrorNote[] = [
+    ...jsTsResult.syntaxErrors,
+    ...pythonResult.syntaxErrors,
+  ];
+
+  // 4. Binding index. Empty until Phase 14 (cross-language boundaries).
+
+  // 5. Cross-language resolution. Empty until Phase 14.
+
+  // 6. Mechanism engines. In Phase 1 they still run inside each front end (JS/TS in
+  //    analyzeRepository). Phase 2 moves them out of the front ends.
+
+  // 7. Explicit data lineage from .balk2.json. Runs before annotations, which may target lineage edges.
   if (config?.data?.lineage) {
     // Checked against every file in the repository, not only the included ones, so a script
     // outside `include` is not reported as missing.
     problems.push(...applyExplicitLineage(config.data.lineage, graph, new Set(rawFiles)));
   }
 
-  // 4. Parse and analyze JS/TS once through a shared repository session.
-  //    Source annotations are read in the same session, so they see the same parsed files.
-  let jsSource: SourceAnnotationResult = { annotations: configAnnotations, problems: [] };
-  const jsTsFiles = allRelativeFiles.filter((filePath) => jsTsAnalyzer.canAnalyze(filePath));
-  if (jsTsFiles.length > 0) {
-    const repository = createRepositoryProgram({ rootDir, filePaths: jsTsFiles });
-    const analysis = jsTsAnalyzer.analyzeRepository(repository, graph, {
-      globals: config?.globals,
-      events: config?.protocols?.events,
-      registries: config?.protocols?.registries,
-      loaders: config?.protocols?.loaders,
-      callbacks: config?.protocols?.callbacks,
-      metadata: config?.protocols?.metadata,
-      resources: config?.protocols?.resources,
-      state: config?.state,
-    });
-    problems.push(...analysis.stateProblems);
-    jsSource = collectSourceAnnotations(repository, []);
-    syntaxErrors = repository.syntaxErrors();
-  }
-
-  // 5. Python, through the temporary per-file adapter (Phase 1.1, removed in Phase 5.7).
-  //    The adapter's source texts feed the temporary Python source-annotation collector, which
-  //    reads the same files the Python analyzer reads (removed in Phase 12.7).
-  const pythonResult = new LegacyPythonFrontEnd().analyze(
-    { rootDir, files: allRelativeFiles, config },
-    graph,
-  );
-  problems.push(...pythonResult.problems);
-  const pythonFiles: Record<string, string> = Object.fromEntries(pythonResult.sourceTexts ?? []);
-  const pythonSource = collectPythonSourceAnnotations(pythonFiles, []);
-
-  // 6. Apply project annotations last, so they see the final edges and no detector overwrites them.
+  // 8. Project annotations, last, so they see the final edges and no detector overwrites them.
   //    Source comments (JS and Python) take priority over .balk2.json annotations for the same edge.
+  //    A repository with no JS/TS files gets the config annotations back as its JS/TS source
+  //    annotations. This is the former behavior, kept for zero diff. It makes each config
+  //    annotation report a false "set in a source comment" problem. Fixing that is a separate change.
+  const jsTsSource: FrontEndSourceAnnotations = jsTsResult.sourceAnnotations ?? {
+    annotations: configAnnotations,
+    problems: [],
+  };
+  const pythonSource: FrontEndSourceAnnotations = pythonResult.sourceAnnotations ?? {
+    annotations: [],
+    problems: [],
+  };
   const sourceAnnotations = mergeSourceAnnotations(
-    [...jsSource.annotations, ...pythonSource.annotations],
+    [...jsTsSource.annotations, ...pythonSource.annotations],
     configAnnotations,
   );
   for (const problem of [
-    ...jsSource.problems,
+    ...jsTsSource.problems,
     ...pythonSource.problems,
     ...sourceAnnotations.problems,
   ]) {

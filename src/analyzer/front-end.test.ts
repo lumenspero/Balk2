@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { scanRepositoryFiles } from '../cli/build-graph.js';
 import { ConnectionGraph } from '../graph.js';
 import { canonicalGraph } from '../testing/canonical-graph.js';
+import { JsTsFrontEnd } from './js-ts-front-end.js';
 import { LegacyPythonFrontEnd } from './legacy-python-front-end.js';
 import { PythonAnalyzer } from './python-analyzer.js';
 
@@ -35,9 +36,22 @@ describe('LegacyPythonFrontEnd', () => {
     expect(canonicalGraph(viaAdapter.build(BUILD_OPTIONS))).toBe(
       canonicalGraph(direct.build(BUILD_OPTIONS)),
     );
-    const pythonFiles = files.filter((f) => f.endsWith('.py'));
-    expect([...(result.sourceTexts?.keys() ?? [])].sort()).toEqual(
-      pythonFiles.map((f) => f.replace(/\\/g, '/')).sort(),
-    );
+    expect(result.sourceAnnotations?.annotations.length).toBeGreaterThan(0);
+  });
+});
+
+describe('JsTsFrontEnd', () => {
+  it('handles JS and TS files only', () => {
+    const front = new JsTsFrontEnd();
+    expect(front.canHandle('src/index.ts')).toBe(true);
+    expect(front.canHandle('scripts/run.mjs')).toBe(true);
+    expect(front.canHandle('pkg/mod.py')).toBe(false);
+  });
+
+  it('returns no source annotations when it has no files', () => {
+    const graph = new ConnectionGraph();
+    const result = new JsTsFrontEnd().analyze({ rootDir: FIXTURE, files: ['notes.md'] }, graph);
+    expect(result.sourceAnnotations).toBeUndefined();
+    expect(result.syntaxErrors).toEqual([]);
   });
 });
