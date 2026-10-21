@@ -181,7 +181,7 @@ describe('relationship detail', () => {
 });
 
 describe('build with virtual nodes', () => {
-  it('emits schema version 2 with sorted virtual-node tables', () => {
+  it('emits schema version 3 with sorted virtual-node tables', () => {
     const graph = new ConnectionGraph();
     graph.addEventChannel('b');
     graph.addEventChannel('a');
@@ -193,7 +193,7 @@ describe('build with virtual nodes', () => {
     });
 
     const map = graph.build(METADATA);
-    expect(map.version).toBe(2);
+    expect(map.version).toBe(3);
     expect(Object.keys(map.eventChannels)).toEqual(['event:a', 'event:b']);
     expect(Object.keys(map.unresolved)).toEqual(['unresolved:dynamic-event-name:z.ts:1:1']);
     expect(graph.nodeCount).toBe(3);

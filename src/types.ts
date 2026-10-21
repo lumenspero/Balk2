@@ -1,10 +1,10 @@
 /**
- * Core type definitions for the Balk2 connection map graph model (schema version 2).
+ * Core type definitions for the Balk2 connection map graph model (schema version 3).
  *
  * The graph supports file, symbol and artifact nodes plus virtual nodes for indirect
  * mechanisms (event channels, registry keys, state paths, metadata keys, resources) and
  * diagnostics (unresolved references), connected by typed directional relationships.
- * See docs/v2/connection-map-schema.md.
+ * See docs/v2/connection-map-schema.md and docs/v3/connection-map-schema.md.
  */
 
 // ── Node Types ──────────────────────────────────────────────
@@ -18,7 +18,8 @@ export type NodeKind =
   | 'registry-key'
   | 'state-path'
   | 'metadata-key'
-  | 'resource';
+  | 'resource'
+  | 'package';
 
 /**
  * A code file node in the graph.
@@ -50,7 +51,18 @@ export interface SymbolNode {
   readonly symbolType: SymbolType;
 }
 
-export type SymbolType = 'function' | 'class' | 'method' | 'type' | 'constant' | 'variable';
+export type SymbolType =
+  | 'function'
+  | 'class'
+  | 'method'
+  | 'type'
+  | 'constant'
+  | 'variable'
+  | 'struct'
+  | 'enum'
+  | 'trait'
+  | 'module'
+  | 'macro';
 
 /**
  * A data artifact node in the graph.
@@ -155,8 +167,10 @@ export interface ResourceNode {
  * What a state root is. `global` is the global object under any of its names (`globalThis`,
  * `window`, ...), so all of them share one root. `configured` is a root named in `.balk2.json`.
  * `singleton` is a module export declared as shared state in `.balk2.json`.
+ * `module` is a module-level binding that a function reassigns: a Rust static, a Python module
+ * global or a JS/TS module `let` (V3 decision D8).
  */
-export type StateRootKind = 'global' | 'configured' | 'singleton';
+export type StateRootKind = 'global' | 'configured' | 'singleton' | 'module';
 
 /**
  * One step of a state path: a property name, or `null` for a computed property whose name is not
@@ -197,7 +211,11 @@ export type UnresolvedReason =
   | 'dynamic-module-specifier'
   | 'unresolved-callback'
   | 'unresolved-metadata-key'
-  | 'dynamic-resource-specifier';
+  | 'dynamic-resource-specifier'
+  | 'unresolved-module-path'
+  | 'ambiguous-star-import'
+  | 'dynamic-include-path'
+  | 'unresolved-binding';
 
 /**
  * A diagnostic-only node recording code that looks like a connection but could not be
@@ -227,6 +245,37 @@ export interface UnresolvedReferenceNode {
   readonly tier?: 'internal';
 }
 
+// ── Package Nodes (schema version 3) ────────────────────────
+
+/** The ecosystem a package belongs to. */
+export type PackageEcosystem = 'npm' | 'python' | 'cargo';
+
+/** The kind of build target a package node describes. */
+export type PackageTargetKind =
+  'lib' | 'bin' | 'script' | 'test' | 'example' | 'bench' | 'build-script' | 'proc-macro';
+
+/**
+ * A distribution or dependency unit: an npm package, a Python project, or a Cargo target. A Cargo
+ * manifest yields one node per target, each with its own `packageRoot` edge.
+ *
+ * Examples: package:cargo:crates/ingest#bin:ingest, package:npm:web, package:python:.
+ */
+export interface PackageNode {
+  readonly kind: 'package';
+  /** "package:<ecosystem>:<manifest dir>", with "#<target>:<name>" when the package is a target */
+  readonly id: string;
+  readonly ecosystem: PackageEcosystem;
+  /** The name as code uses it (Cargo names have `-` changed to `_`) */
+  readonly name: string;
+  /** Present when the node is one target of a package */
+  readonly target?: PackageTargetKind;
+  /** Repository-relative path of the manifest that declares the package */
+  readonly manifest: string;
+  /** Repository-relative entry files */
+  readonly roots: readonly string[];
+  readonly edition?: string;
+}
+
 export type GraphNode =
   | FileNode
   | SymbolNode
@@ -236,7 +285,8 @@ export type GraphNode =
   | MetadataKeyNode
   | StatePathNode
   | ResourceNode
-  | UnresolvedReferenceNode;
+  | UnresolvedReferenceNode
+  | PackageNode;
 
 /** A 1-based range in a repository file. */
 export interface SourceSpan {
@@ -267,7 +317,11 @@ export type CodeRelationship =
   | 'extends'
   | 'implements'
   | 'references'
-  | 'exports';
+  | 'exports'
+  | 'declaresModule'
+  | 'dependsOn'
+  | 'packageRoot'
+  | 'executes';
 
 /** Event relationships. Reverse links are derived at render/query time, never stored. */
 export type EventRelationship = 'emits' | 'subscribes' | 'unsubscribes' | 'dispatches';
@@ -322,7 +376,17 @@ export type StateOperation =
  * comma-joined, so `"import-expression,require"`.
  */
 export type LoadKind =
-  'import-expression' | 'require' | 'worker' | 'url' | 'loader' | 'import-module';
+  | 'import-expression'
+  | 'require'
+  | 'worker'
+  | 'url'
+  | 'loader'
+  | 'import-module'
+  | 'include-macro'
+  | 'dunder-import'
+  | 'spec-from-file'
+  | 'run-path'
+  | 'wasm-bindgen-module';
 
 export type RelationshipType =
   | CodeRelationship
@@ -336,7 +400,7 @@ export type RelationshipType =
 export type Confidence = 'high' | 'medium' | 'low';
 
 /** How a relationship was established. */
-export type Evidence = 'ast' | 'ts-program' | 'config' | 'heuristic';
+export type Evidence = 'ast' | 'ts-program' | 'config' | 'heuristic' | 'manifest';
 
 /**
  * Lifecycle and mechanism details such as `{ once: true }` on a subscription, or
@@ -380,14 +444,16 @@ export interface RepositoryMetadata {
 }
 
 /**
- * The canonical connection map — the complete graph representation.
+ * The canonical connection map (schema version 3), the complete graph representation.
  * Serialized directly to connection-map.json.
  */
 export interface ConnectionMap {
   /** Schema version */
-  readonly version: 2;
+  readonly version: 3;
   /** Repository metadata */
   readonly repository: RepositoryMetadata;
+  /** Package nodes keyed by id */
+  readonly packages: Record<string, PackageNode>;
   /** File nodes keyed by path */
   readonly files: Record<string, FileNode>;
   /** Symbol nodes keyed by id */
@@ -407,6 +473,25 @@ export interface ConnectionMap {
   /** Unresolved-reference diagnostics keyed by id */
   readonly unresolved: Record<string, UnresolvedReferenceNode>;
   /** All relationships in the graph */
+  readonly relationships: Relationship[];
+}
+
+/**
+ * The version 2 connection map. Still readable: `deserializeConnectionMap` upgrades it to version 3
+ * (see `convertV2ToV3`).
+ */
+export interface ConnectionMapV2 {
+  readonly version: 2;
+  readonly repository: RepositoryMetadata;
+  readonly files: Record<string, FileNode>;
+  readonly symbols: Record<string, SymbolNode>;
+  readonly artifacts: Record<string, ArtifactNode>;
+  readonly eventChannels: Record<string, EventChannelNode>;
+  readonly registryKeys: Record<string, RegistryKeyNode>;
+  readonly metadataKeys: Record<string, MetadataKeyNode>;
+  readonly resources: Record<string, ResourceNode>;
+  readonly statePaths: Record<string, StatePathNode>;
+  readonly unresolved: Record<string, UnresolvedReferenceNode>;
   readonly relationships: Relationship[];
 }
 

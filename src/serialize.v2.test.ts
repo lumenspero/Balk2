@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { ConnectionGraph } from './graph.js';
 import { storedReverseTypes, withStoredReverseLinks } from './testing/legacy-maps.js';
-import { convertV1ToV2, deserializeConnectionMap, serializeConnectionMap } from './serialize.js';
+import {
+  convertV1ToV2,
+  convertV2ToV3,
+  deserializeConnectionMap,
+  serializeConnectionMap,
+} from './serialize.js';
 import type { ConnectionMapV1 } from './types.js';
 
 const METADATA = { commit: 'abc1234', generatedAt: '2026-01-01T00:00:00Z' };
@@ -32,10 +37,11 @@ const V1_MAP: ConnectionMapV1 = {
 };
 
 describe('version 1 compatibility', () => {
-  it('reads a version 1 map as version 2 with empty virtual-node tables', () => {
+  it('reads a version 1 map as version 3 with empty virtual-node and package tables', () => {
     const map = deserializeConnectionMap(JSON.stringify(V1_MAP));
 
-    expect(map.version).toBe(2);
+    expect(map.version).toBe(3);
+    expect(map.packages).toEqual({});
     expect(map.eventChannels).toEqual({});
     expect(map.unresolved).toEqual({});
     expect(map.files).toEqual(V1_MAP.files);
@@ -50,7 +56,7 @@ describe('version 1 compatibility', () => {
     graph.addSymbol('src/a.ts', 'f', 'function');
     graph.addRelationship('imports', 'src/a.ts', 'src/b.ts');
 
-    expect(serializeConnectionMap(convertV1ToV2(V1_MAP))).toBe(
+    expect(serializeConnectionMap(convertV2ToV3(convertV1ToV2(V1_MAP)))).toBe(
       serializeConnectionMap(graph.build(METADATA)),
     );
   });
@@ -99,8 +105,8 @@ describe('version 2 maps', () => {
   });
 
   it('rejects versions it does not know', () => {
-    expect(() => deserializeConnectionMap(JSON.stringify({ version: 3 }))).toThrow(
-      'Unsupported connection map version: 3',
+    expect(() => deserializeConnectionMap(JSON.stringify({ version: 4 }))).toThrow(
+      'Unsupported connection map version: 4',
     );
   });
 });

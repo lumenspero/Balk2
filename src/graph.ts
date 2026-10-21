@@ -21,6 +21,7 @@ import type {
   ConnectionMap,
   RepositoryMetadata,
   SourceSpan,
+  PackageNode,
 } from './types.js';
 import { normalizePath } from './path-utils.js';
 import {
@@ -51,6 +52,7 @@ export class ConnectionGraph {
   private readonly metadataKeys = new Map<string, MetadataKeyNode>();
   private readonly resources = new Map<string, ResourceNode>();
   private readonly statePaths = new Map<string, StatePathNode>();
+  private readonly packages = new Map<string, PackageNode>();
   private readonly unresolved = new Map<string, UnresolvedReferenceNode>();
   private readonly relationships: Relationship[] = [];
   private readonly relationshipIndex = new Map<string, number>();
@@ -64,6 +66,20 @@ export class ConnectionGraph {
     const node: FileNode = { kind: 'file', path: normalized, ...(language ? { language } : {}) };
     this.files.set(normalized, node);
     return node;
+  }
+
+  /**
+   * Add a package node (schema version 3). The caller builds the id as
+   * `package:<ecosystem>:<dir>` or `package:<ecosystem>:<dir>#<target>:<name>`.
+   */
+  addPackage(node: PackageNode): PackageNode {
+    const normalized: PackageNode = {
+      ...node,
+      manifest: normalizePath(node.manifest),
+      roots: node.roots.map((root) => normalizePath(root)),
+    };
+    this.packages.set(normalized.id, normalized);
+    return normalized;
   }
 
   /**
@@ -379,8 +395,9 @@ export class ConnectionGraph {
    */
   build(metadata: RepositoryMetadata): ConnectionMap {
     return {
-      version: 2,
+      version: 3,
       repository: metadata,
+      packages: sortedRecord(this.packages),
       files: sortedRecord(this.files),
       symbols: sortedRecord(this.symbols),
       artifacts: sortedRecord(this.artifacts),

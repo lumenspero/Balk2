@@ -18,12 +18,20 @@ const REASON_KEYS: Record<UnresolvedReason, true> = {
   'unresolved-callback': true,
   'unresolved-metadata-key': true,
   'dynamic-resource-specifier': true,
+  'unresolved-module-path': true,
+  'ambiguous-star-import': true,
+  'dynamic-include-path': true,
+  'unresolved-binding': true,
 };
 
 /** The kinds `--fail-on` accepts: parse failures, ignored configuration, and each unresolved reason. */
 export const DIAGNOSTIC_KINDS = [
   'syntax',
   'config',
+  'manifest',
+  'unreachable-module',
+  'module-conflict',
+  'shadowed-module',
   ...(Object.keys(REASON_KEYS) as UnresolvedReason[]),
 ] as const;
 export type DiagnosticKind = (typeof DIAGNOSTIC_KINDS)[number];

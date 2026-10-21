@@ -31,6 +31,7 @@ export const NODE_KINDS: readonly NodeKind[] = [
   'state-path',
   'metadata-key',
   'resource',
+  'package',
 ];
 
 export const CONFIDENCE_LEVELS: readonly Confidence[] = ['high', 'medium', 'low'];
@@ -67,6 +68,10 @@ const FAMILY_TYPES: Readonly<Record<RelationshipFamily, readonly RelationshipTyp
     'implements',
     'references',
     'exports',
+    'declaresModule',
+    'dependsOn',
+    'packageRoot',
+    'executes',
   ],
   events: ['emits', 'subscribes', 'unsubscribes', 'dispatches'],
   data: ['generates', 'generatedBy', 'consumes', 'consumedBy', 'reads', 'writes', 'transforms'],

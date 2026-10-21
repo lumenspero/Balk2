@@ -22,6 +22,9 @@ export type {
   EventRelationship,
   RegistryRelationship,
   StatePathNode,
+  PackageNode,
+  PackageEcosystem,
+  PackageTargetKind,
   StateRelationship,
   StateRootKind,
   DataRelationship,
@@ -34,6 +37,7 @@ export type {
   RepositoryMetadata,
   ConnectionMap,
   ConnectionMapV1,
+  ConnectionMapV2,
 } from './types.js';
 
 export { ConnectionGraph, normalizePath, eventChannelId, registryKeyId } from './graph.js';

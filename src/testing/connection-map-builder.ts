@@ -1,4 +1,5 @@
 import type {
+  PackageNode,
   ArtifactNode,
   ConnectionMap,
   EventChannelNode,
@@ -28,8 +29,9 @@ function table<T>(ids: readonly string[] = []): Record<string, T> {
  */
 export function buildMap(nodes: MapNodes, relationships: readonly Relationship[]): ConnectionMap {
   return {
-    version: 2,
+    version: 3,
     repository: { generatedAt: '2026-01-01T00:00:00.000Z' },
+    packages: table<PackageNode>(),
     files: table<FileNode>(nodes.files),
     symbols: table<SymbolNode>(nodes.symbols),
     artifacts: table<ArtifactNode>(),

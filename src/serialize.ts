@@ -1,5 +1,12 @@
-import { canonicalRelationships } from './relationship-types.js';
-import type { ConnectionMap, ConnectionMapV1 } from './types.js';
+import { detectManifestKind } from './data/manifests.js';
+import { canonicalRelationships, compareStrings } from './relationship-types.js';
+import type {
+  ArtifactNode,
+  ConnectionMap,
+  ConnectionMapV1,
+  ConnectionMapV2,
+  FileNode,
+} from './types.js';
 
 /**
  * Serialize a ConnectionMap to a deterministic JSON string.
@@ -10,12 +17,12 @@ export function serializeConnectionMap(map: ConnectionMap): string {
 }
 
 /**
- * Deserialize a JSON string to a ConnectionMap.
+ * Deserialize a JSON string to a ConnectionMap (version 3).
  * Performs basic structural validation.
  *
- * Version 1 maps are accepted and converted to version 2 (see {@link convertV1ToV2}); any
- * other version is rejected. Relationships are returned in canonical form for either version:
- * reverse links turned around, repeated facts merged, sorted.
+ * Versions 1 and 2 are accepted and upgraded to version 3 (see {@link convertV2ToV3}); any other
+ * version is rejected. Relationships are returned in canonical form for every version: reverse
+ * links turned around, repeated facts merged, sorted.
  */
 export function deserializeConnectionMap(json: string): ConnectionMap {
   const parsed: unknown = JSON.parse(json);
@@ -27,7 +34,7 @@ export function deserializeConnectionMap(json: string): ConnectionMap {
   const obj = parsed as Record<string, unknown>;
   const version = obj['version'];
 
-  if (version !== 1 && version !== 2) {
+  if (version !== 1 && version !== 2 && version !== 3) {
     throw new Error(`Unsupported connection map version: ${String(version)}`);
   }
 
@@ -47,7 +54,7 @@ export function deserializeConnectionMap(json: string): ConnectionMap {
     throw new Error('Invalid connection map: missing artifacts');
   }
 
-  if (version === 2) {
+  if (version !== 1) {
     if (!isObject(obj['eventChannels'])) {
       throw new Error('Invalid connection map: missing eventChannels');
     }
@@ -73,22 +80,38 @@ export function deserializeConnectionMap(json: string): ConnectionMap {
     }
   }
 
+  if (version === 3 && obj['packages'] !== undefined && !isObject(obj['packages'])) {
+    throw new Error('Invalid connection map: packages must be an object');
+  }
+
   if (!Array.isArray(obj['relationships'])) {
     throw new Error('Invalid connection map: missing relationships');
   }
 
-  if (version === 1) return convertV1ToV2(parsed as unknown as ConnectionMapV1);
+  if (version === 1) {
+    return convertV2ToV3(convertV1ToV2(parsed as unknown as ConnectionMapV1));
+  }
 
-  // A version 2 map written before registry keys, metadata keys, resources or state paths existed
-  // lacks those tables; each reads as empty. Keys are written in the same order `build` uses.
-  const map = parsed as unknown as Omit<
-    ConnectionMap,
+  if (version === 2) {
+    return convertV2ToV3(readV2(parsed as Record<string, unknown>));
+  }
+
+  return readV3(parsed as Record<string, unknown>);
+}
+
+/**
+ * Read a version 2 map. A version 2 map written before registry keys, metadata keys, resources or
+ * state paths existed lacks those tables; each reads as empty.
+ */
+function readV2(obj: Record<string, unknown>): ConnectionMapV2 {
+  const map = obj as unknown as Omit<
+    ConnectionMapV2,
     'registryKeys' | 'metadataKeys' | 'resources' | 'statePaths'
   > & {
-    registryKeys?: ConnectionMap['registryKeys'];
-    metadataKeys?: ConnectionMap['metadataKeys'];
-    resources?: ConnectionMap['resources'];
-    statePaths?: ConnectionMap['statePaths'];
+    registryKeys?: ConnectionMapV2['registryKeys'];
+    metadataKeys?: ConnectionMapV2['metadataKeys'];
+    resources?: ConnectionMapV2['resources'];
+    statePaths?: ConnectionMapV2['statePaths'];
   };
   return {
     version: 2,
@@ -107,12 +130,43 @@ export function deserializeConnectionMap(json: string): ConnectionMap {
 }
 
 /**
- * Upgrade a version 1 map. Every v1 node is valid in v2 unchanged and the new virtual-node tables
- * start empty. Stored reverse links (`importedBy`, `calledBy`, ...) are turned into the forward
- * relationship they repeat, so the result holds each fact once. Key order matches
- * `ConnectionGraph.build` so a converted map serializes the same way as a freshly built one.
+ * Read a version 3 map. Tables added after the first version 2 maps (packages, registry keys,
+ * metadata keys, resources and state paths) read as empty when missing.
  */
-export function convertV1ToV2(map: ConnectionMapV1): ConnectionMap {
+function readV3(obj: Record<string, unknown>): ConnectionMap {
+  const map = obj as unknown as Omit<
+    ConnectionMap,
+    'packages' | 'registryKeys' | 'metadataKeys' | 'resources' | 'statePaths'
+  > & {
+    packages?: ConnectionMap['packages'];
+    registryKeys?: ConnectionMap['registryKeys'];
+    metadataKeys?: ConnectionMap['metadataKeys'];
+    resources?: ConnectionMap['resources'];
+    statePaths?: ConnectionMap['statePaths'];
+  };
+  return {
+    version: 3,
+    repository: map.repository,
+    packages: map.packages ?? {},
+    files: map.files,
+    symbols: map.symbols,
+    artifacts: map.artifacts,
+    eventChannels: map.eventChannels,
+    registryKeys: map.registryKeys ?? {},
+    metadataKeys: map.metadataKeys ?? {},
+    resources: map.resources ?? {},
+    statePaths: map.statePaths ?? {},
+    unresolved: map.unresolved,
+    relationships: canonicalRelationships(map.relationships),
+  };
+}
+
+/**
+ * Upgrade a version 1 map to version 2. Every v1 node is valid in v2 unchanged and the new
+ * virtual-node tables start empty. Stored reverse links (`importedBy`, `calledBy`, ...) are turned
+ * into the forward relationship they repeat, so the result holds each fact once.
+ */
+export function convertV1ToV2(map: ConnectionMapV1): ConnectionMapV2 {
   return {
     version: 2,
     repository: map.repository,
@@ -127,6 +181,49 @@ export function convertV1ToV2(map: ConnectionMapV1): ConnectionMap {
     unresolved: {},
     relationships: canonicalRelationships(map.relationships),
   };
+}
+
+/**
+ * Upgrade a version 2 map to version 3. `packages` starts empty. A manifest stored as a data
+ * artifact (`package.json`, `Cargo.toml`, `pyproject.toml`, ...) becomes a file node tagged with its
+ * ecosystem. Its artifact entry is kept only when a relationship still names it, so the edge that
+ * code reads of the manifest keeps its target. Everything else is unchanged.
+ */
+export function convertV2ToV3(map: ConnectionMapV2): ConnectionMap {
+  const referenced = new Set(map.relationships.flatMap((rel) => [rel.from, rel.to]));
+  const files: Record<string, FileNode> = { ...map.files };
+  const artifacts: Record<string, ArtifactNode> = {};
+
+  for (const [path, artifact] of Object.entries(map.artifacts)) {
+    const kind = detectManifestKind(path);
+    if (!kind) {
+      artifacts[path] = artifact;
+      continue;
+    }
+    files[path] ??= { kind: 'file', path, language: kind };
+    if (referenced.has(path)) artifacts[path] = artifact;
+  }
+
+  return {
+    version: 3,
+    repository: map.repository,
+    packages: {},
+    files: sortByKey(files),
+    symbols: map.symbols,
+    artifacts: sortByKey(artifacts),
+    eventChannels: map.eventChannels,
+    registryKeys: map.registryKeys,
+    metadataKeys: map.metadataKeys,
+    resources: map.resources,
+    statePaths: map.statePaths,
+    unresolved: map.unresolved,
+    relationships: canonicalRelationships(map.relationships),
+  };
+}
+
+function sortByKey<T>(record: Record<string, T>): Record<string, T> {
+  const entries = Object.entries(record).sort(([a], [b]) => compareStrings(a, b));
+  return Object.fromEntries(entries);
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

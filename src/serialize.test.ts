@@ -10,7 +10,7 @@ describe('serializeConnectionMap', () => {
 
     const json = serializeConnectionMap(map);
 
-    expect(json).toContain('"version": 2');
+    expect(json).toContain('"version": 3');
     expect(json).toContain('"src/main.ts"');
     expect(json.endsWith('\n')).toBe(true);
   });
