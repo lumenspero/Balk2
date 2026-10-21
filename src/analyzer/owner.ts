@@ -40,8 +40,9 @@ function scopeStartedBy(node: ts.Node): OwnerScope | undefined {
   if (ts.isClassDeclaration(node) && node.name) {
     return { kind: 'class', name: node.name.text };
   }
-  if (ts.isMethodDeclaration(node) && ts.isIdentifier(node.name) && hasNamedContainer(node)) {
-    return { kind: 'method', name: node.name.text };
+  if (ts.isMethodDeclaration(node) && hasNamedContainer(node)) {
+    const name = memberName(node.name);
+    if (name !== undefined) return { kind: 'method', name };
   }
   if (
     ts.isVariableDeclaration(node) &&
@@ -62,6 +63,16 @@ function enclosingScopes(node: ts.Node): OwnerScope[] {
     if (scope) scopes.unshift(scope);
   }
   return scopes;
+}
+
+/**
+ * A method's name as a graph segment. Identifiers are used as written. A string or numeric key
+ * that is not an identifier is JSON-quoted (`api."x-y"`). A computed key has no fixed name.
+ */
+function memberName(name: ts.PropertyName): string | undefined {
+  if (ts.isIdentifier(name)) return name.text;
+  if (ts.isStringLiteral(name) || ts.isNumericLiteral(name)) return JSON.stringify(name.text);
+  return undefined;
 }
 
 /** A method is an owner when its container is a named class or an object literal. */

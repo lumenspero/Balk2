@@ -52,7 +52,7 @@ const CASES: ReadonlyArray<readonly [string, () => ConnectionMap]> = [
 ];
 
 describe('canonical graph snapshots', () => {
-  it.each(CASES)('keeps the whole graph stable: %s', (slug, build) => {
-    expect(canonicalGraph(build())).toMatchFileSnapshot(`../../test/snapshots/${slug}.txt`);
+  it.each(CASES)('keeps the whole graph stable: %s', async (slug, build) => {
+    await expect(canonicalGraph(build())).toMatchFileSnapshot(`../../test/snapshots/${slug}.txt`);
   });
 });

@@ -68,6 +68,11 @@ describe('enclosingOwner', () => {
     ).toEqual(['src/a.ts:<anonymous>#1.load', 'src/a.ts:b.run']);
   });
 
+  it('quotes a method name that is not an identifier, and skips a computed one', () => {
+    expect(ownersOfProbes("const api = { 'x-y'() { probe(); } };")).toEqual(['src/a.ts:api."x-y"']);
+    expect(ownersOfProbes('const api = { [key]() { probe(); } };')).toEqual(['src/a.ts']);
+  });
+
   it('qualifies a class declared inside a method with the outer class (D6)', () => {
     expect(ownersOfProbes('class Outer { run() { class Inner { go() { probe(); } } } }')).toEqual([
       'src/a.ts:Outer.Inner.go',
