@@ -133,6 +133,28 @@ export const PYTHON_LIBRARY_TYPES: readonly TypeDeclaration[] = [
   },
 ];
 
+/** The key for a type whose members a front end resolved directly, such as the checker's types. */
+export const RESOLVED_TYPE: TypeName = { kind: 'external', name: 'resolved-type' };
+
+/**
+ * A query over one resolved type. The front end has already listed every member, inherited ones
+ * included (the TypeScript checker does this), so the query has no bases and is complete.
+ */
+export function resolvedTypeQuery(methods: readonly string[]): TypeMembersQuery {
+  const members: TypeMembers = { methods: new Set(methods), order: [], complete: true };
+  return { membersOf: () => members };
+}
+
+/** True when the type has at least one of the methods. */
+export function hasAnyMethod(
+  query: TypeMembersQuery,
+  type: TypeName,
+  methods: readonly string[],
+): boolean {
+  const members = query.membersOf(type);
+  return members !== undefined && methods.some((method) => members.methods.has(method));
+}
+
 /** True when the type has every one of the methods. */
 export function hasMethods(
   query: TypeMembersQuery,

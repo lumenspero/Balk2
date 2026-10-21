@@ -1,6 +1,12 @@
 import * as ts from 'typescript';
 import type { Evidence } from '../types.js';
 import type { RegistryProtocolCatalog, RegistryRule } from './registry-protocols.js';
+import {
+  hasAnyMethod,
+  hasMethods,
+  RESOLVED_TYPE,
+  resolvedTypeQuery,
+} from '../facts/type-members.js';
 import { matchesNameOrType } from './receiver-rules.js';
 
 /**
@@ -88,7 +94,9 @@ interface Shape {
 }
 
 function shapeOf(type: ts.Type, checker: ts.TypeChecker, catalog: RegistryProtocolCatalog): Shape {
-  const members = new Set(checker.getPropertiesOfType(type).map((property) => property.getName()));
+  const names = checker.getPropertiesOfType(type).map((property) => property.getName());
+  const members = new Set(names);
+  const query = resolvedTypeQuery(names);
   const indexes = checker.getIndexInfosOfType(type);
 
   // An array has a numeric index signature and a length, but its keys are positions, not names.
@@ -97,9 +105,13 @@ function shapeOf(type: ts.Type, checker: ts.TypeChecker, catalog: RegistryProtoc
     indexes.some((info) => (info.keyType.flags & ts.TypeFlags.NumberLike) !== 0);
   const indexed = indexes.length > 0;
 
-  const registers = catalog.evidenceMethodsFor('register').some((name) => members.has(name));
-  const looksUp = catalog.evidenceMethodsFor('resolve', 'route').some((name) => members.has(name));
-  const setLike = members.has('add') && members.has('has');
+  const registers = hasAnyMethod(query, RESOLVED_TYPE, catalog.evidenceMethodsFor('register'));
+  const looksUp = hasAnyMethod(
+    query,
+    RESOLVED_TYPE,
+    catalog.evidenceMethodsFor('resolve', 'route'),
+  );
+  const setLike = hasMethods(query, RESOLVED_TYPE, ['add', 'has']);
 
   return {
     registry: !arrayLike && (indexed || setLike || (registers && looksUp)),

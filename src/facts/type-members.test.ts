@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest';
 import type { TypeName } from './local-types.js';
 import {
   createTypeMembersQuery,
+  hasAnyMethod,
   hasMethods,
   isEventLike,
   PYTHON_LIBRARY_TYPES,
+  RESOLVED_TYPE,
+  resolvedTypeQuery,
   type TypeDeclaration,
 } from './type-members.js';
 
@@ -72,5 +75,15 @@ describe('receiver rules', () => {
   it('checks that every required method is present', () => {
     expect(hasMethods(query, sym('Cache'), ['get', 'put'])).toBe(true);
     expect(hasMethods(query, sym('Cache'), ['get', 'delete'])).toBe(false);
+  });
+});
+
+describe('resolvedTypeQuery', () => {
+  it('answers from the methods a front end resolved, as complete', () => {
+    const query = resolvedTypeQuery(['on', 'emit']);
+    const members = query.membersOf(RESOLVED_TYPE);
+    expect(members?.complete).toBe(true);
+    expect(hasAnyMethod(query, RESOLVED_TYPE, ['off', 'emit'])).toBe(true);
+    expect(hasAnyMethod(query, RESOLVED_TYPE, ['off', 'close'])).toBe(false);
   });
 });

@@ -1,6 +1,7 @@
 import * as ts from 'typescript';
 import type { Evidence } from '../types.js';
 import type { EventProtocolCatalog, ReceiverRule } from './event-protocols.js';
+import { isEventLike, RESOLVED_TYPE, resolvedTypeQuery } from '../facts/type-members.js';
 import { matchesNameOrType } from './receiver-rules.js';
 
 export { ReceiverResolver, type ReceiverIdentity } from './receiver-identity.js';
@@ -23,21 +24,17 @@ export function qualifyReceiver(
 
   if (rule === 'event-like') {
     const type = checker.getNonNullableType(checker.getTypeAtLocation(receiver));
-    const members = new Set(
-      checker.getPropertiesOfType(type).map((property) => property.getName()),
-    );
-    const subscribes = catalog
-      .evidenceMethodsFor('subscribe')
-      .some((method) => members.has(method));
-    const publishes = catalog
-      .evidenceMethodsFor('emit', 'dispatch')
-      .some((method) => members.has(method));
-    if (subscribes && publishes) return { qualifies: true, evidence: 'ts-program' };
+    const names = checker.getPropertiesOfType(type).map((property) => property.getName());
+    const qualifies = isEventLike(resolvedTypeQuery(names), RESOLVED_TYPE, {
+      subscribe: catalog.evidenceMethodsFor('subscribe'),
+      emit: catalog.evidenceMethodsFor('emit', 'dispatch'),
+    });
+    if (qualifies) return { qualifies: true, evidence: 'ts-program' };
     return {
       qualifies: false,
       evidence: 'ts-program',
       reason:
-        members.size === 0
+        names.length === 0
           ? 'receiver type is not known'
           : 'receiver type lacks both a subscribe method and an emit or dispatch method',
     };
