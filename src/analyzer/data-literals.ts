@@ -1,6 +1,6 @@
 import * as ts from 'typescript';
 import * as nodePath from 'node:path';
-import { isDataArtifact } from '../data/formats.js';
+export { isDataPathLiteral } from '../facts/path-value.js';
 
 /** String methods whose arguments are text being searched or changed, not a file being opened. */
 const STRING_METHODS: ReadonlySet<string> = new Set([
@@ -42,24 +42,6 @@ const NON_ACCESS_BEFORE = new RegExp(
   `(?:\\.(?:${[...STRING_METHODS].join('|')})\\(\\s*|[=!]=\\s*)$`,
   'i',
 );
-
-/**
- * A string that names a file in the repository: no whitespace, a basename before the extension (so
- * `.json` alone does not count), a recognized data extension, and not a URL, a web-root path or a
- * template with a placeholder.
- */
-export function isDataPathLiteral(text: string): boolean {
-  if (/\s/.test(text) || isRemoteOrTemplate(text)) return false;
-  return /[^./\\]\.[A-Za-z0-9]+$/.test(text) && isDataArtifact(text);
-}
-
-/**
- * A URL, a web-root path such as `/manifest.json` (served by the app, not read from the repo), or a
- * template such as `steamspy_page_{page}.json` (a name that varies at run time).
- */
-function isRemoteOrTemplate(text: string): boolean {
-  return text.includes('://') || text.startsWith('/') || /[{}]/.test(text);
-}
 
 /** True when the literal is searched, compared or changed as text, so it is not a file access. */
 export function isNonAccessLiteral(node: ts.Node): boolean {
