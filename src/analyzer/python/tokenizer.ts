@@ -1,10 +1,15 @@
 /**
- * Python tokenizer (V3 Phase 3.1, first increment).
+ * Python tokenizer (V3 Phase 3.1).
  *
  * Positions are 1-based, the same convention as SourceSpan. Columns count
  * UTF-16 code units, as the TypeScript front end does. Comments and the
  * encoding declaration are trivia: they are returned beside the token stream,
  * never inside it. Tokenizing never throws; malformed input produces notes.
+ *
+ * f-strings follow PEP 701. Their literal parts are emitted as fstring_start,
+ * fstring_middle and fstring_end tokens, and their replacement fields are
+ * tokenized in the main stream, so nested quotes, nested f-strings and
+ * multi-line expressions all produce ordinary tokens.
  */
 
 export type TokenKind =
@@ -12,6 +17,9 @@ export type TokenKind =
   | 'keyword'
   | 'number'
   | 'string'
+  | 'fstring_start'
+  | 'fstring_middle'
+  | 'fstring_end'
   | 'op'
   | 'newline'
   | 'nl'
@@ -160,6 +168,28 @@ const NUMBER =
 const IDENTIFIER = /[\p{XID_Start}_][\p{XID_Continue}]*/uy;
 const ENCODING = /^#.*?coding[:=][ \t]*([-\w.]+)/;
 
+/** An open f-string literal part, or an open replacement field inside one. */
+interface StringFrame {
+  readonly kind: 'string';
+  readonly quote: string;
+  readonly triple: boolean;
+  readonly raw: boolean;
+  readonly line: number;
+  readonly column: number;
+}
+
+interface FieldFrame {
+  readonly kind: 'field';
+  /** Bracket depth at which the field opened. The field closes at this depth. */
+  readonly base: number;
+  /** True once a top-level `:` has started the format specification. */
+  spec: boolean;
+  readonly line: number;
+  readonly column: number;
+}
+
+type Frame = StringFrame | FieldFrame;
+
 /** The innermost indentation level. The stack never empties: its base level is column 0. */
 const currentIndent = (
   stack: ReadonlyArray<{ col: number; alt: number }>,
@@ -178,6 +208,7 @@ export function tokenize(source: string): TokenizeResult {
   const errors: TokenizeNote[] = [];
   const indents: Array<{ col: number; alt: number }> = [{ col: 0, alt: 0 }];
   const brackets: Array<{ char: string; line: number; column: number }> = [];
+  const frames: Frame[] = [];
   let encoding: string | undefined;
   let pos = 0;
   let line = 1;
@@ -218,6 +249,10 @@ export function tokenize(source: string): TokenizeResult {
     return ch === '\n' ? 1 : 0;
   };
 
+  /** True inside brackets or an f-string, where a line break does not end the logical line. */
+  const joining = (): boolean => brackets.length > 0 || frames.length > 0;
+
+  /** A plain (non-f) string literal, scanned whole. */
   const scanString = (start: number, quotePos: number): void => {
     const quote = text.charAt(quotePos);
     const triple = text.startsWith(quote.repeat(3), quotePos);
@@ -272,8 +307,136 @@ export function tokenize(source: string): TokenizeResult {
     pos = p;
   };
 
+  /** Opens an f-string: emits its prefix and quote, then the literal part is scanned in the main loop. */
+  const startFString = (start: number, quotePos: number, raw: boolean): void => {
+    const quote = text.charAt(quotePos);
+    const triple = text.startsWith(quote.repeat(3), quotePos);
+    const end = quotePos + (triple ? 3 : 1);
+    push('fstring_start', text.slice(start, end), line, col(start), line, col(end));
+    pos = end;
+    frames.push({ kind: 'string', quote, triple, raw, line, column: col(start) });
+  };
+
+  /** Scans the literal part of an f-string up to its closing quote, a replacement field, or a line break. */
+  const scanFStringLiteral = (frame: StringFrame): void => {
+    const delim = frame.triple ? frame.quote.repeat(3) : frame.quote;
+    const startLine = line;
+    const startCol = col(pos);
+    let p = pos;
+    while (p < text.length) {
+      const c = text.charAt(p);
+      if (c === '\\') {
+        if (!frame.raw && text.startsWith('\\N{', p)) {
+          const close = text.indexOf('}', p + 3);
+          p = close === -1 ? text.length : close + 1;
+          continue;
+        }
+        const next = text.charAt(p + 1);
+        if (next === '{' || next === '}') {
+          p += 1;
+          continue;
+        }
+        const n = newlineLength(p + 1);
+        if (n > 0) {
+          line += 1;
+          lineStart = p + 1 + n;
+          p += 1 + n;
+        } else {
+          p += 2;
+        }
+        continue;
+      }
+      if (c === frame.quote && text.startsWith(delim, p)) break;
+      if (c === '{' || c === '}') {
+        if (text.charAt(p + 1) === c) {
+          p += 2;
+          continue;
+        }
+        break;
+      }
+      const n = newlineLength(p);
+      if (n > 0) {
+        if (!frame.triple) break;
+        line += 1;
+        lineStart = p + n;
+        p += n;
+        continue;
+      }
+      p += 1;
+    }
+    if (p > pos) push('fstring_middle', text.slice(pos, p), startLine, startCol, line, col(p));
+    pos = p;
+    if (p >= text.length) return;
+
+    const c = text.charAt(p);
+    if (c === frame.quote && text.startsWith(delim, p)) {
+      push('fstring_end', delim, line, col(p), line, col(p) + delim.length);
+      pos = p + delim.length;
+      frames.pop();
+      return;
+    }
+    if (c === '{') {
+      push('op', '{', line, col(p), line, col(p) + 1);
+      pos = p + 1;
+      frames.push({ kind: 'field', base: brackets.length, spec: false, line, column: col(p) });
+      return;
+    }
+    if (c === '}') {
+      note("single '}' is not allowed in an f-string", line, col(p));
+      push('error', '}', line, col(p), line, col(p) + 1);
+      pos = p + 1;
+      return;
+    }
+    // Only a line break is left: a single-quoted literal that never closed.
+    note('unterminated f-string literal', frame.line, frame.column);
+    frames.pop();
+  };
+
+  /** Scans the format specification after a top-level `:` in a replacement field. */
+  const scanFormatSpec = (): void => {
+    const startLine = line;
+    const startCol = col(pos);
+    let p = pos;
+    while (p < text.length) {
+      const c = text.charAt(p);
+      if (c === '{' || c === '}') break;
+      const n = newlineLength(p);
+      if (n > 0) {
+        line += 1;
+        lineStart = p + n;
+        p += n;
+        continue;
+      }
+      p += 1;
+    }
+    if (p > pos) push('fstring_middle', text.slice(pos, p), startLine, startCol, line, col(p));
+    pos = p;
+    if (p >= text.length) return;
+
+    if (text.charAt(p) === '{') {
+      push('op', '{', line, col(p), line, col(p) + 1);
+      pos = p + 1;
+      frames.push({ kind: 'field', base: brackets.length, spec: false, line, column: col(p) });
+      return;
+    }
+    // A closing brace ends the field whose format specification this is.
+    push('op', '}', line, col(p), line, col(p) + 1);
+    pos = p + 1;
+    frames.pop();
+  };
+
   while (pos < text.length) {
-    if (atLineStart && brackets.length === 0) {
+    const frame = frames[frames.length - 1];
+    if (frame?.kind === 'string') {
+      scanFStringLiteral(frame);
+      continue;
+    }
+    if (frame?.kind === 'field' && frame.spec) {
+      scanFormatSpec();
+      continue;
+    }
+
+    if (atLineStart && !joining()) {
       let p = pos;
       let c = 0;
       let a = 0;
@@ -297,10 +460,10 @@ export function tokenize(source: string): TokenizeResult {
       if (p >= text.length) break;
       if (newlineLength(p) === 0 && text.charAt(p) !== '#') {
         // A code line: compare its indentation with the stack.
-        const top = currentIndent(indents);
+        const current = currentIndent(indents);
         const here = col(p);
-        if (c > top.col) {
-          if (a <= top.alt) {
+        if (c > current.col) {
+          if (a <= current.alt) {
             note('inconsistent use of tabs and spaces in indentation', line, here);
           }
           indents.push({ col: c, alt: a });
@@ -325,7 +488,7 @@ export function tokenize(source: string): TokenizeResult {
     const nl = newlineLength(pos);
     if (nl > 0) {
       const startCol = col(pos);
-      if (brackets.length > 0) {
+      if (joining()) {
         push('nl', '\n', line, startCol, line, startCol + nl);
       } else {
         push(lineHasCode ? 'newline' : 'nl', '\n', line, startCol, line, startCol + nl);
@@ -379,8 +542,13 @@ export function tokenize(source: string): TokenizeResult {
     if (word !== undefined) {
       const after = pos + word.length;
       const quoteAfter = text.charAt(after);
-      if ((quoteAfter === '"' || quoteAfter === "'") && STRING_PREFIXES.has(word.toLowerCase())) {
-        scanString(pos, after);
+      const prefix = word.toLowerCase();
+      if ((quoteAfter === '"' || quoteAfter === "'") && STRING_PREFIXES.has(prefix)) {
+        if (prefix.includes('f') || prefix.includes('t')) {
+          startFString(pos, after, prefix.includes('r'));
+        } else {
+          scanString(pos, after);
+        }
         continue;
       }
       push(
@@ -408,17 +576,43 @@ export function tokenize(source: string): TokenizeResult {
       }
     }
 
+    // Replacement-field punctuation, checked before the general operators.
+    if (frame?.kind === 'field' && brackets.length === frame.base) {
+      if (ch === '}') {
+        push('op', '}', line, col(pos), line, col(pos) + 1);
+        pos += 1;
+        frames.pop();
+        continue;
+      }
+      if (ch === ':') {
+        frame.spec = true;
+        push('op', ':', line, col(pos), line, col(pos) + 1);
+        pos += 1;
+        continue;
+      }
+      if (ch === '!' && text.charAt(pos + 1) !== '=') {
+        push('op', '!', line, col(pos), line, col(pos) + 1);
+        pos += 1;
+        continue;
+      }
+    }
+
     const op = OPERATORS.find((candidate) => text.startsWith(candidate, pos));
     if (op !== undefined) {
       const startCol = col(pos);
       if (op === '(' || op === '[' || op === '{') {
         brackets.push({ char: op, line, column: startCol });
       } else if (op === ')' || op === ']' || op === '}') {
-        const open = brackets.pop();
-        if (open === undefined) {
+        const floor = frame?.kind === 'field' ? frame.base : 0;
+        const opener = brackets.length > floor ? brackets.pop() : undefined;
+        if (opener === undefined) {
           note(`unmatched '${op}'`, line, startCol);
-        } else if (CLOSER_OF[op] !== open.char) {
-          note(`'${op}' does not match '${open.char}' opened at line ${open.line}`, line, startCol);
+        } else if (CLOSER_OF[op] !== opener.char) {
+          note(
+            `'${op}' does not match '${opener.char}' opened at line ${opener.line}`,
+            line,
+            startCol,
+          );
         }
       }
       push('op', op, line, startCol, line, startCol + op.length);
@@ -433,8 +627,15 @@ export function tokenize(source: string): TokenizeResult {
 
   const endCol = col(pos);
   if (lineHasCode) push('newline', '', line, endCol, line, endCol);
-  for (const open of brackets) {
-    note(`unclosed '${open.char}'`, open.line, open.column);
+  for (const opener of brackets) {
+    note(`unclosed '${opener.char}'`, opener.line, opener.column);
+  }
+  for (const open of frames.splice(0)) {
+    note(
+      open.kind === 'string' ? 'unterminated f-string literal' : 'unclosed replacement field',
+      open.line,
+      open.column,
+    );
   }
   while (indents.length > 1) {
     indents.pop();

@@ -32,9 +32,9 @@ describe('python tokenizer: positions and tokens', () => {
     expect(numbers.map((t) => t.value)).toEqual(['0x_1F', '1_000', '1.5e-3', '3j', '.5']);
   });
 
-  it('recognises every string prefix as a single string token', () => {
-    const strings = tokenize('rb"x" F\'y\' u"z" Br\'q\'').tokens.filter((t) => t.kind === 'string');
-    expect(strings.map((t) => t.value)).toEqual(['rb"x"', "F'y'", 'u"z"', "Br'q'"]);
+  it('recognises non-f string prefixes as single string tokens', () => {
+    const strings = tokenize('rb"x" u"z" Br\'q\'').tokens.filter((t) => t.kind === 'string');
+    expect(strings.map((t) => t.value)).toEqual(['rb"x"', 'u"z"', "Br'q'"]);
   });
 
   it('spans a triple-quoted string across lines', () => {
@@ -119,5 +119,92 @@ describe('python tokenizer: trivia and diagnostics', () => {
       const { tokens } = tokenize(sample.slice(0, i));
       expect(tokens.at(-1)?.kind).toBe('endmarker');
     }
+  });
+});
+
+describe('python tokenizer: f-strings (PEP 701)', () => {
+  it('emits a replacement field inline between fstring tokens', () => {
+    expect(pairs('f"a{x}b"\n').slice(0, 6)).toEqual([
+      ['fstring_start', 'f"'],
+      ['fstring_middle', 'a'],
+      ['op', '{'],
+      ['name', 'x'],
+      ['op', '}'],
+      ['fstring_middle', 'b'],
+    ]);
+  });
+
+  it('accepts the same quote inside a replacement field', () => {
+    expect(pairs('f"{d["a"]}"\n').slice(0, 8)).toEqual([
+      ['fstring_start', 'f"'],
+      ['op', '{'],
+      ['name', 'd'],
+      ['op', '['],
+      ['string', '"a"'],
+      ['op', ']'],
+      ['op', '}'],
+      ['fstring_end', '"'],
+    ]);
+  });
+
+  it('nests f-strings inside replacement fields', () => {
+    const starts = pairs('f\'{f"{y}"}\'\n').filter(([kind]) => kind === 'fstring_start');
+    expect(starts).toEqual([
+      ['fstring_start', "f'"],
+      ['fstring_start', 'f"'],
+    ]);
+  });
+
+  it('treats doubled braces as literal text', () => {
+    expect(pairs('f"{{x}}"\n').slice(0, 3)).toEqual([
+      ['fstring_start', 'f"'],
+      ['fstring_middle', '{{x}}'],
+      ['fstring_end', '"'],
+    ]);
+  });
+
+  it('splits conversions and nested format specifications', () => {
+    const ops = pairs('f"{x!r:>{w}}"\n')
+      .filter(([kind]) => kind === 'op')
+      .map(([, value]) => value);
+    expect(ops).toEqual(['{', '!', ':', '{', '}', '}']);
+  });
+
+  it('reads := inside a replacement field as a format spec colon', () => {
+    const ops = pairs('f"{x:=1}"\n')
+      .filter(([kind]) => kind === 'op')
+      .map(([, value]) => value);
+    expect(ops).toEqual(['{', ':', '}']);
+  });
+
+  it('allows a replacement field to span lines in a single-quoted f-string', () => {
+    const { errors, tokens } = tokenize('f"{\nx\n}"\n');
+    expect(errors).toEqual([]);
+    expect(tokens.some((t) => t.kind === 'fstring_end')).toBe(true);
+  });
+
+  it('keeps positions across a multi-line triple-quoted f-string', () => {
+    const { tokens } = tokenize('x = f"""a\n{b}\nc"""\n');
+    expect(tokens.find((t) => t.kind === 'fstring_end')).toMatchObject({ line: 3, column: 2 });
+  });
+
+  it('treats a named escape as text, not as a replacement field', () => {
+    const source = 'f"\\N{DASH}"\n';
+    expect(pairs(source).slice(0, 3)).toEqual([
+      ['fstring_start', 'f"'],
+      ['fstring_middle', '\\N{DASH}'],
+      ['fstring_end', '"'],
+    ]);
+  });
+
+  it('reports an unterminated f-string and still ends with an endmarker', () => {
+    const result = tokenize('f"abc\n');
+    expect(result.errors.map((e) => e.message)).toEqual(['unterminated f-string literal']);
+    expect(result.tokens.at(-1)?.kind).toBe('endmarker');
+  });
+
+  it('reports a lone closing brace in an f-string literal', () => {
+    const { errors } = tokenize('f"}"\n');
+    expect(errors.map((e) => e.message)).toEqual(["single '}' is not allowed in an f-string"]);
   });
 });
