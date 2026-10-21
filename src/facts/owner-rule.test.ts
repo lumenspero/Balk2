@@ -35,6 +35,15 @@ describe('ownerIdOf', () => {
     ).toBe('src/m.ts:Outer.Inner');
   });
 
+  it('qualifies a method of a named object literal with the object name', () => {
+    expect(
+      ownerIdOf(file, [
+        { kind: 'object', name: 'api' },
+        { kind: 'method', name: 'load' },
+      ]),
+    ).toBe('src/m.ts:api.load');
+  });
+
   it('makes a function nested in another function its own owner, without qualifier', () => {
     expect(
       ownerIdOf(file, [

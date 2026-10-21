@@ -61,6 +61,19 @@ describe('enclosingOwner', () => {
     expect(ownersOfProbes('export default class { run() { probe(); } }')).toEqual(['src/a.ts']);
   });
 
+  it('names methods of an object literal by its variable, and anonymous ones by source order', () => {
+    expect(ownersOfProbes('const api = { load() { probe(); } };')).toEqual(['src/a.ts:api.load']);
+    expect(
+      ownersOfProbes('export default { load() { probe(); } };\nconst b = { run() { probe(); } };'),
+    ).toEqual(['src/a.ts:<anonymous>#1.load', 'src/a.ts:b.run']);
+  });
+
+  it('qualifies a class declared inside a method with the outer class (D6)', () => {
+    expect(ownersOfProbes('class Outer { run() { class Inner { go() { probe(); } } } }')).toEqual([
+      'src/a.ts:Outer.Inner.go',
+    ]);
+  });
+
   it('attributes a callback inside a method to that method', () => {
     expect(ownersOfProbes('class A { go() { setTimeout(() => probe(), 0); } }')).toEqual([
       'src/a.ts:A.go',
