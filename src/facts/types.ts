@@ -1,6 +1,8 @@
 import type {
   Confidence,
   Evidence,
+  RegistryKeyType,
+  RegistryRelationship,
   LoadKind,
   SourceSpan,
   StateOperation,
@@ -168,6 +170,90 @@ export interface StatePathFact extends FactBase {
   readonly subject: string;
 }
 
+/** A registry key as read from source: its text and type, a dynamic value, or an argument that cannot be a key. */
+export type RegistryKeyFact =
+  | {
+      readonly kind: 'static';
+      readonly name: string;
+      readonly keyType: RegistryKeyType;
+      /** Written as a numeric literal, so its evidence is the literal's own. */
+      readonly numericLiteral: boolean;
+      readonly evidence: Evidence;
+    }
+  | { readonly kind: 'dynamic'; readonly reason: string }
+  | { readonly kind: 'not-a-name' };
+
+/** The receiver of a registry call: its identity, and whether it qualifies as a registry. */
+export interface RegistryReceiverFact {
+  readonly identity:
+    | { readonly kind: 'resolved'; readonly scope: string; readonly confidence: Confidence }
+    | { readonly kind: 'unknown'; readonly reason: string };
+  readonly qualifies: boolean;
+  readonly qualificationEvidence: Evidence;
+  /** A built-in container whose storage cannot be reached from outside its module or class. */
+  readonly internal: boolean;
+}
+
+/** A method call, or a dictionary assignment, that a registry protocol may describe. */
+export interface RegistryCallFact extends FactBase {
+  readonly kind: 'registry-call';
+  readonly owner: string;
+  readonly subject: string;
+  readonly assignment: boolean;
+  readonly relationship: RegistryRelationship;
+  readonly protocolSource: 'built-in' | 'config';
+  /** The protocol's receiver rule is configured, not the built-in `registry-like` check. */
+  readonly configuredReceiver: boolean;
+  readonly receiver: RegistryReceiverFact;
+  readonly key: RegistryKeyFact;
+  /** The symbol the value argument names, when it is in the graph. */
+  readonly target?: string;
+}
+
+/**
+ * A registration made by a decorator or a dictionary literal. The target is the symbol the key
+ * maps to; for a decorator it is the decorated class or method, which is also where a dynamic key
+ * is reported from.
+ */
+export interface RegistryDeclarationFact extends FactBase {
+  readonly kind: 'registry-declaration';
+  readonly source: 'decorator' | 'literal';
+  readonly subject: string;
+  readonly registry: string;
+  /** Static, or dynamic when a decorator's key is not known. */
+  readonly key: RegistryKeyFact;
+  readonly target: string;
+  /** The target is a node in the graph, so the key maps to it. */
+  readonly targetInGraph: boolean;
+  readonly confidence: Confidence;
+  readonly evidence: Evidence;
+}
+
+/** A constructor parameter whose decorator names a dependency: the enclosing class looks the key up. */
+export interface RegistryInjectionFact extends FactBase {
+  readonly kind: 'registry-injection';
+  readonly owner: string;
+  readonly registry: string;
+  readonly key: RegistryKeyFact;
+  readonly subject: string;
+}
+
+/**
+ * Registry facts, in the order the registry pass reads them: declarations (decorators, then
+ * literals), then parameter injections, then calls. The engine keeps each kind's order.
+ */
+export type RegistryFact = RegistryDeclarationFact | RegistryInjectionFact | RegistryCallFact;
+
+/**
+ * A registration from configuration: a manifest entry, or a file discovered by glob. These have no
+ * source span, so they are not facts. `target` is present only when it is in the graph.
+ */
+export interface RegistryConfiguredKey {
+  readonly registry: string;
+  readonly key: string;
+  readonly target?: string;
+}
+
 /** A `# balk2:` or `// balk2:` source annotation, before it is applied. */
 export interface Directive extends FactBase {
   readonly kind: 'directive';
@@ -177,7 +263,15 @@ export interface Directive extends FactBase {
 
 /** Any fact a front end can emit. */
 export type Fact =
-  Declaration | ModuleEdge | ResolvedReference | CallSite | StatePathFact | Directive;
+  | Declaration
+  | ModuleEdge
+  | ResolvedReference
+  | CallSite
+  | StatePathFact
+  | RegistryCallFact
+  | RegistryDeclarationFact
+  | RegistryInjectionFact
+  | Directive;
 
 /** The kinds of fact, as discriminants. */
 export type FactKind = Fact['kind'];

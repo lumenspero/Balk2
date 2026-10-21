@@ -1,4 +1,5 @@
 import * as ts from 'typescript';
+import type { RegistryKeyFact } from '../facts/types.js';
 import type { Evidence, RegistryKeyType } from '../types.js';
 import type { RegistryContainer } from './registry-receivers.js';
 import { resolveStaticKey, unwrapExpression, type KeySource } from './static-keys.js';
@@ -128,4 +129,22 @@ function numericLiteralValue(node: ts.Expression): string | undefined {
     return `-${String(Number(node.operand.text))}`;
   }
   return undefined;
+}
+
+/** The fact form of a key read from source. The engine decides what a key means; this only records it. */
+export function keyFactOf(resolution: RegistryKeyResolution): RegistryKeyFact {
+  switch (resolution.kind) {
+    case 'static':
+      return {
+        kind: 'static',
+        name: resolution.name,
+        keyType: resolution.keyType,
+        numericLiteral: resolution.via === 'numeric-literal',
+        evidence: resolution.evidence,
+      };
+    case 'dynamic':
+      return { kind: 'dynamic', reason: resolution.reason };
+    case 'not-a-name':
+      return { kind: 'not-a-name' };
+  }
 }

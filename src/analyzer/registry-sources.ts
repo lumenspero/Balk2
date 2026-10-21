@@ -1,16 +1,13 @@
 import * as ts from 'typescript';
 import type { ConnectionGraph } from '../graph.js';
-import type { Confidence, Evidence, RegistryKeyNode, RegistryKeyType } from '../types.js';
+import type { RegistryConfiguredKey, RegistryDeclarationFact } from '../facts/types.js';
 import { compileGlob } from './glob.js';
 import { ownerOf } from './owner.js';
 import { createPathLookup } from './repository-files.js';
 import type { RepositoryProgram } from './repository-program.js';
 import { ReceiverResolver } from './receiver-identity.js';
-import { resolveRegistryKey } from './registry-keys.js';
-import {
-  type RegistryProtocolCatalog,
-  type RegistryProtocolOptions,
-} from './registry-protocols.js';
+import { keyFactOf, resolveRegistryKey } from './registry-keys.js';
+import type { RegistryProtocolCatalog, RegistryProtocolOptions } from './registry-protocols.js';
 import { qualifyRegistryReceiver } from './registry-receivers.js';
 import { symbolTargetOf } from './registry-targets.js';
 import { snippetOf, spanOf } from './spans.js';
@@ -18,91 +15,78 @@ import { unwrapExpression } from './static-keys.js';
 
 /**
  * Registrations that come from something other than a registry call: a manifest for generated
- * code, files that register themselves by name, decorators, and dictionary literals. Each adds
- * its keys to `declared`, so lookups can agree with them, and links a key to its target when the
- * target is in the graph.
+ * code, files that register themselves by name, decorators, and dictionary literals. Reads only;
+ * the engine decides what each one links to.
  *
  * Every source names its registry explicitly, or is a dictionary the code already declares as one.
  * Nothing is registered by a name or a decorator alone.
  */
-export function declareRegistrations(
+export interface DeclarationFacts {
+  /** Manifest entries, then discovered files, in the order they are applied. */
+  readonly configured: readonly RegistryConfiguredKey[];
+  /** Decorator registrations in file order, then dictionary-literal registrations in file order. */
+  readonly declarations: readonly RegistryDeclarationFact[];
+}
+
+export function extractDeclarationFacts(
   repository: RepositoryProgram,
   graph: ConnectionGraph,
   catalog: RegistryProtocolCatalog,
   options: RegistryProtocolOptions,
-  declared: Map<string, RegistryKeyNode>,
-): void {
-  declareManifest(options.manifest ?? [], graph, declared);
-  declareDiscovered(options.discover ?? [], repository, graph, declared);
-  declareDecorated(options.decorators ?? [], repository, graph, declared);
-  declareObjectLiterals(repository, graph, catalog, declared);
+): DeclarationFacts {
+  return {
+    configured: [
+      ...manifestKeys(options.manifest ?? [], graph),
+      ...discoveredKeys(options.discover ?? [], repository, graph),
+    ],
+    declarations: [
+      ...decoratedFacts(options.decorators ?? [], repository, graph),
+      ...literalFacts(repository, graph, catalog),
+    ],
+  };
 }
 
-interface RegistrationSource {
-  readonly registry: string;
-  readonly key: string;
-  readonly keyType?: RegistryKeyType;
-  readonly target: string;
-  readonly confidence: Confidence;
-  readonly evidence: Evidence;
+/** A key's target is recorded only when it is a node in the graph, so an edge is never guessed. */
+function inGraph(graph: ConnectionGraph, id: string): boolean {
+  return graph.hasSymbol(id) || graph.hasFile(id);
 }
 
-/** Add one key, and its registration if its target is a node in the graph. */
-function register(
+function configuredKey(
   graph: ConnectionGraph,
-  declared: Map<string, RegistryKeyNode>,
-  source: RegistrationSource,
-): void {
-  const node = graph.addRegistryKey(source.key, source.registry, source.keyType ?? 'string');
-  declared.set(node.id, node);
-  if (graph.hasSymbol(source.target) || graph.hasFile(source.target)) {
-    graph.addRelationship('registers', node.id, source.target, source.confidence, {
-      evidence: source.evidence,
-    });
-  }
+  registry: string,
+  key: string,
+  target: string,
+): RegistryConfiguredKey {
+  return inGraph(graph, target) ? { registry, key, target } : { registry, key };
 }
 
 /** `manifest`: explicit registrations, for code that is generated or registered at runtime. */
-function declareManifest(
+function manifestKeys(
   entries: NonNullable<RegistryProtocolOptions['manifest']>,
   graph: ConnectionGraph,
-  declared: Map<string, RegistryKeyNode>,
-): void {
-  for (const entry of entries) {
-    register(graph, declared, {
-      registry: entry.registry,
-      key: entry.key,
-      target: entry.target,
-      confidence: 'high',
-      evidence: 'config',
-    });
-  }
+): RegistryConfiguredKey[] {
+  return entries.map((entry) => configuredKey(graph, entry.registry, entry.key, entry.target));
 }
 
 /**
  * `discover`: each file matching a glob registers itself under its name, without the extension,
  * with the file as its target. The registry is the one the rule names.
  */
-function declareDiscovered(
+function discoveredKeys(
   rules: NonNullable<RegistryProtocolOptions['discover']>,
   repository: RepositoryProgram,
   graph: ConnectionGraph,
-  declared: Map<string, RegistryKeyNode>,
-): void {
+): RegistryConfiguredKey[] {
   const files = [...repository.sourceFiles.keys()].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  const found: RegistryConfiguredKey[] = [];
   for (const rule of rules) {
     const matches = compileGlob(rule.glob);
     for (const filePath of files) {
       if (!matches.test(filePath)) continue;
-      register(graph, declared, {
-        registry: rule.registry,
-        key: stemOf(filePath),
-        target: filePath,
-        confidence: 'high',
-        evidence: 'config',
-      });
+      found.push(configuredKey(graph, rule.registry, stemOf(filePath), filePath));
     }
   }
+  return found;
 }
 
 function stemOf(filePath: string): string {
@@ -116,15 +100,15 @@ function stemOf(filePath: string): string {
  * key, in the registry the rule names. Only calls to a named identifier count, so an unrelated
  * decorator with the same name elsewhere does not, once it is configured.
  */
-function declareDecorated(
+function decoratedFacts(
   rules: NonNullable<RegistryProtocolOptions['decorators']>,
   repository: RepositoryProgram,
   graph: ConnectionGraph,
-  declared: Map<string, RegistryKeyNode>,
-): void {
-  if (rules.length === 0) return;
+): RegistryDeclarationFact[] {
+  if (rules.length === 0) return [];
   const rulesByName = new Map(rules.map((rule) => [rule.name, rule]));
   const checker = repository.checker;
+  const found: RegistryDeclarationFact[] = [];
 
   for (const [filePath, sourceFile] of sortedFiles(repository)) {
     if (sourceFile.isDeclarationFile) continue;
@@ -144,27 +128,17 @@ function declareDecorated(
 
           const key = resolveRegistryKey(keyArgument, checker, 'typed');
           if (key.kind === 'not-a-name') continue;
-          if (key.kind === 'dynamic') {
-            const span = spanOf(call, filePath);
-            const unresolved = graph.addUnresolved({
-              reason: 'dynamic-registry-key',
-              attempted: 'registers',
-              subject: snippetOf(call),
-              location: span,
-              detail: key.reason,
-            });
-            graph.addRelationship('registers', target, unresolved.id, 'low', {
-              evidence: 'ts-program',
-              spans: [span],
-            });
-            continue;
-          }
 
-          register(graph, declared, {
+          found.push({
+            kind: 'registry-declaration',
+            filePath,
+            span: spanOf(call, filePath),
+            source: 'decorator',
+            subject: snippetOf(call),
             registry: rule.registry,
-            key: key.name,
-            keyType: key.keyType,
+            key: keyFactOf(key),
             target,
+            targetInGraph: inGraph(graph, target),
             confidence: 'high',
             evidence: 'config',
           });
@@ -174,6 +148,7 @@ function declareDecorated(
     };
     visit(sourceFile);
   }
+  return found;
 }
 
 /**
@@ -181,17 +156,17 @@ function declareDecorated(
  * property whose value is a symbol in the repository. The declaration has to be a registry (a
  * dictionary type), so a plain config object such as `const options = { debug: fn }` is not one.
  */
-function declareObjectLiterals(
+function literalFacts(
   repository: RepositoryProgram,
   graph: ConnectionGraph,
   catalog: RegistryProtocolCatalog,
-  declared: Map<string, RegistryKeyNode>,
-): void {
+): RegistryDeclarationFact[] {
   const checker = repository.checker;
   const pathOf = createPathLookup(repository);
   const receivers = new ReceiverResolver(repository);
+  const found: RegistryDeclarationFact[] = [];
 
-  for (const [, sourceFile] of sortedFiles(repository)) {
+  for (const [filePath, sourceFile] of sortedFiles(repository)) {
     if (sourceFile.isDeclarationFile) continue;
 
     const visit = (node: ts.Node): void => {
@@ -214,10 +189,22 @@ function declareObjectLiterals(
             if (!entry) continue;
             const target = symbolTargetOf(entry.value, checker, graph, pathOf);
             if (target === undefined) continue;
-            register(graph, declared, {
+            found.push({
+              kind: 'registry-declaration',
+              filePath,
+              span: spanOf(property, filePath),
+              source: 'literal',
+              subject: snippetOf(property),
               registry: identity.scope,
-              key: entry.key,
+              key: {
+                kind: 'static',
+                name: entry.key,
+                keyType: 'string',
+                numericLiteral: false,
+                evidence: 'ast',
+              },
               target,
+              targetInGraph: inGraph(graph, target),
               confidence: identity.confidence,
               evidence: 'ts-program',
             });
@@ -228,6 +215,7 @@ function declareObjectLiterals(
     };
     visit(sourceFile);
   }
+  return found;
 }
 
 /**

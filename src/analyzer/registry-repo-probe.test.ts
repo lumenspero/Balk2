@@ -25,7 +25,8 @@ describe('working repository: registry observations', () => {
 
     console.log('dynamic-registry-key observations:\n' + observed.join('\n'));
     expect(observed.filter((line) => SUSPECTS.some((s) => line.includes(s)))).toEqual([]);
-  });
+    // Builds the whole working repository, so it needs more than the default 30 s.
+  }, 120_000);
 
   it('detects registers edges on a known registration case, so the absence check is not vacuous', () => {
     const fixture = REGISTRY_CORPUS.find((f) => f.name === REGISTRATION_CASE);

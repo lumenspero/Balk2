@@ -11,6 +11,9 @@ function kindOf(fact: Fact): FactKind {
     case 'reference':
     case 'call':
     case 'state-path':
+    case 'registry-call':
+    case 'registry-declaration':
+    case 'registry-injection':
     case 'directive':
       return fact.kind;
     default: {
