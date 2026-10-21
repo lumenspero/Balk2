@@ -27,13 +27,10 @@ import { resolveImportPath } from './resolver.js';
 import type { ConnectionGraph } from '../graph.js';
 import { normalizePath } from '../graph.js';
 import type { SymbolType } from '../types.js';
-import { inferDataDirection, addDataRelationship } from '../data/data-analyzer.js';
-import {
-  accessContext,
-  isDataPathLiteral,
-  isNonAccessLiteral,
-  joinedPathOf,
-} from './data-literals.js';
+import { applyDataEdges } from '../data/data-analyzer.js';
+import { runDataEngine } from '../facts/data-engine.js';
+import type { DataReferenceFact } from '../facts/types.js';
+import { dataReferenceFact } from './data-facts.js';
 
 export interface RepositoryAnalysisOptions {
   /** Global-symbol behavior from `.balk2.json`. */
@@ -159,6 +156,7 @@ export class JsTsAnalyzer implements Analyzer {
     const topLevelSymbols = new Map<string, { id: string; type: SymbolType }>();
 
     // Pass 1: Discover imports, symbols, exports, extends/implements
+    const dataFacts: DataReferenceFact[] = [];
     const visitFirstPass = (node: ts.Node): void => {
       // ── Imports & Re-exports ────────────────────────────────────────
       if (ts.isImportDeclaration(node)) {
@@ -263,33 +261,15 @@ export class JsTsAnalyzer implements Analyzer {
 
       // ── Data Artifact References ────────────────────────────────────
       if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
-        // A path built with path.join or path.resolve is recorded once, under its first piece.
-        const joined = joinedPathOf(node);
-        const covered = joined !== undefined && node !== joined.members[0];
-        const text = joined ? joined.value : node.text;
-        // Label text such as "[data/raw.json] build.js | ..." is prose, and an extension alone is
-        // not a file. A literal that is searched or compared is not an access either.
-        if (
-          !covered &&
-          text !== undefined &&
-          isDataPathLiteral(text) &&
-          !isNonAccessLiteral(node)
-        ) {
-          const direction = inferDataDirection(accessContext(node, sourceFile));
-          addDataRelationship(
-            normalizedPath,
-            text,
-            direction.type,
-            graph,
-            direction.certain ? 'high' : 'low',
-          );
-        }
+        const fact = dataReferenceFact(node, sourceFile, normalizedPath);
+        if (fact) dataFacts.push(fact);
       }
 
       ts.forEachChild(node, visitFirstPass);
     };
 
     visitFirstPass(sourceFile);
+    applyDataEdges(graph, runDataEngine({ facts: dataFacts }));
 
     // Pass 2: Discover call relationships with enclosing symbol awareness
     const visitSecondPass = (node: ts.Node, currentSymbolId?: string): void => {

@@ -1,7 +1,11 @@
 import { detectArtifactFormat } from './formats.js';
 import type { ConnectionGraph } from '../graph.js';
 import { normalizePath } from '../graph.js';
-import type { Confidence } from '../types.js';
+import type { ArtifactFormat, Confidence } from '../types.js';
+import type { DataDirection, DataEdge } from '../facts/data-engine.js';
+
+export type { DataDirection, InferredDirection } from '../facts/data-engine.js';
+export { inferDataDirection, inferDataRelationshipType } from '../facts/data-engine.js';
 
 export interface DataReference {
   /** The code file referencing the artifact */
@@ -9,114 +13,23 @@ export interface DataReference {
   /** The referenced data artifact path */
   readonly artifactPath: string;
   /** Inferred relationship type ('generates' | 'consumes' | 'reads') */
-  readonly relationshipType: 'generates' | 'consumes' | 'reads';
+  readonly relationshipType: DataDirection;
   /** Confidence level */
   readonly confidence: Confidence;
 }
 
-export type DataDirection = 'generates' | 'consumes' | 'reads';
-
-/** A direction and whether the context actually said so. */
-export interface InferredDirection {
-  readonly type: DataDirection;
-  /**
-   * True when a read or write keyword or mode flag named the direction. False when the direction
-   * is only the fallback, so the caller should record it with lower confidence.
-   */
-  readonly certain: boolean;
-}
-
-const WRITE_KEYWORDS = [
-  'write',
-  'writefile',
-  'writefilesync',
-  'save',
-  'dump',
-  'dumps',
-  'to_json',
-  'to_parquet',
-  'to_csv',
-  'createwritestream',
-];
-
-const READ_KEYWORDS = [
-  'read',
-  'readfile',
-  'readfilesync',
-  'load',
-  'parse',
-  'read_json',
-  'read_parquet',
-  'read_csv',
-  'createreadstream',
-  'fetch',
-];
-
-/**
- * True when the first `open(...)` call in the text has a single argument, so no mode is given. A
- * comma at the call's own level means a mode follows. Commas inside nested calls do not count.
- */
-function opensWithoutMode(text: string): boolean {
-  const start = text.search(/\bopen\s*\(/);
-  if (start < 0) return false;
-
-  let depth = 0;
-  for (let i = text.indexOf('(', start); i < text.length; i++) {
-    const ch = text[i];
-    if (ch === '(') {
-      depth++;
-    } else if (ch === ')') {
-      depth--;
-      if (depth === 0) return true;
-    } else if (ch === ',' && depth === 1) {
-      return false;
-    }
+/** Writes data edges to the graph, in the order the engine found them. */
+export function applyDataEdges(graph: ConnectionGraph, edges: readonly DataEdge[]): void {
+  for (const edge of edges) {
+    writeArtifactEdge(
+      graph,
+      edge.source,
+      edge.artifact,
+      edge.format,
+      edge.relationship,
+      edge.confidence,
+    );
   }
-  return false;
-}
-
-/**
- * Infer whether a call context implies generating (writing) or consuming (reading) a data
- * artifact, and whether that inference rests on evidence in the context.
- */
-export function inferDataDirection(callContext: string): InferredDirection {
-  const lower = callContext.toLowerCase();
-
-  for (const kw of WRITE_KEYWORDS) {
-    if (lower.includes(kw)) return { type: 'generates', certain: true };
-  }
-
-  for (const kw of READ_KEYWORDS) {
-    if (lower.includes(kw)) return { type: 'consumes', certain: true };
-  }
-
-  // Check for file opening mode flags e.g. open('foo.json', 'w')
-  if (/(['"])(w|wb|a|w\+|wb\+)\1/i.test(lower)) {
-    return { type: 'generates', certain: true };
-  }
-
-  if (/(['"])(r|rb)\1/i.test(lower)) {
-    return { type: 'consumes', certain: true };
-  }
-
-  // open(path) with no mode argument reads the file.
-  if (opensWithoutMode(lower)) {
-    return { type: 'consumes', certain: true };
-  }
-
-  // A name such as output_dir or out_file suggests a write. It is only a hint, so confidence stays low.
-  if (/\boutput|\bout_|\bdest/.test(lower)) {
-    return { type: 'generates', certain: false };
-  }
-
-  return { type: 'reads', certain: false };
-}
-
-/**
- * Infer whether a function/method call context implies generating (writing) or consuming (reading) a data artifact.
- */
-export function inferDataRelationshipType(callContext: string): DataDirection {
-  return inferDataDirection(callContext).type;
 }
 
 /**
@@ -126,24 +39,33 @@ export function inferDataRelationshipType(callContext: string): DataDirection {
 export function addDataRelationship(
   sourceFile: string,
   artifactPath: string,
-  relationshipType: 'generates' | 'consumes' | 'reads',
+  relationshipType: DataDirection,
   graph: ConnectionGraph,
   confidence: Confidence = 'high',
 ): void {
-  const normSource = normalizePath(sourceFile);
-  const normArtifact = normalizePath(artifactPath);
+  const artifact = normalizePath(artifactPath);
+  const format = detectArtifactFormat(artifact) ?? 'unknown';
+  writeArtifactEdge(
+    graph,
+    normalizePath(sourceFile),
+    artifact,
+    format,
+    relationshipType,
+    confidence,
+  );
+}
 
+function writeArtifactEdge(
+  graph: ConnectionGraph,
+  source: string,
+  artifact: string,
+  format: ArtifactFormat,
+  relationship: DataDirection,
+  confidence: Confidence,
+): void {
   // Ensure artifact node exists in graph
-  const format = detectArtifactFormat(normArtifact) ?? 'unknown';
-  if (!graph.hasArtifact(normArtifact)) {
-    graph.addArtifact(normArtifact, format);
+  if (!graph.hasArtifact(artifact)) {
+    graph.addArtifact(artifact, format);
   }
-
-  if (relationshipType === 'generates') {
-    graph.addRelationship('generates', normSource, normArtifact, confidence);
-  } else if (relationshipType === 'consumes') {
-    graph.addRelationship('consumes', normSource, normArtifact, confidence);
-  } else {
-    graph.addRelationship('reads', normSource, normArtifact, confidence);
-  }
+  graph.addRelationship(relationship, source, artifact, confidence);
 }

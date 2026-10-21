@@ -305,6 +305,18 @@ export interface EventCallFact extends FactBase {
   readonly options?: EventListenerFlags;
 }
 
+/**
+ * A string literal that may name a data artifact, with the source text that says how the artifact
+ * is used. Only literals that look like data paths and are not searched or compared are facts.
+ */
+export interface DataReferenceFact extends FactBase {
+  readonly kind: 'data-reference';
+  /** The artifact path as written, joined when built by `path.join` or `path.resolve`. */
+  readonly path: string;
+  /** The source text of the expression that uses the literal, with path helpers looked through. */
+  readonly context: string;
+}
+
 /** A `# balk2:` or `// balk2:` source annotation, before it is applied. */
 export interface Directive extends FactBase {
   readonly kind: 'directive';
@@ -323,6 +335,7 @@ export type Fact =
   | RegistryDeclarationFact
   | RegistryInjectionFact
   | EventCallFact
+  | DataReferenceFact
   | Directive;
 
 /** The kinds of fact, as discriminants. */
