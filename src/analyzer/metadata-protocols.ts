@@ -12,11 +12,5 @@ export interface MetadataProtocol {
   readonly reads?: boolean;
 }
 
-/** The `Reflect` calls the metadata pass recognises, by direction. */
-export const METADATA_DEFINE_METHODS: readonly string[] = ['defineMetadata', 'defineOwnMetadata'];
-export const METADATA_READ_METHODS: readonly string[] = [
-  'getMetadata',
-  'getOwnMetadata',
-  'hasMetadata',
-  'hasOwnMetadata',
-];
+/** The `Reflect` method lists live in the metadata engine; re-exported for existing importers. */
+export { METADATA_DEFINE_METHODS, METADATA_READ_METHODS } from '../facts/metadata-engine.js';
