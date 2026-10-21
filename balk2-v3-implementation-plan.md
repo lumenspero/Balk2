@@ -266,12 +266,23 @@ Verify: `npm run verify && npx vitest run src/facts`.
 
 ### Phase 2 close-out (proposed)
 
-- **C1 Owner change (D6).** Apply `ownerIdOf` in the JS/TS front end and replace the JS/TS owner logic in `owner.ts`. This is the one approved snapshot change in Phase 2. It lands as its own commit, with the reviewed snapshot diff listed in the commit message. The zero-diff exit criterion excludes only this commit. Python and Rust owner rules are not affected.
+- **C1 Owner change (D6). Done (3dfa1c8).** Apply `ownerIdOf` in the JS/TS front end and replace the JS/TS owner logic in `owner.ts`. This is the one approved snapshot change in Phase 2. It lands as its own commit, with the reviewed snapshot diff listed in the commit message. The zero-diff exit criterion excludes only this commit. Python and Rust owner rules are not affected.
 - **C2 Wire the type-members query (2.5). Done for JS/TS.** The `event-like` rule and the registry shape rule now go through the query, with the checker's properties as the resolved members (`resolvedTypeQuery`). State receiver rules do not test members, so there was nothing to route. Python and Rust front ends will supply declarations when they land.
-- **C3 Plan and docs amendments.** Record the step-order deviation in this plan. The fact-type amendments are listed in `docs/v3/phase-0-contract.md` (Phase 2 Status). Check each one against `src/facts/types.ts` before this item closes.
+- **C3 Plan and docs amendments. Done.** The step-order deviations are recorded below. The fact-type amendments in `docs/v3/phase-0-contract.md` (Phase 2 Status) were checked against `src/facts/types.ts`, and four were corrected: the `ArgValue` replacement of `unknown`, `ModuleEdge.specifier`, `Receiver.typeConfidence`, and `Declaration.symbolType`.
 - **C4 Test runner stability.** A full `npx vitest run` reports five unhandled `Timeout calling 'onTaskUpdate'` errors (1371 tests pass, 398 s). Find the cause, whether test-file parallelism, fork count or long synchronous setup inside one fork. Then remove the 120 s timeout added to `registry-repo-probe.test.ts` if the fix makes it unnecessary. Do not change `vitest.config.ts` without review.
 - **C5 Symbol-id grammar in code.** Implement the grammar in the Symbol naming section, with tests for `.`, `::`, `[Trait]`, `!`, `#n` and quoted keys. Event channel names also use `#` (`event:bus.ts:bus#ready`), so check that `#n` owner suffixes stay readable next to them.
 - **C6 Exit check.** Run `npm run verify` and `npx vitest run src/facts`. Confirm that the JS/TS snapshot changes only through C1.
+
+### Phase 2 order deviations
+
+Recorded from the commit history (`git log`), so the order is traceable:
+
+- **2.1 and 2.2 were committed together** (`b0a4961`), not as separate steps.
+- **The owner rule was not wired in 2.6.** It was implemented and tested in `5d184eb`, but no front end used it until D6 (`3dfa1c8`), after the 2.7 family moves. The plan says front ends report owners with the rule and that `owner.ts` is replaced. In fact `owner.ts` remains as the TypeScript adapter, and delegates the naming to `owner-rule.ts`. Python's `ownersByLine` is untouched, because Python is Phases 3–5.
+- **Type-members wiring (2.5) happened after the 2.7 family moves** (C2), not inside 2.5. The receiver rules that the plan names now use the query for `event-like` and registry; state receiver rules do not test members.
+- **A zero-diff cleanup step was added after 2.7h** (`93082b8`). It was not in the plan. It made `ModuleEdge.target` optional, removed the module-loads path helper, and moved its tests into the state engine tests.
+- **The D6 owner change was deferred to after 2.7** (`3dfa1c8`). It is the one snapshot-changing commit in Phase 2, and the exit criterion above excludes it.
+- **The Phase 2 docs were committed between the cleanup and D6** (`fb8e337`).
 
 ## Phase 3 - Python Front End: Tokenizer and Parser
 

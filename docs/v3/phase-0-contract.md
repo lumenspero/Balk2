@@ -71,8 +71,10 @@ This section records what Phase 2 did to the **Change** rows above. "Not in Phas
 Amendments to the Phase 2.1 fact types in `src/facts/types.ts`:
 
 - `FactTarget` gained a `file` kind (2.7b).
-- `ModuleEdge` gained `loadKind` (2.7b). Its `target` is optional: import facts omit it, because no engine reads an import's target.
-- `ArgValue` gained `dynamic` and `not-a-name` (2.7a), and `callback` with `CallbackResolution` (2.7d).
+- `ModuleEdge` gained `loadKind` (2.7b). Its `target` is optional: import facts omit it, because no engine reads an import's target. It also has `specifier`, the specifier as written, which the plan's list does not include.
+- `Receiver` gained `typeConfidence`, the grade of evidence for `type`, which the plan's list does not include.
+- `Declaration`'s kind field is `symbolType`. The field named `kind` is the fact discriminator, which the plan does not describe.
+- `ArgValue` replaced the plan's `unknown` variant with `dynamic` and `not-a-name` (2.7a), and gained `callback` with `CallbackResolution` (2.7d).
 - `CallSite.callee` is optional, and `CallSite` gained `name` and `text` (2.7a).
 - `StatePathFact` was replaced (2.7e).
 - New fact kinds: `registry-call`, `registry-declaration` and `registry-injection` (2.7f); `event-call` (2.7g); `data-reference` (2.7h).
@@ -86,7 +88,7 @@ Amendments to the Phase 2.1 fact types in `src/facts/types.ts`:
 - Data edges are written once per file after its first pass, not inline. Graph output is sorted by key, so the output does not depend on insertion order.
 - The fact engines import the pure helpers `registryKeyId` and `normalizePath` from `graph.ts`, as `resource-engine.ts` already did. They never use a graph instance.
 - D7 fallback B was not used. Each family passed `npm run verify` at its checkpoint.
-- **TODO:** the step-order deviation. The plan document could not be read when this section was written, so its wording needs to be confirmed.
+- Step order: the deviations are recorded in the plan, under "Phase 2 order deviations".
 
 ## Analysis Boundaries
 
