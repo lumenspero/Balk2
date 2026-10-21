@@ -155,8 +155,36 @@ describe('python statement parser: syntax errors', () => {
     '1 = x\n',
     'x = 1 +\n',
     'try:\n    pass\n',
+    'f() = 1\n',
+    'None = 1\n',
+    'a, b += 1\n',
+    'x, y: int = 1\n',
+    'del f()\n',
+    'for f() in x:\n    pass\n',
+    'with a as f():\n    pass\n',
   ])('rejects %s', (source) => {
     expect(() => parseModule(source)).toThrow(PythonSyntaxError);
+  });
+
+  it('names the offending expression, as CPython does', () => {
+    const messages = ['1 = x\n', 'None = 1\n', 'f() = 1\n', 'del f()\n'].map((source) => {
+      try {
+        parseModule(source);
+        return 'no error';
+      } catch (error) {
+        return error instanceof PythonSyntaxError ? error.message : 'wrong error';
+      }
+    });
+    expect(messages).toEqual([
+      'cannot assign to literal',
+      'cannot assign to None',
+      'cannot assign to function call',
+      'cannot delete function call',
+    ]);
+  });
+
+  it('accepts subscript, attribute and starred targets', () => {
+    expect(kinds(parseModule('a[0], b.c, *d = e\n'))).toEqual(['assign']);
   });
 });
 

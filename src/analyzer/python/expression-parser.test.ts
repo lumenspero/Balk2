@@ -48,9 +48,12 @@ describe('python expression parser: shape', () => {
 });
 
 describe('python expression parser: syntax errors', () => {
-  it.each(['1 +', 'f(', 'a.', '(1, 2', '[1 2]', '"a" b"c"'])('rejects %s', (source) => {
-    expect(() => parseExpressionSource(source)).toThrow(PythonSyntaxError);
-  });
+  it.each(['1 +', 'f(', 'a.', '(1, 2', '[1 2]', '"a" b"c"', '[x for f() in y]'])(
+    'rejects %s',
+    (source) => {
+      expect(() => parseExpressionSource(source)).toThrow(PythonSyntaxError);
+    },
+  );
 });
 
 describe('python expression parser: spans', () => {

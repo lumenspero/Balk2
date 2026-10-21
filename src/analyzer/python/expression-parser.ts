@@ -1,5 +1,6 @@
 import type { CallArg, Comprehension, DictEntry, Expr, FStringPart, Param } from './ast.js';
 import { TokenCursor } from './cursor.js';
+import { checkTarget } from './targets.js';
 import { tokenize, type Token } from './tokenizer.js';
 
 /** Binary operator levels, loosest first. `**` and unary operators are handled by parseFactor. */
@@ -503,6 +504,7 @@ function parseComprehensionClauses(c: TokenCursor): Comprehension[] {
     const isAsync = c.match('keyword', 'async') !== undefined;
     c.expect('keyword', 'for', "expected 'for'");
     const target = parseTargetList(c);
+    checkTarget(target);
     c.expect('keyword', 'in', "expected 'in' in comprehension");
     const iter = parseOr(c);
     const ifs: Expr[] = [];

@@ -12,6 +12,7 @@ import {
   parseYield,
 } from './expression-parser.js';
 import { parsePattern } from './pattern-parser.js';
+import { checkSingleTarget, checkTarget } from './targets.js';
 import { tokenize, type Token } from './tokenizer.js';
 
 const AUGMENTED_OPERATORS: ReadonlySet<string> = new Set([
@@ -165,6 +166,7 @@ function parseDelete(c: TokenCursor): Stmt {
   const start = c.advance();
   const target = parseTargetList(c);
   const targets = target.kind === 'tuple' ? [...target.elements] : [target];
+  targets.forEach((t) => checkTarget(t, 'delete'));
   return { kind: 'delete', targets, span: c.spanFrom(start) };
 }
 
@@ -228,29 +230,6 @@ function parseFromImport(c: TokenCursor): Stmt {
   return { kind: 'importfrom', module, level, names, span: c.spanFrom(start) };
 }
 
-/** An assignment target must be a name, attribute, subscript, or a tuple or list of those. */
-function checkTarget(target: Expr): void {
-  switch (target.kind) {
-    case 'name':
-    case 'attribute':
-    case 'subscript':
-      return;
-    case 'starred':
-      checkTarget(target.value);
-      return;
-    case 'tuple':
-    case 'list':
-      target.elements.forEach(checkTarget);
-      return;
-    default:
-      throw new PythonSyntaxError(
-        `cannot assign to ${target.kind}`,
-        target.span.line,
-        target.span.column,
-      );
-  }
-}
-
 /** The right-hand side of an assignment: a `yield`, or an expression list. */
 function parseRhs(c: TokenCursor): Expr {
   return c.isKeyword('yield') ? parseYield(c) : parseExpressionList(c);
@@ -260,7 +239,7 @@ function parseExpressionStatement(c: TokenCursor): Stmt {
   const start = c.peek();
   const first = c.isKeyword('yield') ? parseYield(c) : parseExpressionList(c);
   if (c.match('op', ':') !== undefined) {
-    checkTarget(first);
+    checkSingleTarget(first, 'annotated');
     const annotation = parseTest(c);
     const value = c.match('op', '=') !== undefined ? parseRhs(c) : null;
     return { kind: 'annassign', target: first, annotation, value, span: c.spanFrom(start) };
@@ -268,7 +247,7 @@ function parseExpressionStatement(c: TokenCursor): Stmt {
   const augmented = c.peek();
   if (augmented.kind === 'op' && AUGMENTED_OPERATORS.has(augmented.value)) {
     c.advance();
-    checkTarget(first);
+    checkSingleTarget(first, 'augmented');
     const value = parseRhs(c);
     return {
       kind: 'augassign',
@@ -282,7 +261,7 @@ function parseExpressionStatement(c: TokenCursor): Stmt {
   const parts: Expr[] = [first];
   while (c.match('op', '=') !== undefined) parts.push(parseRhs(c));
   const value = parts.pop() ?? first;
-  parts.forEach(checkTarget);
+  parts.forEach((part) => checkTarget(part));
   return { kind: 'assign', targets: parts, value, span: c.spanFrom(start) };
 }
 
@@ -397,6 +376,7 @@ function parseWhile(c: TokenCursor): Stmt {
 function parseFor(c: TokenCursor, isAsync: boolean, start: Token = c.peek()): Stmt {
   c.expect('keyword', 'for', "expected 'for'");
   const target = parseTargetList(c);
+  checkTarget(target);
   c.expect('keyword', 'in', "expected 'in' in for statement");
   const iter = parseExpressionList(c);
   const body = parseBlock(c);
@@ -443,6 +423,7 @@ function parseWithItems(c: TokenCursor): WithItem[] {
 function parseWithItem(c: TokenCursor): WithItem {
   const context = parseTest(c);
   const target = c.match('keyword', 'as') !== undefined ? parseBitOr(c) : null;
+  if (target !== null) checkTarget(target);
   return { context, target };
 }
 
