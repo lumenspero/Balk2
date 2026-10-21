@@ -8,9 +8,11 @@ on:
 
 jobs:
   ci:
-    runs-on: ubuntu-latest
+    name: ci (${{ matrix.os }}, node ${{ matrix.node-version }})
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
+        os: [ubuntu-latest, windows-latest]
         node-version: [18, 20, 22]
     steps:
       - uses: actions/checkout@v4
