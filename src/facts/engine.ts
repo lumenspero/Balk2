@@ -35,8 +35,8 @@ export function matchesCall(call: CallSite, matcher: CallMatcher): boolean {
   }
 
   const { callee, receiver, methodName } = call;
-  if (callee.kind === 'symbol' && callee.id === matcher.target) return true;
-  if (callee.kind === 'external' && callee.name === matcher.target) return true;
+  if (callee?.kind === 'symbol' && callee.id === matcher.target) return true;
+  if (callee?.kind === 'external' && callee.name === matcher.target) return true;
 
   const receiverType = receiver?.type;
   if (receiverType === undefined || methodName === undefined) return false;

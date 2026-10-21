@@ -102,13 +102,20 @@ export type ArgValue =
   | { readonly kind: 'number'; readonly value: number }
   | { readonly kind: 'path'; readonly anchor: PathAnchor; readonly path: string }
   | { readonly kind: 'symbol'; readonly id: string }
+  | { readonly kind: 'dynamic'; readonly reason: string }
+  | { readonly kind: 'not-a-name' }
   | { readonly kind: 'unknown' };
 
 /** A call with its receiver and arguments. */
 export interface CallSite extends FactBase {
   readonly kind: 'call';
   readonly owner: string | null;
-  readonly callee: FactTarget;
+  /** The resolved callee, when the front end resolved it. */
+  readonly callee?: FactTarget;
+  /** The callee name as written: the identifier, or the method name of a property access. */
+  readonly name?: string;
+  /** The call's source text, for observation subjects. */
+  readonly text?: string;
   readonly receiver?: Receiver;
   /** The method name as written, for method calls only. */
   readonly methodName?: string;
