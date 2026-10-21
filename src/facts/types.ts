@@ -108,7 +108,22 @@ export type ArgValue =
   | { readonly kind: 'symbol'; readonly id: string }
   | { readonly kind: 'dynamic'; readonly reason: string }
   | { readonly kind: 'not-a-name' }
+  | {
+      readonly kind: 'callback';
+      readonly span: SourceSpan;
+      readonly resolution: CallbackResolution;
+    }
   | { readonly kind: 'unknown' };
+
+/**
+ * What a callback argument refers to. `inline` is a function written in place, `symbol` a top-level
+ * declaration, `external` something no repository file declares (silent), and `unresolved` anything else.
+ */
+export type CallbackResolution =
+  | { readonly kind: 'inline' }
+  | { readonly kind: 'symbol'; readonly id: string }
+  | { readonly kind: 'external' }
+  | { readonly kind: 'unresolved'; readonly subject: string };
 
 /** A call with its receiver and arguments. */
 export interface CallSite extends FactBase {
