@@ -52,7 +52,7 @@ This matrix holds JavaScript/TypeScript, Python and Rust to the same standard. E
 
 - **Row 2, JS/TS.** Barrels record only a file-level `imports` edge. D9 adds `exports` for the re-exported names.
 - **Row 5, Python.** Calls on one line only, and only to names in the same file or directly imported. Phase 3 (multi-line tokenizer) and Phase 5 (scoped resolution) close it.
-- **Row 6, JS/TS.** Calls such as `user.save()` where `user` is a local bound to `new User()` are not yet recorded, although the checker has the type. Phase 2.5 and Phase 6 close it. Found by the Phase 0 parity corpus, scenario "method called through a typed receiver".
+- **Row 6, JS/TS.** Calls such as `user.save()` where `user` is a local bound to `new User()` are not yet recorded, although the checker has the type. Phase 2.5 adds the type-members query, which is not yet wired into the analyzer. Phase 6 wires it and closes this row. Found by the Phase 0 parity corpus, scenario "method called through a typed receiver".
 - **Row 6, Rust.** Only annotated bindings and constructor results give a receiver type. Inference through generics, auto-deref and chained method results is out of scope for V3. The same limit applies to Python.
 - **Row 8, Python.** Base classes are recorded, but inherited method calls such as `self.describe()` are not. Phase 5.3 closes it with C3 linearization.
 - **Row 16, Python.** Only literal `importlib.import_module` is recognized. Phase 12.5 adds the rest.

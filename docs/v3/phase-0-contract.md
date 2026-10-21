@@ -52,6 +52,42 @@ Verified against `src/analyzer/js-ts-analyzer.ts`, `owner.ts`, `global-symbols.t
 
 Each **Change** is recorded in `docs/v3/language-parity.md` and must appear in the release notes.
 
+## Phase 2 Status (JS/TS facts layer)
+
+This section records what Phase 2 did to the **Change** rows above. "Not in Phase 2" means the change is deferred to the phase the contract names. It does not mean the change was dropped.
+
+| Concern                                           | Phase 2 status                                                                                                                                                                                                                 |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Re-exports (`exports` edges, D9)                  | Not in Phase 2. Still `imports` only. D9 is approved, and the `exports` edge is added in the phase that owns it.                                                                                                               |
+| Type-only imports (`metadata.typeOnly`)           | Not in Phase 2.                                                                                                                                                                                                                |
+| Enums                                             | Not in Phase 2.                                                                                                                                                                                                                |
+| Owners: nested classes and object-literal methods | Not applied. `ownerIdOf` (`src/facts/owner-rule.ts`) implements D6 qualification and is tested, but nothing calls it. Applying it changes JS/TS output, so it needs its own reviewed snapshot change after the owner decision. |
+| Decorators                                        | Registry decorators and constructor parameter decorators are facts (`registry-declaration`, `registry-injection`). Python and Rust decorators are not covered.                                                                 |
+| Dynamic `import()` and `require()`                | Behavior unchanged. Moved to the module-load engine (`src/facts/module-load-engine.ts`).                                                                                                                                       |
+| Data direction                                    | Moved to the data engine (`src/facts/data-engine.ts`). Still keyword-based. Replacement by resolved APIs is Phase 11.                                                                                                          |
+
+### Phase 2 amendments to the fact types
+
+Amendments to the Phase 2.1 fact types in `src/facts/types.ts`:
+
+- `FactTarget` gained a `file` kind (2.7b).
+- `ModuleEdge` gained `loadKind` (2.7b). Its `target` is optional: import facts omit it, because no engine reads an import's target.
+- `ArgValue` gained `dynamic` and `not-a-name` (2.7a), and `callback` with `CallbackResolution` (2.7d).
+- `CallSite.callee` is optional, and `CallSite` gained `name` and `text` (2.7a).
+- `StatePathFact` was replaced (2.7e).
+- New fact kinds: `registry-call`, `registry-declaration` and `registry-injection` (2.7f); `event-call` (2.7g); `data-reference` (2.7h).
+
+### Phase 2 deviations
+
+- The registry engine takes an ordered list of facts plus configured keys, not per-file `FileFacts[]`. Scope discovery depends on every registration in the repository, which per-file input cannot express.
+- Manifest and discovered-file registrations have no source span, so they are `RegistryConfiguredKey` records rather than facts.
+- The registry front end emits facts for candidates the engine will skip, because a registry's scope depends on them.
+- The event front end emits facts for claimed calls, flagged `claimed`, because usage evidence counts them.
+- Data edges are written once per file after its first pass, not inline. Graph output is sorted by key, so the output does not depend on insertion order.
+- The fact engines import the pure helpers `registryKeyId` and `normalizePath` from `graph.ts`, as `resource-engine.ts` already did. They never use a graph instance.
+- D7 fallback B was not used. Each family passed `npm run verify` at its checkpoint.
+- **TODO:** the step-order deviation. The plan document could not be read when this section was written, so its wording needs to be confirmed.
+
 ## Analysis Boundaries
 
 These carry over from V2 and now apply to every language.
