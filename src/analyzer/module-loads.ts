@@ -1,3 +1,4 @@
+import { DYNAMIC_SPECIFIER_DETAIL } from '../facts/module-load-engine.js';
 import * as ts from 'typescript';
 import type { LoadKind, SourceSpan } from '../types.js';
 import type { LoaderProtocol } from './loader-protocols.js';
@@ -195,7 +196,7 @@ function resolveLoad(
 ): ModuleLoad {
   const specifier = constantString(specifierExpression, repository.checker, 0);
   if (specifier === undefined) {
-    return { ...base, status: 'dynamic', reason: 'the module specifier is not a constant' };
+    return { ...base, status: 'dynamic', reason: DYNAMIC_SPECIFIER_DETAIL };
   }
 
   const resolved = repository.resolveModule(base.filePath, specifier);

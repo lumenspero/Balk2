@@ -68,7 +68,8 @@ export interface ModuleEdge extends FactBase {
   readonly loadKind?: LoadKind;
   /** The specifier as written in the source. */
   readonly specifier: string;
-  readonly target: FactTarget;
+  /** Absent when the front end does not resolve the specifier and no engine reads it. */
+  readonly target?: FactTarget;
   /** Names bound or re-exported. Empty for a whole-module import. */
   readonly names: readonly string[];
   readonly typeOnly: boolean;

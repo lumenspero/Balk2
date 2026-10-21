@@ -37,22 +37,21 @@ export function runModuleLoadEngine(files: readonly FileFacts[]): ModuleLoadEdge
         continue;
       }
       const from = fact.owner ?? fact.filePath;
-      if (fact.target.kind === 'file') {
+      const target = fact.target;
+      if (target === undefined) continue;
+      if (target.kind === 'file') {
         edges.push({
           kind: 'imports',
           from,
-          to: fact.target.path,
+          to: target.path,
           loadKind: fact.loadKind,
           span: fact.span,
         });
-      } else if (
-        fact.target.kind === 'unresolved' &&
-        fact.target.reason === 'dynamic-module-specifier'
-      ) {
+      } else if (target.kind === 'unresolved' && target.reason === 'dynamic-module-specifier') {
         edges.push({
           kind: 'observation',
           from,
-          subject: fact.target.subject,
+          subject: target.subject,
           detail: DYNAMIC_SPECIFIER_DETAIL,
           loadKind: fact.loadKind,
           span: fact.span,

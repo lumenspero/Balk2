@@ -53,7 +53,6 @@ function importFact(node: ts.ImportDeclaration, filePath: string): ModuleEdge {
     owner: null,
     form: 'import',
     specifier,
-    target: { kind: 'unresolved', reason: 'unresolved-module-path', subject: specifier },
     names: [],
     typeOnly: node.importClause?.isTypeOnly ?? false,
   };

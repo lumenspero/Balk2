@@ -78,3 +78,14 @@ describe('runStateEngine', () => {
     ]);
   });
 });
+
+describe('runStateEngine dynamic path decisions', () => {
+  it('records a static access the same under either mode', () => {
+    expect(run([access({})], 'wildcard')).toEqual(run([access({})], 'off'));
+  });
+
+  it('reports a computed key with no reason of its own as a computed property under off', () => {
+    const [edge] = run([access({ segments: [null, 'items'] })], 'off');
+    expect(edge).toMatchObject({ kind: 'observation', detail: COMPUTED_PROPERTY_DETAIL });
+  });
+});
