@@ -134,3 +134,185 @@ export type Expr =
   | { readonly kind: 'await'; readonly value: Expr; readonly span: Span }
   | { readonly kind: 'yield'; readonly value: Expr | null; readonly span: Span }
   | { readonly kind: 'yieldfrom'; readonly value: Expr; readonly span: Span };
+
+// ── Patterns (match statement) ──────────────────────────────────────────────
+
+export type Pattern =
+  /** A literal, including None, True, False, signed numbers and strings. */
+  | { readonly kind: 'literal'; readonly value: Expr; readonly span: Span }
+  /** A dotted name such as `Color.RED`, which compares by equality. */
+  | { readonly kind: 'value'; readonly value: Expr; readonly span: Span }
+  /** A bare name, which binds the subject. */
+  | { readonly kind: 'capture'; readonly name: string; readonly span: Span }
+  /** `_`, which matches anything and binds nothing. */
+  | { readonly kind: 'wildcard'; readonly span: Span }
+  /** `*name` or `*_` inside a sequence pattern. */
+  | { readonly kind: 'star'; readonly name: string | null; readonly span: Span }
+  | { readonly kind: 'sequence'; readonly elements: readonly Pattern[]; readonly span: Span }
+  | {
+      readonly kind: 'mapping';
+      readonly entries: readonly { readonly key: Expr; readonly pattern: Pattern }[];
+      readonly rest: string | null;
+      readonly span: Span;
+    }
+  | {
+      readonly kind: 'class';
+      readonly cls: Expr;
+      readonly positional: readonly Pattern[];
+      readonly keywords: readonly { readonly name: string; readonly pattern: Pattern }[];
+      readonly span: Span;
+    }
+  | { readonly kind: 'or'; readonly alternatives: readonly Pattern[]; readonly span: Span }
+  | { readonly kind: 'as'; readonly pattern: Pattern; readonly name: string; readonly span: Span };
+
+// ── Statements ──────────────────────────────────────────────────────────────
+
+export interface Alias {
+  readonly name: string;
+  readonly asname: string | null;
+  readonly span: Span;
+}
+
+export interface TypeParam {
+  readonly kind: 'typevar' | 'typevartuple' | 'paramspec';
+  readonly name: string;
+  readonly bound: Expr | null;
+  readonly default: Expr | null;
+  readonly span: Span;
+}
+
+export interface ExceptHandler {
+  readonly type: Expr | null;
+  readonly name: string | null;
+  /** `except*` */
+  readonly isStar: boolean;
+  readonly body: readonly Stmt[];
+  readonly span: Span;
+}
+
+export interface WithItem {
+  readonly context: Expr;
+  readonly target: Expr | null;
+}
+
+export interface MatchCase {
+  readonly pattern: Pattern;
+  readonly guard: Expr | null;
+  readonly body: readonly Stmt[];
+  readonly span: Span;
+}
+
+export type Stmt =
+  | { readonly kind: 'expr'; readonly value: Expr; readonly span: Span }
+  | {
+      readonly kind: 'assign';
+      readonly targets: readonly Expr[];
+      readonly value: Expr;
+      readonly span: Span;
+    }
+  | {
+      readonly kind: 'augassign';
+      readonly target: Expr;
+      readonly op: string;
+      readonly value: Expr;
+      readonly span: Span;
+    }
+  | {
+      readonly kind: 'annassign';
+      readonly target: Expr;
+      readonly annotation: Expr;
+      readonly value: Expr | null;
+      readonly span: Span;
+    }
+  | { readonly kind: 'return'; readonly value: Expr | null; readonly span: Span }
+  | { readonly kind: 'delete'; readonly targets: readonly Expr[]; readonly span: Span }
+  | { readonly kind: 'pass' | 'break' | 'continue'; readonly span: Span }
+  | {
+      readonly kind: 'raise';
+      readonly exc: Expr | null;
+      readonly cause: Expr | null;
+      readonly span: Span;
+    }
+  | { readonly kind: 'global' | 'nonlocal'; readonly names: readonly string[]; readonly span: Span }
+  | { readonly kind: 'assert'; readonly test: Expr; readonly msg: Expr | null; readonly span: Span }
+  | { readonly kind: 'import'; readonly names: readonly Alias[]; readonly span: Span }
+  | {
+      readonly kind: 'importfrom';
+      /** The dotted module name, or null for `from . import x`. */
+      readonly module: string | null;
+      /** The number of leading dots. */
+      readonly level: number;
+      readonly names: readonly Alias[] | 'star';
+      readonly span: Span;
+    }
+  | {
+      readonly kind: 'funcdef';
+      readonly name: string;
+      readonly typeParams: readonly TypeParam[];
+      readonly params: readonly Param[];
+      readonly returns: Expr | null;
+      readonly body: readonly Stmt[];
+      readonly decorators: readonly Expr[];
+      readonly isAsync: boolean;
+      readonly span: Span;
+    }
+  | {
+      readonly kind: 'classdef';
+      readonly name: string;
+      readonly typeParams: readonly TypeParam[];
+      readonly bases: readonly CallArg[];
+      readonly body: readonly Stmt[];
+      readonly decorators: readonly Expr[];
+      readonly span: Span;
+    }
+  | {
+      readonly kind: 'if';
+      readonly test: Expr;
+      readonly body: readonly Stmt[];
+      readonly orelse: readonly Stmt[];
+      readonly span: Span;
+    }
+  | {
+      readonly kind: 'while';
+      readonly test: Expr;
+      readonly body: readonly Stmt[];
+      readonly orelse: readonly Stmt[];
+      readonly span: Span;
+    }
+  | {
+      readonly kind: 'for';
+      readonly target: Expr;
+      readonly iter: Expr;
+      readonly body: readonly Stmt[];
+      readonly orelse: readonly Stmt[];
+      readonly isAsync: boolean;
+      readonly span: Span;
+    }
+  | {
+      readonly kind: 'with';
+      readonly items: readonly WithItem[];
+      readonly body: readonly Stmt[];
+      readonly isAsync: boolean;
+      readonly span: Span;
+    }
+  | {
+      readonly kind: 'try';
+      readonly body: readonly Stmt[];
+      readonly handlers: readonly ExceptHandler[];
+      readonly orelse: readonly Stmt[];
+      readonly finalbody: readonly Stmt[];
+      readonly span: Span;
+    }
+  | {
+      readonly kind: 'match';
+      readonly subject: Expr;
+      readonly cases: readonly MatchCase[];
+      readonly span: Span;
+    }
+  | {
+      readonly kind: 'typealias';
+      readonly name: string;
+      readonly typeParams: readonly TypeParam[];
+      readonly value: Expr;
+      readonly span: Span;
+    };

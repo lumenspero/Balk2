@@ -33,6 +33,15 @@ export class TokenCursor {
     this.tokens = tokens.filter((t) => t.kind !== 'nl');
   }
 
+  /** The current position, for backtracking with `rewind`. */
+  position(): number {
+    return this.index;
+  }
+
+  rewind(position: number): void {
+    this.index = position;
+  }
+
   peek(offset = 0): Token {
     const i = Math.min(this.index + offset, this.tokens.length - 1);
     return this.tokens[i] ?? END_TOKEN;

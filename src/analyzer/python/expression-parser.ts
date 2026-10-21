@@ -122,7 +122,7 @@ export function parseYield(c: TokenCursor): Expr {
 }
 
 /** A target list in a `for` clause: `a`, `a, b`, or `*rest, b`. */
-function parseTargetList(c: TokenCursor): Expr {
+export function parseTargetList(c: TokenCursor): Expr {
   const start = c.peek();
   const first = parseStarOrBinary(c);
   if (!c.isOp(',')) return first;
@@ -263,7 +263,7 @@ function parsePrimary(c: TokenCursor): Expr {
   }
 }
 
-function parseAtom(c: TokenCursor): Expr {
+export function parseAtom(c: TokenCursor): Expr {
   const token = c.peek();
   switch (token.kind) {
     case 'name':
@@ -672,4 +672,9 @@ export function parseExpressionSource(source: string): Expr {
   cursor.match('newline');
   cursor.expect('endmarker', undefined, 'unexpected input after expression');
   return expr;
+}
+
+/** A bitwise-or expression: the tightest level that excludes comparisons and boolean operators. */
+export function parseBitOr(c: TokenCursor): Expr {
+  return parseBinary(c, 0);
 }
