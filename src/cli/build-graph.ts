@@ -6,6 +6,7 @@ import type { FrontEndInput, FrontEndSourceAnnotations } from '../analyzer/front
 import { JsTsFrontEnd } from '../analyzer/js-ts-front-end.js';
 import { LegacyPythonFrontEnd } from '../analyzer/legacy-python-front-end.js';
 import { registerDataArtifacts } from '../data/formats.js';
+import { registerManifests } from '../data/manifests.js';
 import { filterFilesWithConfig, applyExplicitLineage } from '../config/index.js';
 import type { Balk2Config } from '../config/balk2-config.js';
 import type { ConfigProblem } from '../config/config-problem.js';
@@ -80,6 +81,7 @@ export function buildConnectionGraphDetailed(rootDir: string, config?: Balk2Conf
   // 3. Front ends, in a fixed order: JS/TS, then Python. Data artifacts are registered first so
   //    the front ends see them.
   registerDataArtifacts(files, graph);
+  registerManifests(files, graph);
   const input: FrontEndInput = { rootDir, files, config };
   const jsTsResult = new JsTsFrontEnd().analyze(input, graph);
   const pythonResult = new LegacyPythonFrontEnd().analyze(input, graph);

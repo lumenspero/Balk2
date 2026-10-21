@@ -1,6 +1,7 @@
 import type { ArtifactFormat, ResourceKind } from '../types.js';
 import { normalizePath } from '../graph.js';
 import type { ConnectionGraph } from '../graph.js';
+import { detectManifestKind } from './manifests.js';
 
 /**
  * Mapping of file extensions to ArtifactFormat.
@@ -85,6 +86,8 @@ export function registerDataArtifacts(
 ): string[] {
   const registered: string[] = [];
   for (const path of filePaths) {
+    // Manifests are file nodes, registered by registerManifests, not data artifacts.
+    if (detectManifestKind(path)) continue;
     const format = detectArtifactFormat(path);
     if (format) {
       const norm = normalizePath(path);
