@@ -1,7 +1,10 @@
 import type {
   Confidence,
+  Evidence,
   LoadKind,
   SourceSpan,
+  StateOperation,
+  StateRelationship,
   StatePathSegment,
   StateRootKind,
   SymbolType,
@@ -142,18 +145,27 @@ export interface CallSite extends FactBase {
   readonly keyword: Readonly<Record<string, ArgValue>>;
 }
 
-/** The operation performed on a state path. */
-export type StatePathOperation = 'assignment' | 'read' | 'delete';
-
-/** A read, write or delete of a shared state location. */
+/**
+ * A read, write, delete or method call on shared state, with its resolved root and path. A
+ * `dynamicReason` marks a computed key; the engine decides whether it is a wildcard or an
+ * observation.
+ */
 export interface StatePathFact extends FactBase {
   readonly kind: 'state-path';
   readonly owner: string | null;
-  readonly operation: StatePathOperation;
+  readonly relationship: StateRelationship;
+  readonly operation: StateOperation;
+  /** The state method name, for a `call` operation. */
+  readonly method?: string;
   readonly rootKind: StateRootKind;
   /** Resolved root identity, the same form `StatePathNode.root` uses. */
   readonly root: string;
   readonly segments: readonly StatePathSegment[];
+  readonly confidence: Confidence;
+  readonly evidence: Evidence;
+  readonly dynamicReason?: string;
+  /** The accessing expression on one line, for observation subjects. */
+  readonly subject: string;
 }
 
 /** A `# balk2:` or `// balk2:` source annotation, before it is applied. */

@@ -1,10 +1,11 @@
 import type * as ts from 'typescript';
 import type { ConfigProblem } from '../config/config-problem.js';
-import type { DynamicPathMode, StateConfig } from '../config/state-config.js';
+import type { StateConfig } from '../config/state-config.js';
 import type { ConnectionGraph } from '../graph.js';
-import type { RelationshipMetadata } from '../types.js';
-import { applyDynamicPaths } from './dynamic-paths.js';
+import { runStateEngine, type StateDynamicPathMode } from '../facts/state-engine.js';
+import type { FileFacts, StatePathFact } from '../facts/types.js';
 import type { GlobalSymbolIndex } from './global-symbols.js';
+import { applyStateEdges } from './state-apply.js';
 import type { RepositoryProgram } from './repository-program.js';
 import { collectStateAccesses, type StateAccessFact } from './state-paths.js';
 import { collectStateCalls, type StateCallFact, stateProtocols } from './state-calls.js';
@@ -23,15 +24,13 @@ export interface StateRelationshipResult {
   readonly problems: readonly ConfigProblem[];
 }
 
-type StateFact = StateAccessFact | StateCallFact;
-
 /**
  * Write every state access and state method call in the repository into the graph.
  *
- * A static reference becomes an edge from its owner to a state-path node. A computed key becomes
- * an edge to a wildcard path or an unresolved `dynamic-state-path` observation, as
- * `state.dynamicPaths` says. Runs before event and registry detection, which skip the calls it
- * claims.
+ * The TypeScript front end resolves each access and call to a root and path (`state-paths.ts`,
+ * `state-calls.ts`, `state-roots.ts`). Those become state-path facts, the state engine decides what
+ * each one links to (`facts/state-engine.ts`), and `state-apply.ts` writes the result. Runs before
+ * event and registry detection, which skip the calls it claims.
  */
 export function collectStateRelationships(
   repository: RepositoryProgram,
@@ -41,55 +40,52 @@ export function collectStateRelationships(
 ): StateRelationshipResult {
   const resolver = new StateRootResolver(repository, globals, config);
   const protocols = stateProtocols(config);
-  const mode: DynamicPathMode = config.dynamicPaths ?? 'off';
+  const mode: StateDynamicPathMode = config.dynamicPaths ?? 'off';
   const claimed = new Set<ts.CallExpression>();
   const files = [...repository.sourceFiles].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
 
+  const fileFacts: FileFacts[] = [];
   for (const [filePath, sourceFile] of files) {
     if (sourceFile.isDeclarationFile) continue;
 
     const calls = collectStateCalls(sourceFile, filePath, resolver, protocols);
     for (const node of calls.claimed) claimed.add(node);
+    const accesses = collectStateAccesses(sourceFile, filePath, resolver);
 
-    const facts: StateFact[] = [
-      ...collectStateAccesses(sourceFile, filePath, resolver),
-      ...calls.calls,
-    ];
-    for (const fact of facts) recordFact(graph, mode, fact);
+    fileFacts.push({
+      filePath,
+      language: languageOf(filePath),
+      facts: [
+        ...accesses.map((access) => toFact(filePath, access)),
+        ...calls.calls.map((call) => toFact(filePath, call)),
+      ],
+    });
   }
 
+  applyStateEdges(graph, runStateEngine({ files: fileFacts, dynamicPaths: mode }));
   return { claimed, problems: resolver.problems };
 }
 
-function recordFact(graph: ConnectionGraph, mode: DynamicPathMode, fact: StateFact): void {
-  const decision = applyDynamicPaths(fact.reference, mode);
-
-  if (decision.kind === 'unresolved') {
-    const unresolved = graph.addUnresolved({
-      reason: 'dynamic-state-path',
-      attempted: fact.relationship,
-      subject: fact.subject,
-      location: fact.span,
-      detail: decision.reason,
-    });
-    graph.addRelationship(fact.relationship, fact.owner, unresolved.id, 'low', {
-      evidence: 'ts-program',
-      spans: [fact.span],
-    });
-    return;
-  }
-
-  const { reference } = decision;
-  const target = graph.addStatePath(reference.root, reference.rootKind, reference.segments);
-  graph.addRelationship(fact.relationship, fact.owner, target.id, reference.confidence, {
+function toFact(filePath: string, fact: StateAccessFact | StateCallFact): StatePathFact {
+  const { reference } = fact;
+  return {
+    kind: 'state-path',
+    filePath,
+    span: fact.span,
+    owner: fact.owner,
+    relationship: fact.relationship,
+    operation: fact.operation,
+    ...('method' in fact ? { method: fact.method } : {}),
+    rootKind: reference.rootKind,
+    root: reference.root,
+    segments: reference.segments,
+    confidence: reference.confidence,
     evidence: reference.evidence,
-    spans: [fact.span],
-    metadata: metadataOf(fact),
-  });
+    ...(reference.dynamicReason !== undefined ? { dynamicReason: reference.dynamicReason } : {}),
+    subject: fact.subject,
+  };
 }
 
-function metadataOf(fact: StateFact): RelationshipMetadata {
-  return 'method' in fact
-    ? { operation: fact.operation, method: fact.method }
-    : { operation: fact.operation };
+function languageOf(filePath: string): FileFacts['language'] {
+  return /\.(ts|tsx|mts|cts)$/.test(filePath) ? 'typescript' : 'javascript';
 }
