@@ -24,6 +24,28 @@ const DEFAULT_EXCLUDES = new Set([
   'connection-map.md',
 ]);
 
+/** Dependency-resolution lock files. They describe resolved versions, not source, so they are not scanned. */
+const LOCK_FILES = new Set([
+  'Cargo.lock',
+  'poetry.lock',
+  'uv.lock',
+  'pdm.lock',
+  'package-lock.json',
+  'npm-shrinkwrap.json',
+  'yarn.lock',
+  'pnpm-lock.yaml',
+]);
+
+/** Tool caches and build output that are excluded by name, wherever they appear. */
+const GENERATED_DIR_NAMES = new Set([
+  '__pycache__',
+  '.tox',
+  '.nox',
+  '.mypy_cache',
+  '.pytest_cache',
+  '.ruff_cache',
+]);
+
 /** The graph, and what the analysis dropped that the configuration asked for. */
 export interface BuiltGraph {
   readonly graph: ConnectionGraph;
@@ -143,20 +165,35 @@ export function buildConnectionGraph(rootDir: string, config?: Balk2Config): Con
   return buildConnectionGraphDetailed(rootDir, config).graph;
 }
 
-/** Recursively list repository-relative files, sorted, skipping default excludes. */
+/**
+ * Whether a directory is excluded from the scan. `parentDir` is the directory that contains it.
+ *
+ * - `target/` is a Cargo build directory only beside a `Cargo.toml`.
+ * - `.venv/` and `venv/` are virtual environments only when they contain `pyvenv.cfg`.
+ * - `build/lib*` is already covered, because `build` is excluded by name.
+ */
+function isExcludedDirectory(parentDir: string, name: string, fullPath: string): boolean {
+  if (DEFAULT_EXCLUDES.has(name) || GENERATED_DIR_NAMES.has(name)) return true;
+  if (name.endsWith('.egg-info')) return true;
+  if (name === 'target') return fs.existsSync(path.join(parentDir, 'Cargo.toml'));
+  if (name === '.venv' || name === 'venv') return fs.existsSync(path.join(fullPath, 'pyvenv.cfg'));
+  return false;
+}
+
+/** Recursively list repository-relative files, sorted, skipping excluded directories and locks. */
 export function scanRepositoryFiles(dir: string, baseDir: string = dir): string[] {
   const results: string[] = [];
   if (!fs.existsSync(dir)) return results;
 
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (DEFAULT_EXCLUDES.has(entry.name)) continue;
-
     const fullPath = path.join(dir, entry.name);
     const relPath = normalizePath(path.relative(baseDir, fullPath));
 
     if (entry.isDirectory()) {
+      if (isExcludedDirectory(dir, entry.name, fullPath)) continue;
       results.push(...scanRepositoryFiles(fullPath, baseDir));
     } else if (entry.isFile()) {
+      if (DEFAULT_EXCLUDES.has(entry.name) || LOCK_FILES.has(entry.name)) continue;
       results.push(relPath);
     }
   }
