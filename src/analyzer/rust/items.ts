@@ -129,7 +129,11 @@ export interface RustFile {
 export class TreeCursor {
   pos = 0;
 
-  constructor(readonly trees: readonly TokenTree[]) {}
+  readonly trees: TokenTree[];
+
+  constructor(trees: readonly TokenTree[]) {
+    this.trees = [...trees];
+  }
 
   get eof(): boolean {
     return this.pos >= this.trees.length;
@@ -397,9 +401,8 @@ function parseMod(c: TreeCursor, errors: RustLexNote[]): ItemBody {
     c.next();
     return { kind: 'mod', name, inline: false, innerAttrs: [], items: [] };
   }
-  const body = groupOf(c.peek(), '{');
+  const body = takeBraceGroup(c);
   if (body) {
-    c.next();
     const parsed = parseItems(new TreeCursor(body.children), errors);
     return { kind: 'mod', name, inline: true, innerAttrs: parsed.innerAttrs, items: parsed.items };
   }
@@ -762,11 +765,11 @@ function parseFn(c: TreeCursor, errors: RustLexNote[]): ItemBody {
   }
   const where = parseWhere(c);
 
-  const body = groupOf(c.peek(), '{');
-  if (body) c.next();
-  else if (isPunct(c.peek(), ';')) c.next();
-  else fail(errors, c, 'expected `{` or `;` after function signature');
-
+  const body = takeBraceGroup(c);
+  if (!body) {
+    if (isPunct(c.peek(), ';')) c.next();
+    else fail(errors, c, 'expected `{` or `;` after function signature');
+  }
   return {
     kind: 'fn',
     name: header.name,
@@ -813,9 +816,8 @@ function parseStruct(c: TreeCursor, errors: RustLexNote[]): ItemBody {
   if (!header) return { kind: 'unknown', keyword: 'struct' };
 
   let where = parseWhere(c);
-  const named = groupOf(c.peek(), '{');
+  const named = takeBraceGroup(c);
   if (named) {
-    c.next();
     return {
       kind: 'struct',
       name: header.name,
@@ -897,13 +899,12 @@ function parseEnum(c: TreeCursor, errors: RustLexNote[]): ItemBody {
   const header = parseHeader(c, errors, 'enum');
   if (!header) return { kind: 'unknown', keyword: 'enum' };
   const where = parseWhere(c);
-  const body = groupOf(c.peek(), '{');
+  const body = takeBraceGroup(c);
   if (!body) {
     fail(errors, c, 'expected `{` after enum name');
     skipUnknownItem(c);
     return { kind: 'unknown', keyword: 'enum' };
   }
-  c.next();
   const variants: Variant[] = [];
   for (const segment of splitTopLevel(body.children, ',')) {
     const variant = variantOf(segment, errors);
@@ -922,13 +923,12 @@ function parseUnion(c: TreeCursor, errors: RustLexNote[]): ItemBody {
   const header = parseHeader(c, errors, 'union');
   if (!header) return { kind: 'unknown', keyword: 'union' };
   const where = parseWhere(c);
-  const body = groupOf(c.peek(), '{');
+  const body = takeBraceGroup(c);
   if (!body) {
     fail(errors, c, 'expected `{` after union name');
     skipUnknownItem(c);
     return { kind: 'unknown', keyword: 'union' };
   }
-  c.next();
   return {
     kind: 'union',
     name: header.name,
@@ -1062,13 +1062,12 @@ function parseBlock(
   c: TreeCursor,
   errors: RustLexNote[],
 ): { innerAttrs: Attribute[]; items: Item[] } | null {
-  const body = groupOf(c.peek(), '{');
+  const body = takeBraceGroup(c);
   if (!body) {
     fail(errors, c, 'expected `{` to open the body');
     if (isPunct(c.peek(), ';')) c.next();
     return null;
   }
-  c.next();
   return parseItems(new TreeCursor(body.children), errors);
 }
 
@@ -1267,4 +1266,55 @@ function parseExternBlock(c: TreeCursor, errors: RustLexNote[]): ItemBody {
   const block = parseBlock(c, errors);
   if (!block) return { kind: 'unknown', keyword: 'extern' };
   return { kind: 'extern_block', abi, innerAttrs: block.innerAttrs, items: block.items };
+}
+
+// ── Item-boundary recovery (V3 Phase 6.3e) ──────────────────
+
+/** Words that start an item. A column-1 one of these ends a brace body that was never closed. */
+const ITEM_START_WORDS: ReadonlySet<string> = new Set([
+  'auto',
+  'const',
+  'enum',
+  'extern',
+  'fn',
+  'impl',
+  'macro_rules',
+  'mod',
+  'pub',
+  'static',
+  'struct',
+  'trait',
+  'type',
+  'union',
+  'unsafe',
+  'use',
+]);
+
+/** True for a token that starts an item in column 1 of a line after the opening brace. */
+function startsItemAtColumnOne(tree: TokenTree, openLine: number): boolean {
+  if (isTokenGroup(tree) || tree.line <= openLine || tree.column !== 1) return false;
+  if (isPunct(tree, '#')) return true;
+  return tree.kind === 'ident' && !tree.raw && ITEM_START_WORDS.has(tree.value);
+}
+
+/**
+ * Consumes the `{ … }` group at the cursor and returns it.
+ *
+ * A group that is never closed is cut just before the first column-1 item start on a later
+ * line, and the tokens after the cut go back into the cursor for normal parsing. The tree
+ * builder has already reported the unclosed brace, so this adds no second error.
+ */
+function takeBraceGroup(c: TreeCursor): TokenGroup | null {
+  const body = groupOf(c.peek(), '{');
+  if (!body) return null;
+  c.next();
+  if (body.close !== null) return body;
+
+  const boundary = body.children.findIndex((t) => startsItemAtColumnOne(t, body.open.line));
+  if (boundary < 0) return body;
+
+  c.trees.splice(c.pos, 0, ...body.children.slice(boundary));
+  const kept = body.children.slice(0, boundary);
+  const last = kept.at(-1) ?? body.open;
+  return { ...body, children: kept, endLine: last.endLine, endColumn: last.endColumn };
 }
