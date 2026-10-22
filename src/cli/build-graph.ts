@@ -12,6 +12,7 @@ import type { Balk2Config } from '../config/balk2-config.js';
 import type { ConfigProblem } from '../config/config-problem.js';
 import type { SyntaxErrorNote } from '../analyzer/repository-program.js';
 import { discoverRepositoryPackages } from '../packages/repository-packages.js';
+import { buildModuleTree } from '../analyzer/rust/modules/tree.js';
 
 const DEFAULT_EXCLUDES = new Set([
   'node_modules',
@@ -96,6 +97,22 @@ export function buildConnectionGraphDetailed(rootDir: string, config?: Balk2Conf
     graph.addRelationship('dependsOn', dependency.from, dependency.to, 'high', {
       evidence: 'manifest',
       metadata: dependency.metadata,
+    });
+  }
+
+  // Rust module tree (V3 Phase 8.3): `mod` declarations from each Cargo crate root, as declaresModule edges.
+  const moduleTree = buildModuleTree({
+    crateRoots: repositoryPackages.packageRoots
+      .filter((root) => root.packageId.startsWith('package:cargo:'))
+      .map((root) => root.file),
+    files: new Set(files),
+    readText: (filePath) => fs.readFileSync(path.join(rootDir, filePath), 'utf8'),
+  });
+  for (const file of moduleTree.files) graph.addFile(file, 'rust');
+  for (const edge of moduleTree.edges) {
+    graph.addRelationship('declaresModule', edge.from, edge.to, 'high', {
+      evidence: 'ast',
+      ...(edge.cfg ? { metadata: { cfg: edge.cfg } } : {}),
     });
   }
 

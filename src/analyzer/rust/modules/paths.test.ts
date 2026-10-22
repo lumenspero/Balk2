@@ -122,7 +122,7 @@ describe('moduleFileCandidates', () => {
   });
 
   it('matches the Rust Reference table for #[path] inside an inline module', () => {
-    const innerDecl = (file: string, modRs: boolean) =>
+    const innerDecl = (file: string, modRs: boolean): ModDeclaration =>
       decl({ file, modRs, inlineModules: [inline('inline')], pathAttr: 'other.rs', name: 'inner' });
     expect(moduleFileCandidates(innerDecl('src/a/b.rs', false))).toEqual([
       'src/a/b/inline/other.rs',
