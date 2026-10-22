@@ -13,6 +13,7 @@ import type { ConfigProblem } from '../config/config-problem.js';
 import type { SyntaxErrorNote } from '../analyzer/repository-program.js';
 import { discoverRepositoryPackages } from '../packages/repository-packages.js';
 import { buildModuleTree } from '../analyzer/rust/modules/tree.js';
+import type { ModuleProblemInput } from './diagnostics.js';
 
 const DEFAULT_EXCLUDES = new Set([
   'node_modules',
@@ -58,6 +59,8 @@ export interface BuiltGraph {
   readonly syntaxErrors: readonly SyntaxErrorNote[];
   /** Manifests that cannot be read or resolved, reported as `manifest` diagnostics */
   readonly manifestProblems: readonly { readonly path: string; readonly message: string }[];
+  /** Rust module conflicts and unreachable files, reported as `module-conflict` and `unreachable-module` */
+  readonly moduleProblems: readonly ModuleProblemInput[];
 }
 
 /**
@@ -100,11 +103,19 @@ export function buildConnectionGraphDetailed(rootDir: string, config?: Balk2Conf
     });
   }
 
-  // Rust module tree (V3 Phase 8.3): `mod` declarations from each Cargo crate root, as declaresModule edges.
+  // Rust module tree (V3 Phase 8.3, 8.4): `mod` declarations from each Cargo crate root become
+  // declaresModule edges. Declarations that cannot be connected become unresolved references, and
+  // conflicts and unreachable files become diagnostics.
+  const cargoPackages = repositoryPackages.packages.filter((node) =>
+    node.id.startsWith('package:cargo:'),
+  );
   const moduleTree = buildModuleTree({
     crateRoots: repositoryPackages.packageRoots
       .filter((root) => root.packageId.startsWith('package:cargo:'))
       .map((root) => root.file),
+    packageDirs: cargoPackages.map(
+      (node) => node.id.slice('package:cargo:'.length).split('#')[0] ?? '.',
+    ),
     files: new Set(files),
     readText: (filePath) => fs.readFileSync(path.join(rootDir, filePath), 'utf8'),
   });
@@ -115,6 +126,33 @@ export function buildConnectionGraphDetailed(rootDir: string, config?: Balk2Conf
       ...(edge.cfg ? { metadata: { cfg: edge.cfg } } : {}),
     });
   }
+  for (const module of moduleTree.unresolved) {
+    const unresolved = graph.addUnresolved({
+      reason: 'unresolved-module-path',
+      attempted: 'declaresModule',
+      subject: module.subject,
+      location: module.location,
+      detail: module.detail,
+    });
+    graph.addRelationship('declaresModule', module.file, unresolved.id, 'low', {
+      evidence: 'ast',
+      spans: [module.location],
+    });
+  }
+  const moduleProblems: ModuleProblemInput[] = [
+    ...moduleTree.conflicts.map((conflict) => ({
+      kind: 'module-conflict' as const,
+      path: conflict.file,
+      line: conflict.location.startLine,
+      column: conflict.location.startColumn,
+      message: conflict.message,
+    })),
+    ...moduleTree.unreachable.map((file) => ({
+      kind: 'unreachable-module' as const,
+      path: file,
+      message: 'no crate root reaches this file',
+    })),
+  ];
 
   // 3. Front ends, in a fixed order: JS/TS, then Python. Data artifacts are registered first so
   //    the front ends see them.
@@ -176,7 +214,7 @@ export function buildConnectionGraphDetailed(rootDir: string, config?: Balk2Conf
     problems.push({ path: problem.path, message: problem.message });
   }
 
-  return { graph, problems, syntaxErrors, manifestProblems };
+  return { graph, problems, syntaxErrors, manifestProblems, moduleProblems };
 }
 
 /**

@@ -16,3 +16,5 @@ mod linux {
 mod generated;
 
 mod missing;
+
+mod both;

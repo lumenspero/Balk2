@@ -58,6 +58,7 @@ export function checkConnectionMap(options: CheckOptions = {}): CheckResult {
       [...loaded.problems, ...built.problems],
       built.syntaxErrors,
       built.manifestProblems,
+      built.moduleProblems,
     );
 
     const freshJson = serializeConnectionMap(freshMap);

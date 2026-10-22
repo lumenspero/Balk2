@@ -45,6 +45,15 @@ export interface Diagnostic {
   readonly message: string;
 }
 
+/** A problem in Rust module discovery: a conflict between two candidate files, or an unreachable file (V3 Phase 8.4). */
+export interface ModuleProblemInput {
+  readonly kind: 'module-conflict' | 'unreachable-module';
+  readonly path: string;
+  readonly line?: number;
+  readonly column?: number;
+  readonly message: string;
+}
+
 /** Path used for problems that come from `.balk2.json` rather than a source file. */
 const CONFIG_PATH = '.balk2.json';
 
@@ -68,6 +77,7 @@ export function collectDiagnostics(
   problems: readonly ConfigProblem[],
   syntaxErrors: readonly SyntaxErrorNote[],
   manifestProblems: readonly ManifestProblemInput[] = [],
+  moduleProblems: readonly ModuleProblemInput[] = [],
 ): Diagnostic[] {
   const found: Diagnostic[] = [];
 
@@ -91,6 +101,16 @@ export function collectDiagnostics(
 
   for (const problem of manifestProblems) {
     found.push({ kind: 'manifest', path: problem.path, message: problem.message });
+  }
+
+  for (const problem of moduleProblems) {
+    found.push({
+      kind: problem.kind,
+      path: problem.path,
+      ...(problem.line !== undefined ? { line: problem.line } : {}),
+      ...(problem.column !== undefined ? { column: problem.column } : {}),
+      message: problem.message,
+    });
   }
 
   for (const node of Object.values(map.unresolved)) {

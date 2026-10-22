@@ -1,4 +1,5 @@
-import { type Attribute, type Item, parseRustFile } from '../items.js';
+import type { SourceSpan } from '../../../types.js';
+import { type Attribute, type Item, type Span, parseRustFile } from '../items.js';
 import type { RustToken } from '../lexer.js';
 import type { TokenGroup, TokenTree } from '../token-tree.js';
 import { type InlineModule, isModRsFile, moduleFileCandidates } from './paths.js';
@@ -15,24 +16,59 @@ export interface ModuleEdge {
   readonly cfg: string | null;
 }
 
+/** A `mod` declaration that cannot be connected to a file (V3 Phase 8.4, `unresolved-module-path`). */
+export interface UnresolvedModule {
+  /** The file that holds the declaration */
+  readonly file: string;
+  readonly location: SourceSpan;
+  /** The module name, as written */
+  readonly subject: string;
+  readonly detail: string;
+}
+
+/** Two candidate files for one declaration (V3 Phase 8.4, `module-conflict`). */
+export interface ModuleConflict {
+  readonly file: string;
+  readonly location: SourceSpan;
+  readonly message: string;
+}
+
 export interface ModuleTree {
-  /** In discovery order: crate roots sorted by path, then declarations in source order */
+  /** One per declaration whose file exists, in discovery order; crates are visited in path order */
   readonly edges: readonly ModuleEdge[];
-  /** Every file a crate reaches, sorted */
+  /** Every file that some crate root reaches, sorted */
   readonly files: readonly string[];
+  /** Sorted by file, line and column */
+  readonly unresolved: readonly UnresolvedModule[];
+  /** Sorted by file, line and column */
+  readonly conflicts: readonly ModuleConflict[];
+  /** Rust files inside a Cargo package that no crate root reaches, sorted (`unreachable-module`) */
+  readonly unreachable: readonly string[];
 }
 
 export interface ModuleTreeInput {
   /** Repository-relative crate root files (lib, bin, test, example, bench, build-script) */
   readonly crateRoots: readonly string[];
+  /**
+   * Repository-relative directories of the Cargo packages, `.` for the root. Rust files under
+   * them are checked for reachability.
+   */
+  readonly packageDirs: readonly string[];
   /** Repository files, normalized to `/` separators */
   readonly files: ReadonlySet<string>;
   readonly readText: (path: string) => string;
 }
 
+/** The `#[path]` attribute of one declaration, as far as the map can use it. */
+type PathAttr =
+  | { readonly kind: 'absent' }
+  | { readonly kind: 'literal'; readonly value: string }
+  | { readonly kind: 'invalid'; readonly detail: string };
+
 interface Declaration {
   readonly name: string;
-  readonly pathAttr: string | null;
+  readonly location: SourceSpan;
+  readonly path: PathAttr;
   readonly inlineModules: readonly InlineModule[];
   readonly cfg: string | null;
 }
@@ -42,84 +78,209 @@ interface Pending {
   readonly modRs: boolean;
 }
 
+interface Sink {
+  readonly reached: Set<string>;
+  readonly edges: Map<string, ModuleEdge>;
+  readonly unresolved: Map<string, UnresolvedModule>;
+  readonly conflicts: Map<string, ModuleConflict>;
+  /** Candidate files of conflicting declarations, which `unreachable` must not repeat */
+  readonly ambiguous: Set<string>;
+}
+
 /**
- * Follows `mod name;` declarations from each crate root and returns one edge per declaration
- * whose target file exists. A declaration with no file, or with two candidate files (which Phase
- * 8.4 reports as `module-conflict`), draws no edge.
+ * Follows `mod name;` declarations from each crate root.
  *
- * Each file is parsed once, so cycles through `#[path]` terminate. The first path to reach a file
- * decides whether it is mod-rs. Files are visited in a fixed order, so the output is deterministic.
+ * Each crate is walked on its own, with its own visited set, so a file that two crates reach is
+ * resolved once per crate and the edges merge. Each file is parsed once per crate, so cycles
+ * through `#[path]` terminate. A declaration draws an edge only when exactly one candidate file
+ * exists. A missing file, a conflict, or a `#[path]` the map cannot evaluate is reported instead of
+ * guessed.
  */
 export function buildModuleTree(input: ModuleTreeInput): ModuleTree {
-  const visited = new Set<string>();
-  const queue: Pending[] = [];
-  const edges: ModuleEdge[] = [];
-
-  const enqueue = (file: string, modRs: boolean): void => {
-    if (visited.has(file) || !input.files.has(file)) return;
-    visited.add(file);
-    queue.push({ file, modRs });
+  const sink: Sink = {
+    reached: new Set(),
+    edges: new Map(),
+    unresolved: new Map(),
+    conflicts: new Map(),
+    ambiguous: new Set(),
   };
 
   for (const root of [...new Set(input.crateRoots)].sort()) {
-    enqueue(root, isModRsFile(root, { crateRoot: true, loadedByPath: false }));
+    if (!input.files.has(root)) continue;
+    walkCrate(root, input, sink);
   }
+
+  const unreachable = [...input.files]
+    .filter(
+      (file) =>
+        file.endsWith('.rs') &&
+        !sink.reached.has(file) &&
+        !sink.ambiguous.has(file) &&
+        input.packageDirs.some((dir) => dir === '.' || file.startsWith(`${dir}/`)),
+    )
+    .sort();
+
+  return {
+    edges: [...sink.edges.values()],
+    files: [...sink.reached].sort(),
+    unresolved: sortByLocation([...sink.unresolved.values()]),
+    conflicts: sortByLocation([...sink.conflicts.values()]),
+    unreachable,
+  };
+}
+
+function walkCrate(root: string, input: ModuleTreeInput, sink: Sink): void {
+  const visited = new Set<string>();
+  const queue: Pending[] = [];
+  const enqueue = (file: string, modRs: boolean): void => {
+    if (visited.has(file) || !input.files.has(file)) return;
+    visited.add(file);
+    sink.reached.add(file);
+    queue.push({ file, modRs });
+  };
+  enqueue(root, true);
 
   for (let next = 0; next < queue.length; next++) {
     const current = queue[next];
     if (current === undefined) break;
     const declarations: Declaration[] = [];
-    collectDeclarations(parseRustFile(input.readText(current.file)).items, [], [], declarations);
-
+    collectDeclarations(
+      parseRustFile(input.readText(current.file)).items,
+      current.file,
+      [],
+      [],
+      null,
+      declarations,
+    );
     for (const declaration of declarations) {
-      const candidates = moduleFileCandidates({
-        file: current.file,
-        modRs: current.modRs,
-        inlineModules: declaration.inlineModules,
-        pathAttr: declaration.pathAttr,
-        name: declaration.name,
-      }).filter((candidate) => input.files.has(candidate));
-      const [child, ...others] = candidates;
-      if (child === undefined || others.length > 0) continue;
-
-      edges.push({ from: current.file, to: child, cfg: declaration.cfg });
-      enqueue(
-        child,
-        isModRsFile(child, { crateRoot: false, loadedByPath: declaration.pathAttr !== null }),
-      );
+      resolveDeclaration(current, declaration, input, sink, enqueue);
     }
   }
-
-  return { edges, files: [...visited].sort() };
 }
 
-/** The `mod` declarations in a list of items, with the inline modules and `cfg`s around each. */
+function resolveDeclaration(
+  current: Pending,
+  declaration: Declaration,
+  input: ModuleTreeInput,
+  sink: Sink,
+  enqueue: (file: string, modRs: boolean) => void,
+): void {
+  const unresolved = (detail: string): void => {
+    const key = locationKey(declaration.location);
+    if (sink.unresolved.has(key)) return;
+    sink.unresolved.set(key, {
+      file: current.file,
+      location: declaration.location,
+      subject: declaration.name,
+      detail,
+    });
+  };
+
+  if (declaration.path.kind === 'invalid') {
+    unresolved(declaration.path.detail);
+    return;
+  }
+  const pathAttr = declaration.path.kind === 'literal' ? declaration.path.value : null;
+  const placed = moduleFileCandidates({
+    file: current.file,
+    modRs: current.modRs,
+    inlineModules: declaration.inlineModules,
+    pathAttr,
+    name: declaration.name,
+  });
+  if (placed.length === 0) {
+    unresolved('the #[path] is absolute, so it names no file in the repository');
+    return;
+  }
+
+  const existing = placed.filter((candidate) => input.files.has(candidate));
+  const [child, ...others] = existing;
+  if (child === undefined) {
+    unresolved(`no file at ${placed.join(' or ')}`);
+    return;
+  }
+  if (others.length > 0) {
+    for (const candidate of existing) sink.ambiguous.add(candidate);
+    const key = locationKey(declaration.location);
+    if (!sink.conflicts.has(key)) {
+      sink.conflicts.set(key, {
+        file: current.file,
+        location: declaration.location,
+        message: `both ${existing.join(' and ')} exist`,
+      });
+    }
+    return;
+  }
+
+  const edgeKey = `${current.file}\u0000${child}\u0000${declaration.cfg ?? ''}`;
+  if (!sink.edges.has(edgeKey)) {
+    sink.edges.set(edgeKey, { from: current.file, to: child, cfg: declaration.cfg });
+  }
+  enqueue(child, isModRsFile(child, { crateRoot: false, loadedByPath: pathAttr !== null }));
+}
+
+/**
+ * The `mod` declarations in a list of items, with the inline modules and `cfg`s around each.
+ * `blocked` is the detail of an enclosing inline module whose `#[path]` the map cannot evaluate.
+ */
 function collectDeclarations(
   items: readonly Item[],
+  file: string,
   inlineModules: readonly InlineModule[],
   cfgs: readonly string[],
+  blocked: string | null,
   out: Declaration[],
 ): void {
   for (const item of items) {
     if (item.kind !== 'mod') continue;
     const ownCfgs = [...cfgs, ...item.attrs.filter((attr) => attr.path === 'cfg').map(renderCfg)];
-    const pathAttr = pathAttrOf(item.attrs);
+    const path = pathAttrOf(item.attrs);
+    const location = locationOf(file, item.span);
+    const innerBlocked = blocked ?? (path.kind === 'invalid' ? path.detail : null);
     if (item.inline) {
+      const inlinePath = path.kind === 'literal' ? path.value : null;
       collectDeclarations(
         item.items,
-        [...inlineModules, { name: item.name, pathAttr }],
+        file,
+        [...inlineModules, { name: item.name, pathAttr: inlinePath }],
         ownCfgs,
+        innerBlocked,
         out,
       );
       continue;
     }
     out.push({
       name: item.name,
-      pathAttr,
+      location,
+      path: blocked !== null ? { kind: 'invalid', detail: blocked } : path,
       inlineModules,
       cfg: ownCfgs.length > 0 ? ownCfgs.join(' and ') : null,
     });
   }
+}
+
+/** The `#[path]` attribute of an item, with a conditional or malformed one marked invalid. */
+function pathAttrOf(attrs: readonly Attribute[]): PathAttr {
+  if (attrs.some((attr) => attr.path === 'cfg_attr' && containsIdent(attr.args, 'path'))) {
+    return {
+      kind: 'invalid',
+      detail: 'the #[path] is set under #[cfg_attr], and conditions are not evaluated',
+    };
+  }
+  const attr = attrs.find((candidate) => candidate.path === 'path');
+  if (attr === undefined) return { kind: 'absent' };
+  const [equals, literal] = attr.args;
+  if (attr.args.length !== 2 || equals === undefined || literal === undefined) {
+    return { kind: 'invalid', detail: '#[path] does not have a plain string value' };
+  }
+  if (isGroup(equals) || equals.kind !== 'punct' || equals.text !== '=' || isGroup(literal)) {
+    return { kind: 'invalid', detail: '#[path] does not have a plain string value' };
+  }
+  const value = stringValue(literal);
+  if (value === null) {
+    return { kind: 'invalid', detail: '#[path] does not have a plain string value' };
+  }
+  return { kind: 'literal', value };
 }
 
 /** A `cfg` attribute as text, such as `cfg(all(unix, not(test)))`. */
@@ -146,15 +307,13 @@ function renderTokens(trees: readonly TokenTree[]): string {
   return out;
 }
 
-/** The value of `#[path = "..."]`, or null when the attribute is absent or not a plain string. */
-function pathAttrOf(attrs: readonly Attribute[]): string | null {
-  const attr = attrs.find((candidate) => candidate.path === 'path');
-  if (attr === undefined || attr.args.length !== 2) return null;
-  const [equals, literal] = attr.args;
-  if (equals === undefined || literal === undefined) return null;
-  if (isGroup(equals) || equals.kind !== 'punct' || equals.text !== '=') return null;
-  if (isGroup(literal)) return null;
-  return stringValue(literal);
+/** Whether an identifier appears anywhere in a token list, including nested groups. */
+function containsIdent(trees: readonly TokenTree[], name: string): boolean {
+  return trees.some((tree) =>
+    isGroup(tree)
+      ? containsIdent(tree.children, name)
+      : tree.kind === 'ident' && tree.value === name,
+  );
 }
 
 /** The contents of a string literal: plain (with `\\` and `\"` unescaped) or raw. */
@@ -171,4 +330,31 @@ function stringValue(token: RustToken): string | null {
 
 function isGroup(tree: TokenTree): tree is TokenGroup {
   return 'delimiter' in tree;
+}
+
+function locationOf(file: string, span: Span): SourceSpan {
+  return {
+    filePath: file,
+    startLine: span.line,
+    startColumn: span.column,
+    endLine: span.endLine,
+    endColumn: span.endColumn,
+  };
+}
+
+function locationKey(location: SourceSpan): string {
+  return `${location.filePath}:${location.startLine}:${location.startColumn}`;
+}
+
+function sortByLocation<T extends { readonly location: SourceSpan }>(items: readonly T[]): T[] {
+  return [...items].sort(
+    (a, b) =>
+      compareText(a.location.filePath, b.location.filePath) ||
+      a.location.startLine - b.location.startLine ||
+      a.location.startColumn - b.location.startColumn,
+  );
+}
+
+function compareText(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
 }
