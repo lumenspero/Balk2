@@ -193,3 +193,12 @@ This local run sets the provisional budget. The contract records the budget from
 - `exported` is always `false` in 9.1. Exports come in 9.4.
 - Not in 9.1: `use` edges (9.3), calls and references (9.6, 9.7), associated consts and types, items inside function bodies or macros (Phase 10).
 - Rust syntax problems from the parser are now reported as `syntax` diagnostics.
+
+## Phase 9.3 output change (Rust imports)
+
+- The Rust front end binds each Cargo crate's `use` declarations (`src/analyzer/rust/names/imports.ts`) and writes an `imports` edge from the file of each `use` to the repository file the name lives in, with `evidence: 'ast'` and the `use` span. A glob (`use path::*`) gives an edge to the source module's file with the same rule.
+- A `use` that cannot be resolved gets an `unresolved-module-path` node, linked from its file by an `imports` edge at low confidence, as the Phase 8 `mod` declarations are. A glob whose names collide reports `ambiguous-star-import` when a path uses the name.
+- Uses that name an extern crate or a standard crate (`std`, `core`, `alloc`, `proc_macro`, `test`) produce no edge and no observation.
+- Binding is by rounds until no more names bind, so a `use` may name something another `use` brings in. Explicit uses shadow globs, and items shadow both.
+- Edition 2015 resolves `use` paths from the crate root, unless they start with `self`, `super` or `crate`.
+- Not in 9.3: `pub use` re-exports for `exports` (9.4), the leading `::` on a `use` path (the parser does not keep it, so it resolves as a uniform path), `use` inside function bodies (Phase 10), and enum variant globs.
