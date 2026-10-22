@@ -94,6 +94,25 @@ export type ItemBody =
       readonly innerAttrs: readonly Attribute[];
       readonly items: readonly Item[];
     }
+  | {
+      readonly kind: 'macro_rules';
+      readonly name: string;
+      /** The rules as a token group. Their syntax is parsed in Phase 10. */
+      readonly body: TokenGroup;
+    }
+  | {
+      readonly kind: 'macro_call';
+      readonly path: string;
+      readonly delimiter: Delimiter;
+      readonly args: TokenGroup;
+    }
+  | { readonly kind: 'extern_crate'; readonly name: string; readonly alias: string | null }
+  | {
+      readonly kind: 'extern_block';
+      readonly abi: string | null;
+      readonly innerAttrs: readonly Attribute[];
+      readonly items: readonly Item[];
+    }
   | DeclBody
   | { readonly kind: 'unknown'; readonly keyword: string | null };
 
@@ -997,6 +1016,12 @@ function parseStatic(c: TreeCursor, errors: RustLexNote[]): ItemBody {
 
 function parseBody(c: TreeCursor, errors: RustLexNote[], keyword: string | null): ItemBody {
   if (isFnStart(c)) return parseFn(c, errors);
+  if (keyword === 'macro_rules' && isPunct(c.peek(1), '!')) return parseMacroRules(c, errors);
+  if (isMacroCallStart(c)) return parseMacroCall(c, errors);
+  if (keyword === 'unsafe' && isWord(c.peek(1), 'extern')) {
+    c.next();
+    return parseExternBlock(c, errors);
+  }
   switch (keyword) {
     case 'use':
       return parseUse(c, errors);
@@ -1014,6 +1039,8 @@ function parseBody(c: TreeCursor, errors: RustLexNote[], keyword: string | null)
       return parseConst(c, errors);
     case 'static':
       return parseStatic(c, errors);
+    case 'extern':
+      return isWord(c.peek(1), 'crate') ? parseExternCrate(c, errors) : parseExternBlock(c, errors);
     case 'trait':
       return parseTrait(c, errors, { unsafe: false, auto: false });
     case 'impl':
@@ -1138,4 +1165,106 @@ function parseQualifiedTraitOrImpl(
   c.next();
   if (isWord(c.peek(), 'impl')) return parseImpl(c, errors, true);
   return parseTrait(c, errors, { unsafe, auto: !unsafe });
+}
+
+// ── Macros and extern items (V3 Phase 6.3d) ─────────────────
+
+function parseMacroRules(c: TreeCursor, errors: RustLexNote[]): ItemBody {
+  c.next(); // macro_rules
+  c.next(); // !
+  const name = identName(c.peek());
+  if (name === undefined) {
+    fail(errors, c, 'expected a macro name');
+    skipUnknownItem(c);
+    return { kind: 'unknown', keyword: 'macro_rules' };
+  }
+  c.next();
+  const body = groupOf(c.peek(), '{') ?? groupOf(c.peek(), '(') ?? groupOf(c.peek(), '[');
+  if (!body) {
+    fail(errors, c, 'expected a macro body');
+    skipUnknownItem(c);
+    return { kind: 'unknown', keyword: 'macro_rules' };
+  }
+  c.next();
+  if (body.delimiter !== '{') {
+    if (isPunct(c.peek(), ';')) c.next();
+    else fail(errors, c, 'expected `;` after macro definition');
+  }
+  return { kind: 'macro_rules', name, body };
+}
+
+/** A path, then `!`, then a delimited group: `name! { … }`, `a::b!(…);`. */
+function isMacroCallStart(c: TreeCursor): boolean {
+  let offset = 0;
+  if (identName(c.peek(offset)) === undefined) return false;
+  offset += 1;
+  while (isPunct(c.peek(offset), '::') && identName(c.peek(offset + 1)) !== undefined) {
+    offset += 2;
+  }
+  if (!isPunct(c.peek(offset), '!')) return false;
+  const args = c.peek(offset + 1);
+  return args !== undefined && isTokenGroup(args);
+}
+
+function parseMacroCall(c: TreeCursor, errors: RustLexNote[]): ItemBody {
+  const path: string[] = [];
+  for (;;) {
+    const name = identName(c.peek());
+    if (name === undefined) break;
+    path.push(name);
+    c.next();
+    if (!isPunct(c.peek(), '::')) break;
+    c.next();
+  }
+  c.next(); // !
+  const args = c.next();
+  if (args === undefined || !isTokenGroup(args)) {
+    return { kind: 'unknown', keyword: path.join('::') };
+  }
+  // A brace-delimited invocation needs no `;`.
+  if (args.delimiter !== '{') {
+    if (isPunct(c.peek(), ';')) c.next();
+    else fail(errors, c, 'expected `;` after macro invocation');
+  }
+  return { kind: 'macro_call', path: path.join('::'), delimiter: args.delimiter, args };
+}
+
+function parseExternCrate(c: TreeCursor, errors: RustLexNote[]): ItemBody {
+  c.next(); // extern
+  c.next(); // crate
+  const name = identName(c.peek());
+  if (name === undefined) {
+    fail(errors, c, 'expected a crate name');
+    skipUnknownItem(c);
+    return { kind: 'unknown', keyword: 'extern' };
+  }
+  c.next();
+  let alias: string | null = null;
+  if (isWord(c.peek(), 'as')) {
+    c.next();
+    const aliasName = identName(c.peek());
+    if (aliasName === undefined) {
+      fail(errors, c, 'expected a name after `as`');
+    } else {
+      c.next();
+      alias = aliasName;
+    }
+  }
+  if (isPunct(c.peek(), ';')) c.next();
+  else fail(errors, c, 'expected `;` after extern crate');
+  return { kind: 'extern_crate', name, alias };
+}
+
+/** `extern "ABI" { … }`, or `extern { … }`. `extern "ABI" fn` is a function (see `isFnStart`). */
+function parseExternBlock(c: TreeCursor, errors: RustLexNote[]): ItemBody {
+  c.next(); // extern
+  let abi: string | null = null;
+  const literal = c.peek();
+  if (literal !== undefined && !isTokenGroup(literal) && literal.kind === 'str') {
+    abi = literal.text;
+    c.next();
+  }
+  const block = parseBlock(c, errors);
+  if (!block) return { kind: 'unknown', keyword: 'extern' };
+  return { kind: 'extern_block', abi, innerAttrs: block.innerAttrs, items: block.items };
 }

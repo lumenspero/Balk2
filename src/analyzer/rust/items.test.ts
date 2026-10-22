@@ -125,12 +125,12 @@ describe('rust items: modules', () => {
 
 describe('rust items: unknown forms and spans', () => {
   it('keeps unparsed forms as unknown items without an error', () => {
-    const file = parseRustFile('impl X {}\ntrait T {}\nextern crate foo;\n');
+    const file = parseRustFile('impl X {}\ntrait T {}\ndefault impl Y {}\n');
     expect(file.errors).toEqual([]);
     expect(file.items.map((i) => (i.kind === 'unknown' ? i.keyword : i.kind))).toEqual([
       'impl',
       'trait',
-      'extern',
+      'default',
     ]);
   });
 
