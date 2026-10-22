@@ -83,7 +83,7 @@ export function buildConnectionGraphDetailed(rootDir: string, config?: Balk2Conf
   //    for Cargo and npm targets, and `dependsOn` edges. The Python front end adds its entry points.
   const repositoryPackages = discoverRepositoryPackages(
     files,
-    (filePath) => readRepositoryText(rootDir, filePath),
+    (filePath) => fs.readFileSync(path.join(rootDir, filePath), 'utf8'),
     (filePath) => fs.existsSync(path.join(rootDir, filePath)),
   );
   for (const node of repositoryPackages.packages) graph.addPackage(node);
@@ -205,15 +205,6 @@ function isExcludedDirectory(parentDir: string, name: string, fullPath: string):
   if (name === 'target') return fs.existsSync(path.join(parentDir, 'Cargo.toml'));
   if (name === '.venv' || name === 'venv') return fs.existsSync(path.join(fullPath, 'pyvenv.cfg'));
   return false;
-}
-
-/** A repository file's text, or empty when it cannot be read. */
-function readRepositoryText(rootDir: string, filePath: string): string {
-  try {
-    return fs.readFileSync(path.join(rootDir, filePath), 'utf8');
-  } catch {
-    return '';
-  }
 }
 
 /** Recursively list repository-relative files, sorted, skipping excluded directories and locks. */
