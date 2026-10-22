@@ -200,7 +200,6 @@ export const PARITY_CORPUS: readonly CorpusScenario[] = [
           symbols: ['broken.py:ok'],
           syntaxErrors: ['broken.py'],
         },
-        pending: '3.3',
       },
       rust: {
         files: {

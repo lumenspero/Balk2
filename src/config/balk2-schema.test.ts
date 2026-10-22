@@ -162,3 +162,17 @@ describe('balk2 configuration schema', () => {
     expect(check(config).valid).toBe(false);
   });
 });
+
+describe('python section schema', () => {
+  it('accepts identityDecorators', () => {
+    expect(check({ version: 2, python: { identityDecorators: ['my_cache'] } }).valid).toBe(true);
+  });
+
+  it('accepts roots', () => {
+    expect(check({ version: 2, python: { roots: ['src', '.'] } }).valid).toBe(true);
+  });
+
+  it('rejects an unknown key in the python section', () => {
+    expect(check({ python: { sourceRoots: ['.'] } }).valid).toBe(false);
+  });
+});

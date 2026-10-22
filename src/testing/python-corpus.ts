@@ -171,6 +171,97 @@ export const PYTHON_CORPUS: readonly CorpusScenario[] = [
       },
     },
   },
+  {
+    name: 'self and super calls resolve through the MRO',
+    family: 'inheritance',
+    renditions: {
+      python: {
+        files: {
+          'base.py': 'class Base:\n    def run(self):\n        return 1\n',
+          'mid.py':
+            'from base import Base\n\n\nclass Mid(Base):\n    def run(self):\n        return super().run()\n',
+          'app.py':
+            'from mid import Mid\n\n\nclass App(Mid):\n    def go(self):\n        return self.run()\n',
+        },
+        expect: {
+          relationships: [
+            'extends mid.py:Mid -> base.py:Base',
+            'calls mid.py:Mid.run -> base.py:Base.run',
+            'calls app.py:App.go -> mid.py:Mid.run',
+          ],
+          absent: ['calls app.py:App.go -> base.py:Base.run'],
+        },
+      },
+    },
+  },
+
+  {
+    name: 'a class registered with an ABC implements it',
+    family: 'inheritance',
+    renditions: {
+      python: {
+        files: {
+          'iface.py': 'import abc\n\n\nclass Shape(abc.ABC):\n    pass\n',
+          'impl.py':
+            'from iface import Shape\n\n\nclass Square:\n    pass\n\n\nShape.register(Square)\n',
+        },
+        expect: {
+          relationships: ['implements impl.py:Square -> iface.py:Shape'],
+        },
+      },
+    },
+  },
+
+  {
+    name: 'an import of a namespace package resolves to its module',
+    family: 'modules and imports',
+    renditions: {
+      python: {
+        files: {
+          'lib/helpers/util.py': 'def help():\n    return 1\n',
+          'app.py': 'from lib.helpers.util import help\n\n\ndef main():\n    return help()\n',
+        },
+        expect: {
+          relationships: [
+            'imports app.py -> lib/helpers/util.py',
+            'calls app.py:main -> lib/helpers/util.py:help',
+          ],
+        },
+      },
+    },
+  },
+
+  {
+    name: 'a local name shadows a module function, so the call is not connected (negative)',
+    family: 'shadowing',
+    renditions: {
+      python: {
+        files: {
+          'shadow.py':
+            'def helper():\n    return 1\n\n\ndef run():\n    helper = lambda: 2\n    return helper()\n',
+        },
+        expect: {
+          absent: ['calls shadow.py:run -> shadow.py:helper'],
+        },
+      },
+    },
+  },
+
+  {
+    name: 'a module global written through global is a module-level symbol',
+    family: 'module-level state (D8)',
+    renditions: {
+      python: {
+        files: {
+          'state.py':
+            'counter = 0\n\n\ndef bump():\n    global counter\n    counter = counter + 1\n    return counter\n',
+        },
+        expect: {
+          symbols: ['state.py:counter', 'state.py:bump'],
+        },
+      },
+    },
+  },
 ];
 
 assertUniqueNames(PYTHON_CORPUS);

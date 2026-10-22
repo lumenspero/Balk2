@@ -30,7 +30,13 @@ export function addDataLiteralsOnLine(
   for (const { value, index } of literals) {
     if (isDataPathLiteral(value) && !isNonAccessBefore(trimmed.slice(0, index))) {
       const direction = inferDataDirection(trimmed);
-      addDataRelationship(filePath, value, direction.type, graph, direction.certain ? 'high' : 'low');
+      addDataRelationship(
+        filePath,
+        value,
+        direction.type,
+        graph,
+        direction.certain ? 'high' : 'low',
+      );
     }
   }
 }

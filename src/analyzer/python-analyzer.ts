@@ -30,9 +30,7 @@ export class PythonAnalyzer implements Analyzer {
     options?: AnalyzerOptions,
   ): void {
     const normalizedPath = normalizePath(filePath);
-    const knownFiles = new Set(
-      options?.knownFiles ? toSet(options.knownFiles) : [],
-    );
+    const knownFiles = new Set(options?.knownFiles ? toSet(options.knownFiles) : []);
     knownFiles.add(normalizedPath);
     const rootDir = options?.rootDir;
     const readText = (p: string): string =>

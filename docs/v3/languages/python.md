@@ -60,8 +60,10 @@ to the callee:
 
 Identity decorators are those that return their argument unchanged: `property`, `staticmethod`,
 `classmethod`, `functools.wraps`, `functools.cache`, `functools.lru_cache`, `dataclasses.dataclass`,
-and `contextlib.contextmanager`. A configured identity list is accepted by the analysis, and is not
-yet read from `.balk2.json`.
+and `contextlib.contextmanager`. Further identity decorators can be listed in `.balk2.json`, under
+`python.identityDecorators`, as the names they are written with.
+
+Import roots can be set under `python.roots`, in precedence order, as repository-relative paths. Without it, the repository root is the only root. Manifest roots and the `src/` layout (Phase 4.2) are not yet read.
 
 ### References
 
@@ -107,7 +109,7 @@ These are not yet produced by the fact passes. They keep their V2 behavior until
 
 ## Limits
 
-- `del` is flow-insensitive. A name deleted in one branch still counts as bound.
+- `del` is straight-line only. A `del` that runs directly in a module, class or function body unbinds the name for later uses in that body, until it is bound again. A `del` in a branch or loop, and uses in nested functions, leave the name bound.
 - `except E as name` does not unbind `name` after the handler.
 - An annotation without a value counts as a local binding.
 - A class defined inside a function is not resolved by name from outside that function.
@@ -123,8 +125,8 @@ These are not yet produced by the fact passes. They keep their V2 behavior until
   unchanged.
 - Type inference stops at the local-type rules. There is no flow narrowing, no generic inference, and
   no type checker run at generate time.
-- Syntax errors are recovered from, so the rest of the file is analyzed. Syntax diagnostics are not
-  yet reported to the connection map. This is tracked by the Phase 3.3 corpus scenario.
+- A syntax error is reported as a syntax diagnostic at its line and column, and the parser recovers
+  past it, so the rest of the file is still analyzed.
 - `PythonAnalyzer.analyzeFile` analyzes one file. Facts that depend on another file's contents are
   missing unless that file is passed in or readable under `rootDir`. Use `PythonFrontEnd` for a
   repository. `PythonAnalyzer` is deprecated.

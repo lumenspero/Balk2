@@ -1,3 +1,4 @@
+import { normalizePythonConfig, type PythonConfig } from './python-config.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { Annotation } from '../analyzer/annotations.js';
@@ -54,6 +55,8 @@ export interface Balk2Config {
   readonly state?: StateConfig;
   /** Project decisions that set the confidence of existing relationships */
   readonly annotations?: readonly Annotation[];
+  /** Python analysis configuration */
+  readonly python?: PythonConfig;
 }
 
 /** The loaded configuration plus everything in the file that was ignored or unusable. */
@@ -119,6 +122,7 @@ export function loadBalk2ConfigDetailed(
   delete config.protocols;
   delete config.state;
   delete config.annotations;
+  delete config.python;
 
   if ('globals' in raw) {
     problems.push(...validateGlobalsConfig(raw.globals));
@@ -141,6 +145,11 @@ export function loadBalk2ConfigDetailed(
   if ('annotations' in raw) {
     const annotations = normalizeAnnotations(raw.annotations, problems);
     if (annotations) config.annotations = annotations;
+  }
+
+  if ('python' in raw) {
+    const python = normalizePythonConfig(raw.python, problems);
+    if (python) config.python = python;
   }
 
   if ('data' in raw) {

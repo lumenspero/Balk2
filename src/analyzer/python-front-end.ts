@@ -19,12 +19,14 @@ import type {
 import { addPythonMechanisms } from './python-mechanisms.js';
 import { collectPythonSourceAnnotations } from './python-source-apply.js';
 import { analyzePythonCalls } from './python/calls.js';
+import { parseModuleRecovering } from './python/statement-parser.js';
 import { createImportResolver } from './python/modules/import-resolution.js';
 import { ModuleIndex } from './python/modules/module-index.js';
 import { createSymbolResolver } from './python/modules/module-exports.js';
 import { analyzeInheritance, toSourceSpan, type InheritanceFile } from './python/inheritance.js';
 import { analyzePythonReferences } from './python/references.js';
 import { analyzePythonSymbols } from './python/symbols.js';
+import type { SyntaxErrorNote } from './repository-program.js';
 
 function isPythonPath(filePath: string): boolean {
   return normalizePath(filePath).toLowerCase().endsWith('.py');
@@ -35,17 +37,27 @@ function isPythonPath(filePath: string): boolean {
  * analyze. `knownFiles` are every repository file, which module resolution searches. `readText`
  * returns the text of any Python file, so an import can be resolved against its exports.
  */
+/** Options for one pass over Python sources. */
+export interface PythonSourceOptions {
+  /** Import roots, repository-relative, in precedence order. Defaults to the repository root. */
+  readonly roots?: readonly string[];
+  /** Decorators that return their argument unchanged, from `python.identityDecorators`. */
+  readonly identityDecorators?: readonly string[];
+}
+
 export function analyzePythonSources(
   sources: readonly InheritanceFile[],
   knownFiles: ReadonlySet<string>,
   readText: (filePath: string) => string,
   graph: ConnectionGraph,
+  options: PythonSourceOptions = {},
 ): void {
   const modules = [...new Set([...knownFiles, ...sources.map((s) => s.filePath)])].filter(
     isPythonPath,
   );
   const index = new ModuleIndex(modules);
-  const imports = createImportResolver(index, { roots: ['.'], readText });
+  const roots = options.roots?.length ? options.roots : ['.'];
+  const imports = createImportResolver(index, { roots, readText });
   const symbols = createSymbolResolver({ resolver: imports, readText });
   const ctx = { symbols, imports };
 
@@ -90,7 +102,9 @@ export function analyzePythonSources(
   }
 
   // Calls. The owner is the enclosing function or method, or the file for module-level code.
-  for (const c of analyzePythonCalls(sources, ctx).calls) {
+  for (const c of analyzePythonCalls(sources, ctx, {
+    identityDecorators: options.identityDecorators,
+  }).calls) {
     if (c.callee.kind !== 'symbol') continue;
     graph.addRelationship('calls', c.owner ?? c.filePath, c.callee.id, c.confidence, {
       evidence: 'ast',
@@ -125,6 +139,7 @@ export class PythonFrontEnd implements LanguageFrontEnd {
   analyze(input: FrontEndInput, graph: ConnectionGraph): FrontEndResult {
     const sourceTexts: Record<string, string> = {};
     const files: InheritanceFile[] = [];
+    const syntaxErrors: SyntaxErrorNote[] = [];
     for (const relFile of input.files) {
       const filePath = normalizePath(relFile);
       if (!this.canHandle(filePath)) continue;
@@ -132,6 +147,10 @@ export class PythonFrontEnd implements LanguageFrontEnd {
         const source = fs.readFileSync(path.join(input.rootDir, relFile), 'utf8');
         sourceTexts[filePath] = source;
         files.push({ filePath, source });
+        // The parser recovers past each error, so every file is still analyzed (3.3).
+        for (const e of parseModuleRecovering(source).errors) {
+          syntaxErrors.push({ path: filePath, line: e.line, column: e.column, message: e.message });
+        }
       } catch {
         // Skip unreadable files, as the former per-file loop did.
       }
@@ -142,11 +161,15 @@ export class PythonFrontEnd implements LanguageFrontEnd {
       new Set(input.files.map(normalizePath)),
       (p) => sourceTexts[p] ?? '',
       graph,
+      {
+        roots: input.config?.python?.roots,
+        identityDecorators: input.config?.python?.identityDecorators,
+      },
     );
 
     return {
       problems: [],
-      syntaxErrors: [],
+      syntaxErrors,
       sourceAnnotations: collectPythonSourceAnnotations(sourceTexts, []),
     };
   }

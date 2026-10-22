@@ -8,13 +8,14 @@ each new edge to be covered by a corpus fixture or a unit test.
 
 The baseline is `test/snapshots/python-baseline.txt`, generated from `test/fixtures/python-baseline`.
 
-| Change | Kind | Justification |
-| --- | --- | --- |
-| `broken.py:broken` symbol removed | Removed, false positive | `broken.py` contains `def broken(:`, which is not valid Python. The line-based analyzer declared it anyway. The recovering parser skips the broken statement, so no declaration is produced from it. |
-| `broken.py -> broken.py:broken [exports]` removed | Removed, false positive | Follows from the symbol removal above. |
-| `calls app.py:main -> pipeline/models.py:User.save` added | New, correct | `User().save()` is a method call on a receiver whose type is the constructor's class (5.4c). |
-| `calls pipeline/models.py:User.save -> pipeline/util.py:Base.describe` added | New, correct | `self.describe()` inside `User.save` resolves through the MRO of `User`, whose base is `Base` (5.3, 5.4b). |
-| `references pipeline/models.py -> pipeline/util.py:Base` added | New, correct | The base class of `User` is named at module level (5.6). |
+| Change                                                                       | Kind                    | Justification                                                                                                                                                                                        |
+| ---------------------------------------------------------------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `broken.py:broken` symbol removed                                            | Removed, false positive | `broken.py` contains `def broken(:`, which is not valid Python. The line-based analyzer declared it anyway. The recovering parser skips the broken statement, so no declaration is produced from it. |
+| `# syntax`: `broken.py:1:11` and `broken.py:1:12` reported                   | New, correct            | The parser reports the syntax error in `def broken(:` at its line and column (3.3). V2 reported no syntax errors.                                                                                    |
+| `broken.py -> broken.py:broken [exports]` removed                            | Removed, false positive | Follows from the symbol removal above.                                                                                                                                                               |
+| `calls app.py:main -> pipeline/models.py:User.save` added                    | New, correct            | `User().save()` is a method call on a receiver whose type is the constructor's class (5.4c).                                                                                                         |
+| `calls pipeline/models.py:User.save -> pipeline/util.py:Base.describe` added | New, correct            | `self.describe()` inside `User.save` resolves through the MRO of `User`, whose base is `Base` (5.3, 5.4b).                                                                                           |
+| `references pipeline/models.py -> pipeline/util.py:Base` added               | New, correct            | The base class of `User` is named at module level (5.6).                                                                                                                                             |
 
 Every other baseline edge is unchanged, including `app.py:main -> pipeline/models.py:User`,
 `pipeline/models.py:User -> pipeline/util.py:Base` (`extends`), and the `helper` calls.
@@ -46,6 +47,14 @@ in `src/analyzer/python`.
 - **Conditional imports.** A name imported in several branches calls each target, at medium confidence.
 - **Decorators.** Applying a repository decorator emits a `calls` edge with `mechanism: 'decorator'`.
   A call to a function with a non-identity decorator is at most medium confidence (5.5).
+- **Straight-line `del`.** A `del` that runs directly in a module, class or function body unbinds
+  the name for later uses in that body, until it is bound again. Before, a name stayed bound after
+  `del`. A `del` in a branch or loop, and uses in nested functions, still leave the name bound.
+- **Configuration.** `python.identityDecorators` adds to the identity-decorator list, and
+  `python.roots` sets the import roots in precedence order. Without `python.roots`, the repository
+  root is the only root.
+- **Import roots not yet read.** Manifest roots and the `src/` layout (Phase 4.2) are deferred. The
+  repository root is the only default root.
 
 ## Still on the legacy path
 

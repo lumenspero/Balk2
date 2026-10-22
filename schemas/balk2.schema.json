@@ -40,6 +40,9 @@
     "state": {
       "$ref": "#/$defs/state"
     },
+    "python": {
+      "$ref": "#/$defs/python"
+    },
     "annotations": {
       "type": "array",
       "items": {
@@ -48,6 +51,20 @@
     }
   },
   "$defs": {
+    "python": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "identityDecorators": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "roots": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        }
+      }
+    },
     "nonEmptyString": {
       "type": "string",
       "minLength": 1

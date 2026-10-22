@@ -161,6 +161,16 @@ Applied to every language and every mechanism family.
 | Synthetic repository, 1,000 files, about 150k lines, per language | Scan completes within a runtime budget, recorded in the CI report on the CI runner. The budget is set as 1.5× the first measured run, then held. |
 | Repository with `target/`, `.venv` or `node_modules`              | Scan time within 10% of the same repository without those directories                                                                            |
 
+### Python performance baseline
+
+Measured with `BALK2_PERF=1 npx vitest run src/analyzer/python-perf.test.ts` (`src/analyzer/python-perf.test.ts`), which generates 1,000 Python files and times one full `buildConnectionGraphDetailed` run.
+
+| Run                            | Files | Lines   | Time      | Nodes  | Relationships | Budget (1.5×) |
+| ------------------------------ | ----- | ------- | --------- | ------ | ------------- | ------------- |
+| First run, Windows dev machine | 1,000 | 133,000 | 12,445 ms | 36,000 | 56,000        | 18,670 ms     |
+
+This local run sets the provisional budget. The contract records the budget from the CI runner, so the CI figure replaces this one when it is available. The generated repository has 133,000 lines against the target of about 150,000; the budget applies to the generated size shown here.
+
 ## Change Control
 
 - Changes to a Not applicable cell in `language-parity.md` require a reason and a reviewer.

@@ -150,6 +150,48 @@ describe('python scopes: global and nonlocal', () => {
   });
 });
 
+describe('python scopes: straight-line del', () => {
+  it('leaves a module name unbound after a del at module level', () => {
+    expect(resolved('x = 1\ndel x\nprint(x)\n', 'x')).toEqual(['<module>', 'unresolved:undefined']);
+  });
+
+  it('leaves a function local unbound after a del in the function', () => {
+    expect(resolved('def f():\n    x = 1\n    del x\n    return x\n', 'x')).toEqual([
+      'f',
+      'unresolved:undefined',
+    ]);
+  });
+
+  it('falls back to a built-in after a del of a shadowing module name', () => {
+    expect(resolved("print = 1\ndel print\nprint('a')\n", 'print')).toEqual([
+      '<module>',
+      'builtin:print',
+    ]);
+  });
+
+  it('falls back to the module name inside a class body after a del of a class name', () => {
+    expect(resolved('x = 1\nclass C:\n    x = 2\n    del x\n    y = x\n', 'x')).toEqual([
+      'C',
+      '<module>',
+    ]);
+  });
+
+  it('keeps the name bound after a del in a branch (negative)', () => {
+    expect(resolved('x = 1\nif c:\n    del x\nprint(x)\n', 'x')).toEqual(['<module>', '<module>']);
+  });
+
+  it('keeps the name bound when it is assigned again after the del', () => {
+    expect(resolved('x = 1\ndel x\nx = 2\nprint(x)\n', 'x')).toEqual(['<module>', '<module>']);
+  });
+
+  it('keeps the module name bound in a nested function, which runs later (negative)', () => {
+    expect(resolved('x = 1\ndel x\ndef g():\n    return x\n', 'x')).toEqual([
+      '<module>',
+      '<module>',
+    ]);
+  });
+});
+
 describe('python scopes: deletion and star imports', () => {
   it('makes a name deleted in a function local to that function', () => {
     const src = 'x = 1\ndef f():\n    del x\n';

@@ -13,8 +13,9 @@
  * - Only code that runs directly in a class body sees the class's names. Methods, nested functions
  *   and comprehensions skip the class scope.
  * - A conditional or repeated definition adds one binding per definition site (the union).
- * - `del x` declares `x` local and records a `delete` binding. Lookups are not flow-sensitive, so
- *   the name stays bound after `del` in this model.
+ * - `del x` declares `x` local and records a `delete` binding. A `del` that runs directly in a
+ *   module, class or function body unbinds `x` for the later uses in that same body, until `x` is
+ *   bound again there. A `del` inside a branch or loop, and uses in nested scopes, do not unbind.
  * - Default values, decorators, base classes and the first iterable of a comprehension run in the
  *   enclosing scope. Annotations run in the type-parameter scope when the definition has one.
  * - A walrus target inside a comprehension binds in the nearest enclosing non-comprehension scope.
@@ -148,11 +149,19 @@ interface PendingUse {
   readonly access: 'load' | 'delete';
 }
 
+/** A `del` of a name that runs directly in a scope body, so it applies to the statements after it. */
+interface Kill {
+  readonly name: string;
+  readonly span: Span;
+  readonly scope: number;
+}
+
 /** Collects scopes, bindings and name uses in one walk. Resolution happens afterwards. */
 class Builder {
   readonly scopes: Scope[] = [];
   readonly binds: PendingBind[] = [];
   readonly uses: PendingUse[] = [];
+  readonly kills: Kill[] = [];
   readonly nonlocalDecls: { readonly scope: number; readonly name: string; readonly span: Span }[] =
     [];
   readonly problems: ScopeProblem[] = [];
@@ -202,6 +211,19 @@ class Walker {
 
   walkBody(body: readonly Stmt[], s: number): void {
     for (const st of body) this.stmt(st, s);
+  }
+
+  /** Walks the statements that run directly in a scope body, where a `del` unbinds for what follows. */
+  walkScope(body: readonly Stmt[], s: number): void {
+    for (const st of body) {
+      this.stmt(st, s);
+      if (st.kind === 'delete') for (const t of st.targets) this.kill(t, s);
+    }
+  }
+
+  private kill(e: Expr, s: number): void {
+    if (e.kind === 'name') this.b.kills.push({ name: e.id, span: e.span, scope: s });
+    else if (e.kind === 'tuple' || e.kind === 'list') for (const el of e.elements) this.kill(el, s);
   }
 
   private stmt(st: Stmt, s: number): void {
@@ -333,7 +355,7 @@ class Walker {
     this.b.bind(s, st.name, 'def', st.span);
     const f = this.b.scope('function', this.label(s, st.name), tp, st.span);
     this.bindParams(st.params, f);
-    this.walkBody(st.body, f);
+    this.walkScope(st.body, f);
   }
 
   private classdef(st: Extract<Stmt, { kind: 'classdef' }>, s: number): void {
@@ -342,7 +364,7 @@ class Walker {
     for (const base of st.bases) this.expr(base.value, tp);
     this.b.bind(s, st.name, 'class', st.span);
     const c = this.b.scope('class', this.label(s, st.name), tp, st.span);
-    this.walkBody(st.body, c);
+    this.walkScope(st.body, c);
   }
 
   private typeScope(params: readonly TypeParam[], parent: number, span: Span): number {
@@ -617,6 +639,11 @@ function resolve(scopes: readonly Scope[], name: string, from: number): Resoluti
     }
     current = current.parent === null ? undefined : scopeAt(scopes, current.parent);
   }
+  return fallback(scopes, name);
+}
+
+/** The names outside every scope: implicit module names, then a star import, then built-ins. */
+function fallback(scopes: readonly Scope[], name: string): Resolution {
   if (IMPLICIT_MODULE_NAMES.has(name)) return { kind: 'implicit', name };
   // A star import can supply any name, including built-ins, so it is checked first.
   if (scopeAt(scopes, MODULE).hasStarImport) return { kind: 'unresolved', reason: 'star-import' };
@@ -624,11 +651,53 @@ function resolve(scopes: readonly Scope[], name: string, from: number): Resoluti
   return { kind: 'unresolved', reason: 'undefined' };
 }
 
+/** True when (aLine, aCol) is at or before (bLine, bCol). */
+function atOrBefore(aLine: number, aCol: number, bLine: number, bCol: number): boolean {
+  return aLine < bLine || (aLine === bLine && aCol <= bCol);
+}
+
+/**
+ * True when a straight-line `del` of the name in the use's own scope runs before the use, and the
+ * name is not bound again in between. Uses in nested scopes are not affected.
+ */
+function killedBefore(scopes: readonly Scope[], kills: readonly Kill[], u: PendingUse): boolean {
+  const scope = scopeAt(scopes, u.scope);
+  if (scope.globals.has(u.name) || scope.nonlocals.has(u.name)) return false;
+  let last: Kill | undefined;
+  for (const k of kills) {
+    if (k.scope !== u.scope || k.name !== u.name) continue;
+    if (!atOrBefore(k.span.endLine, k.span.endColumn, u.span.line, u.span.column)) continue;
+    if (
+      last === undefined ||
+      atOrBefore(last.span.endLine, last.span.endColumn, k.span.line, k.span.column)
+    ) {
+      last = k;
+    }
+  }
+  if (last === undefined) return false;
+  const killed: Kill = last;
+  const reboundBetween = (bd: Binding): boolean =>
+    atOrBefore(killed.span.endLine, killed.span.endColumn, bd.span.line, bd.span.column) &&
+    !atOrBefore(u.span.line, u.span.column, bd.span.line, bd.span.column);
+  return !(scope.bindings.get(u.name) ?? []).some(reboundBetween);
+}
+
+/**
+ * The resolution of a use after an unbinding `del`. A function's local is unbound. A class body or
+ * the module falls back to the module's names, then built-ins.
+ */
+function afterDelete(scopes: readonly Scope[], name: string, s: number): Resolution {
+  const kind = scopeAt(scopes, s).kind;
+  if (kind === 'class') return resolve(scopes, name, MODULE);
+  if (kind === 'module') return fallback(scopes, name);
+  return { kind: 'unresolved', reason: 'undefined' };
+}
+
 /** Analyzes the scopes of one parsed Python module. Never throws on a well-formed AST. */
 export function analyzeScopes(body: readonly Stmt[]): ScopeAnalysis {
   const walker = new Walker();
   const module = walker.b.scope('module', '<module>', null, null);
-  walker.walkBody(body, module);
+  walker.walkScope(body, module);
   return finish(walker.b);
 }
 
@@ -663,7 +732,9 @@ function finish(b: Builder): ScopeAnalysis {
     span: u.span,
     scope: u.scope,
     access: u.access,
-    resolution: resolve(scopes, u.name, u.scope),
+    resolution: killedBefore(scopes, b.kills, u)
+      ? afterDelete(scopes, u.name, u.scope)
+      : resolve(scopes, u.name, u.scope),
   }));
   return { scopes, uses, problems: b.problems };
 }
