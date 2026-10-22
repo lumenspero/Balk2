@@ -1,0 +1,10 @@
+{
+  "name": "acme-cli",
+  "version": "0.1.0",
+  "bin": {
+    "acme": "./bin/acme.js"
+  },
+  "peerDependencies": {
+    "@acme/core": "1.x"
+  }
+}

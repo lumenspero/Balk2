@@ -1,33 +1,8 @@
 import type { CargoWorkspaceSection } from './manifest.js';
 import { joinRepoPath } from './manifest.js';
+import { globToRegExp } from '../../../packages/glob.js';
 
-/**
- * Converts a Cargo member glob into a regular expression over repository paths. `*` and `?` stay
- * within one path segment, and `**` spans any number of segments.
- */
-export function globToRegExp(glob: string): RegExp {
-  let source = '';
-  let index = 0;
-  while (index < glob.length) {
-    if (glob.startsWith('**/', index)) {
-      source += '(?:.*/)?';
-      index += 3;
-    } else if (glob.startsWith('**', index)) {
-      source += '.*';
-      index += 2;
-    } else if (glob[index] === '*') {
-      source += '[^/]*';
-      index += 1;
-    } else if (glob[index] === '?') {
-      source += '[^/]';
-      index += 1;
-    } else {
-      source += escapeRegExp(glob[index] ?? '');
-      index += 1;
-    }
-  }
-  return new RegExp(`^${source}$`);
-}
+export { globToRegExp };
 
 /**
  * The member patterns of a workspace root that match no package directory, as written (Phase 7.4).
@@ -65,8 +40,4 @@ export function workspaceMemberDirs(
     }
   }
   return members;
-}
-
-function escapeRegExp(char: string): string {
-  return char.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

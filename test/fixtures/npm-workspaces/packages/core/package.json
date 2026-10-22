@@ -1,0 +1,13 @@
+{
+  "name": "@acme/core",
+  "version": "1.2.0",
+  "main": "dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./utils": "./src/utils.js"
+  }
+}

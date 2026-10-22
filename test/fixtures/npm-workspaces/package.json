@@ -1,0 +1,11 @@
+{
+  "name": "monorepo-root",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "tools/cli"
+  ],
+  "devDependencies": {
+    "@acme/core": "^1.2.0"
+  }
+}
