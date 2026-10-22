@@ -324,3 +324,50 @@ describe('discoverPythonPackages: dependsOn', () => {
     ]);
   });
 });
+
+describe('discoverPythonPackages: uv workspace membership', () => {
+  const root = '[tool.uv.workspace]\nmembers = ["packages/*"]\nexclude = ["packages/skip"]\n';
+  const project = (name: string, extra = ''): string =>
+    `[project]\nname = "${name}"\nversion = "1.0.0"\n${extra}`;
+  const linked = '[tool.uv.sources]\nb = { workspace = true }\n';
+
+  it('keeps a workspace dependency on a member', () => {
+    const result = discover({
+      'pyproject.toml': root,
+      'packages/a/pyproject.toml': project('a', 'dependencies = ["b"]\n' + linked),
+      'packages/b/pyproject.toml': project('b'),
+    });
+    expect(result.problems).toEqual([]);
+    expect(result.dependencies.map((d) => [d.from, d.to])).toEqual([
+      ['package:python:packages/a', 'package:python:packages/b'],
+    ]);
+  });
+
+  it('drops a workspace dependency on an excluded project, and reports it', () => {
+    const result = discover({
+      'pyproject.toml': root,
+      'packages/a/pyproject.toml': project(
+        'a',
+        'dependencies = ["skip"]\n[tool.uv.sources]\nskip = { workspace = true }\n',
+      ),
+      'packages/skip/pyproject.toml': project('skip'),
+    });
+    expect(result.dependencies).toEqual([]);
+    expect(result.problems).toEqual([
+      {
+        path: 'packages/a/pyproject.toml',
+        message:
+          'workspace dependency "skip" is not a member of the uv workspace declared in pyproject.toml',
+      },
+    ]);
+  });
+
+  it('keeps a workspace dependency when no uv workspace encloses the project', () => {
+    const result = discover({
+      'packages/a/pyproject.toml': project('a', 'dependencies = ["b"]\n' + linked),
+      'packages/b/pyproject.toml': project('b'),
+    });
+    expect(result.problems).toEqual([]);
+    expect(result.dependencies).toHaveLength(1);
+  });
+});

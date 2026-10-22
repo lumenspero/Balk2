@@ -72,5 +72,6 @@ These come from the manifests in `pyproject.toml` projects. Each is new output. 
 - **Package nodes.** Each project is a `lib` package node. Each `[project.scripts]` entry is a `script` node.
 - **`packageRoot`.** A script node points at the module it runs, when the module resolves.
 - **`dependsOn`.** A path or uv workspace dependency on another project in the repository. Its `kind` is kept in metadata.
+- **uv workspace membership.** A `workspace = true` source to a project outside the enclosing workspace's `members`, or inside its `exclude`, draws no edge and reports a `manifest` problem. Removed edge: uv rejects such a source, so the edge described a dependency uv does not accept. A project with no enclosing uv workspace is unchanged.
 - **`registers`.** An entry point in a `[project.entry-points."group"]` table points from its `registry:entry-points:<group>#<name>` key to its target symbol or file.
 - **Baseline.** `python-baseline` has no manifest, so `python-baseline.txt` is unchanged.

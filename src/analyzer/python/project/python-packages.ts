@@ -1,4 +1,5 @@
 import { parse as parseToml } from 'smol-toml';
+import { globToRegExp } from '../../../packages/glob.js';
 import { normalizePath } from '../../../path-utils.js';
 import type { PackageNode } from '../../../types.js';
 import { dirOf, joinRepoPath } from './paths.js';
@@ -78,6 +79,14 @@ interface ManifestFacts {
   readonly dependencies: readonly DeclaredDependency[];
 }
 
+/** A uv workspace root: the globs its `members` select, and the `exclude` globs (V3 Phase 4.1). */
+interface UvWorkspace {
+  readonly dir: string;
+  readonly manifest: string;
+  readonly members: readonly string[];
+  readonly exclude: readonly string[];
+}
+
 type Table = Record<string, unknown>;
 
 /**
@@ -125,10 +134,11 @@ export function discoverPythonPackages(
     manifest: string;
     dependencies: readonly DeclaredDependency[];
   }> = [];
+  const uvWorkspaces = new Map<string, UvWorkspace>();
   for (const dir of [...groups.keys()].sort()) {
     const group = groups.get(dir);
     if (!group) continue;
-    const facts = readGroup(dir, group, readText, problems);
+    const facts = readGroup(dir, group, readText, problems, uvWorkspaces);
     if (!facts) continue;
 
     const manifest = group.pyproject ?? group.setupCfg ?? group.setupPy ?? dir;
@@ -181,7 +191,7 @@ export function discoverPythonPackages(
     }
   }
 
-  const dependencies = resolveDependencies(packages, declared, problems);
+  const dependencies = resolveDependencies(packages, declared, uvWorkspaces, problems);
   packages.sort((a, b) => compare(a.id, b.id));
   entryPoints.sort(
     (a, b) =>
@@ -202,6 +212,7 @@ function resolveDependencies(
     manifest: string;
     dependencies: readonly DeclaredDependency[];
   }>,
+  uvWorkspaces: ReadonlyMap<string, UvWorkspace>,
   problems: ManifestProblem[],
 ): PythonPackageDependency[] {
   const libByDir = new Map<string, string>();
@@ -239,6 +250,18 @@ function resolveDependencies(
           continue;
         }
       }
+      if (dependency.path === undefined) {
+        // A `workspace = true` source must name a member of the uv workspace that encloses it.
+        const workspace = enclosingUvWorkspace(source.dir, uvWorkspaces);
+        const targetDir = to.slice('package:python:'.length);
+        if (workspace !== undefined && !isUvMember(workspace, targetDir)) {
+          problems.push({
+            path: source.manifest,
+            message: `workspace dependency "${dependency.name}" is not a member of the uv workspace declared in ${workspace.manifest}`,
+          });
+          continue;
+        }
+      }
       if (to === source.id) continue;
       const key = `${source.id}\u0000${to}\u0000${dependency.kind}\u0000${dependency.name}`;
       edges.set(key, {
@@ -264,6 +287,7 @@ function readGroup(
   group: { pyproject?: string; setupCfg?: string; setupPy?: string },
   readText: (path: string) => string,
   problems: ManifestProblem[],
+  uvWorkspaces: Map<string, UvWorkspace>,
 ): ManifestFacts | undefined {
   let pyproject: ManifestFacts | undefined;
   let setupCfg: ManifestFacts | undefined;
@@ -273,6 +297,8 @@ function readGroup(
     try {
       const doc = parseToml(readText(group.pyproject)) as Table;
       pyproject = pyprojectFacts(dir, doc);
+      const workspace = parseUvWorkspace(dir, group.pyproject, doc);
+      if (workspace !== undefined) uvWorkspaces.set(dir, workspace);
     } catch (error) {
       problems.push({ path: group.pyproject, message: `cannot parse: ${describe(error)}` });
       return undefined;
@@ -557,4 +583,47 @@ function compare(a: string, b: string): number {
 
 function describe(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** The `[tool.uv.workspace]` table of a pyproject, when it has one. */
+function parseUvWorkspace(dir: string, manifest: string, doc: Table): UvWorkspace | undefined {
+  const workspace = table(dig(doc, 'tool', 'uv', 'workspace'));
+  if (workspace === undefined) return undefined;
+  return {
+    dir,
+    manifest,
+    members: stringItems(workspace.members),
+    exclude: stringItems(workspace.exclude),
+  };
+}
+
+/** The nearest uv workspace root at or above `dir`. That root decides who may be a member. */
+function enclosingUvWorkspace(
+  dir: string,
+  workspaces: ReadonlyMap<string, UvWorkspace>,
+): UvWorkspace | undefined {
+  let current = dir;
+  for (;;) {
+    const found = workspaces.get(current);
+    if (found !== undefined) return found;
+    const parent = dirOf(current);
+    if (parent === current) return undefined;
+    current = parent;
+  }
+}
+
+/** Whether a project directory is the workspace root or matches a `members` glob and no `exclude`. */
+function isUvMember(workspace: UvWorkspace, dir: string): boolean {
+  if (dir === workspace.dir) return true;
+  const matches = (globs: readonly string[]): boolean =>
+    globs.some((glob) =>
+      globToRegExp(joinRepoPath(workspace.dir, glob.replace(/\/+$/, ''))).test(dir),
+    );
+  return matches(workspace.members) && !matches(workspace.exclude);
+}
+
+function stringItems(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : [];
 }

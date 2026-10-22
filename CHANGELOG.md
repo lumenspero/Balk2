@@ -5,6 +5,7 @@
 - **Package nodes.** Every named `package.json`, every Cargo target and every `pyproject.toml` project is a `package` node in `connection-map.json`. A repository whose `package.json` files are in `include` gains these nodes, a `packageRoot` edge from each package to its entry files, and `dependsOn` edges between workspace packages. A `dependsOn` edge comes from an npm `workspace:` spec, or from a version range that the workspace package's version satisfies. Only the manifests in `include` are read, and an entry that points into an excluded directory such as `dist/` is neither a root nor a problem.
 - **Repeated dependencies.** When a package declares the same dependency more than once, the map keeps the most production-relevant kind (normal, build, peer, optional, then dev). A `cfg` or `implicit` flag is kept only when every such declaration has it.
 - **Entry points.** A Python `[project.scripts]` entry gets a `packageRoot` edge to its module. An entry point in a group gets a `registers` edge from a `registry:entry-points:<group>#<name>` key to its target.
+- **uv workspace membership.** A `workspace = true` source must name a member of the enclosing `[tool.uv.workspace]`. A source to a project outside `members`, or inside `exclude`, draws no `dependsOn` edge and is reported as a `manifest` diagnostic.
 - **Manifest diagnostics.** A manifest that cannot be read or parsed, a workspace glob that matches no package, a missing entry file and an unresolved entry point appear as `manifest` diagnostics in `generate` and `check`.
 
 ## 2.0.1
