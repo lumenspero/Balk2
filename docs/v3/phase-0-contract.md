@@ -183,3 +183,13 @@ This local run sets the provisional budget. The contract records the budget from
 - `docs/v3/language-parity.md`, `docs/v3/connection-map-schema.md` and the corpora are committed.
 - The Python baseline snapshot is committed and passes on Linux and Windows.
 - The existing V2 test suite is green on the baseline commit.
+
+## Phase 9.1 output change (Rust symbols)
+
+- The Rust front end (`src/analyzer/rust/front-end.ts`) is registered in step 3 of the build. It writes one symbol per named Rust item, as the Python front end does. This is the first Rust output beyond module files, so every Rust repository's map gains symbol nodes.
+- Symbol types: `function`, `method`, `constant`, `variable`, `type`, `struct` (also unions), `enum`, `trait`, `module` (inline `mod x { }`), `macro` (`macro_rules!`). No new `SymbolType` values were needed.
+- Names follow the naming table: `Type.method`, `Type[Trait].method`, `module::item`, `name!` for macros. A second name in one scope and namespace gets `#n` by source order. Same-namespace cfg twins share an id.
+- Namespaces (`type`, `value`, `macro`) are kept per scope in `src/analyzer/rust/names/namespaces.ts`. A tuple or unit struct occupies both `type` and `value`.
+- `exported` is always `false` in 9.1. Exports come in 9.4.
+- Not in 9.1: `use` edges (9.3), calls and references (9.6, 9.7), associated consts and types, items inside function bodies or macros (Phase 10).
+- Rust syntax problems from the parser are now reported as `syntax` diagnostics.

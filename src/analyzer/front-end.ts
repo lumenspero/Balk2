@@ -5,8 +5,8 @@ import type { ConfigProblem } from '../config/config-problem.js';
 import type { Annotation, AnnotationProblem } from './annotations.js';
 import type { SyntaxErrorNote } from './repository-program.js';
 
-/** Languages a front end can analyze. Rust joins in Phase 6. */
-export type FrontEndLanguage = 'javascript' | 'typescript' | 'python';
+/** Languages a front end can analyze. */
+export type FrontEndLanguage = 'javascript' | 'typescript' | 'python' | 'rust';
 
 export interface FrontEndInput {
   /** Absolute repository root. */

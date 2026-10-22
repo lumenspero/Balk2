@@ -5,6 +5,7 @@ import { applyAnnotations, type Annotation } from '../analyzer/annotations.js';
 import type { FrontEndInput, FrontEndSourceAnnotations } from '../analyzer/front-end.js';
 import { JsTsFrontEnd } from '../analyzer/js-ts-front-end.js';
 import { PythonFrontEnd } from '../analyzer/python-front-end.js';
+import { RustFrontEnd } from '../analyzer/rust/front-end.js';
 import { registerDataArtifacts } from '../data/formats.js';
 import { registerManifests } from '../data/manifests.js';
 import { filterFilesWithConfig, applyExplicitLineage } from '../config/index.js';
@@ -156,14 +157,15 @@ export function buildConnectionGraphDetailed(rootDir: string, config?: Balk2Conf
     })),
   ];
 
-  // 3. Front ends, in a fixed order: JS/TS, then Python. Data artifacts are registered first so
-  //    the front ends see them.
+  // 3. Front ends, in a fixed order: JS/TS, then Python, then Rust. Data artifacts are registered
+  //    first so the front ends see them.
   registerDataArtifacts(files, graph);
   registerManifests(files, graph);
   const input: FrontEndInput = { rootDir, files, config, packages: repositoryPackages };
   const jsTsResult = new JsTsFrontEnd().analyze(input, graph);
   const pythonResult = new PythonFrontEnd().analyze(input, graph);
-  problems.push(...jsTsResult.problems, ...pythonResult.problems);
+  const rustResult = new RustFrontEnd().analyze(input, graph);
+  problems.push(...jsTsResult.problems, ...pythonResult.problems, ...rustResult.problems);
   const manifestProblems = [
     ...repositoryPackages.problems,
     ...(pythonResult.manifestProblems ?? []),
@@ -171,6 +173,7 @@ export function buildConnectionGraphDetailed(rootDir: string, config?: Balk2Conf
   const syntaxErrors: readonly SyntaxErrorNote[] = [
     ...jsTsResult.syntaxErrors,
     ...pythonResult.syntaxErrors,
+    ...rustResult.syntaxErrors,
   ];
 
   // 4. Binding index. Empty until Phase 14 (cross-language boundaries).
