@@ -27,6 +27,12 @@ import { analyzeInheritance, toSourceSpan, type InheritanceFile } from './python
 import { analyzePythonReferences } from './python/references.js';
 import { analyzePythonSymbols } from './python/symbols.js';
 import type { SyntaxErrorNote } from './repository-program.js';
+import type { PackageNode } from '../types.js';
+import { resolveEntryPoints } from './python/modules/entry-points.js';
+import type {
+  ManifestProblem,
+  PythonEntryPointDeclaration,
+} from './python/project/python-packages.js';
 
 function isPythonPath(filePath: string): boolean {
   return normalizePath(filePath).toLowerCase().endsWith('.py');
@@ -43,6 +49,11 @@ export interface PythonSourceOptions {
   readonly roots?: readonly string[];
   /** Decorators that return their argument unchanged, from `python.identityDecorators`. */
   readonly identityDecorators?: readonly string[];
+  /** Package facts whose entry points resolve here, where the module index exists (V3 Phase 4.5) */
+  readonly entryPoints?: {
+    readonly packages: readonly PackageNode[];
+    readonly declarations: readonly PythonEntryPointDeclaration[];
+  };
 }
 
 export function analyzePythonSources(
@@ -51,7 +62,7 @@ export function analyzePythonSources(
   readText: (filePath: string) => string,
   graph: ConnectionGraph,
   options: PythonSourceOptions = {},
-): void {
+): ManifestProblem[] {
   const modules = [...new Set([...knownFiles, ...sources.map((s) => s.filePath)])].filter(
     isPythonPath,
   );
@@ -122,10 +133,42 @@ export function analyzePythonSources(
     });
   }
 
+  // Entry points: script roots, `packageRoot` edges, and `registers` edges for plugin groups.
+  const manifestProblems: ManifestProblem[] = [];
+  if (options.entryPoints !== undefined) {
+    const resolution = resolveEntryPoints({
+      packages: options.entryPoints.packages,
+      declarations: options.entryPoints.declarations,
+      index,
+      roots,
+      symbols,
+    });
+    for (const node of resolution.packages) graph.addPackage(node);
+    for (const root of resolution.packageRoots) {
+      graph.addRelationship('packageRoot', root.packageId, root.file, 'high', {
+        evidence: 'manifest',
+      });
+    }
+    for (const registration of resolution.registrations) {
+      const target = registration.target;
+      if (target.kind !== 'symbol' && target.kind !== 'file') continue;
+      const key = graph.addRegistryKey(registration.registryKey, '.');
+      graph.addRelationship(
+        'registers',
+        key.id,
+        target.kind === 'symbol' ? target.id : target.path,
+        'high',
+        { evidence: 'manifest' },
+      );
+    }
+    manifestProblems.push(...resolution.problems);
+  }
+
   // Non-fact mechanisms, until Phases 11 and 12.
   for (const { filePath, source } of sources) {
     addPythonMechanisms(filePath, source, graph, knownFiles);
   }
+  return manifestProblems;
 }
 
 export class PythonFrontEnd implements LanguageFrontEnd {
@@ -156,7 +199,7 @@ export class PythonFrontEnd implements LanguageFrontEnd {
       }
     }
 
-    analyzePythonSources(
+    const manifestProblems = analyzePythonSources(
       files,
       new Set(input.files.map(normalizePath)),
       (p) => sourceTexts[p] ?? '',
@@ -164,6 +207,12 @@ export class PythonFrontEnd implements LanguageFrontEnd {
       {
         roots: input.config?.python?.roots,
         identityDecorators: input.config?.python?.identityDecorators,
+        entryPoints: input.packages
+          ? {
+              packages: input.packages.python.packages,
+              declarations: input.packages.python.entryPoints,
+            }
+          : undefined,
       },
     );
 
@@ -171,6 +220,7 @@ export class PythonFrontEnd implements LanguageFrontEnd {
       problems: [],
       syntaxErrors,
       sourceAnnotations: collectPythonSourceAnnotations(sourceTexts, []),
+      manifestProblems,
     };
   }
 }

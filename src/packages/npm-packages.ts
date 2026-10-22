@@ -70,10 +70,13 @@ const DEPENDENCY_TABLES = [
  *
  * @param filePaths every repository file, with `/` separators
  * @param readText reads a manifest's contents by repository-relative path
+ * @param exists whether a path exists on disk. An entry that exists but was not scanned (for
+ *   example under `dist/`, which the scan skips) is neither a root nor a problem.
  */
 export function discoverNpmPackages(
   filePaths: readonly string[],
   readText: (path: string) => string,
+  exists: (path: string) => boolean = () => false,
 ): NpmPackageDiscovery {
   const files = new Set(filePaths.map(normalizePath));
   const problems: NpmManifestProblem[] = [];
@@ -100,7 +103,7 @@ export function discoverNpmPackages(
     const manifest = manifests.get(dir);
     if (manifest === undefined || manifest.name === undefined) continue;
     const id = packageIdOf(dir);
-    const roots = entryFiles(manifest, files, problems);
+    const roots = entryFiles(manifest, files, exists, problems);
     packages.push({
       kind: 'package',
       id,
@@ -213,6 +216,7 @@ function workspaceRootOf(
 function entryFiles(
   manifest: ParsedManifest,
   files: ReadonlySet<string>,
+  exists: (path: string) => boolean,
   problems: NpmManifestProblem[],
 ): string[] {
   const dir = manifest.dir;
@@ -226,9 +230,10 @@ function entryFiles(
 
   const main = manifest.json.main;
   if (typeof main === 'string') {
-    const file = resolveMain(dir, main, files);
-    if (file === undefined) report('main', main);
-    else found.add(file);
+    const candidates = mainCandidates(dir, main);
+    const file = candidates.find((path) => files.has(path));
+    if (file !== undefined) found.add(file);
+    else if (!candidates.some((path) => exists(path))) report('main', main);
   }
 
   const bin = manifest.json.bin;
@@ -237,30 +242,35 @@ function entryFiles(
     if (typeof value !== 'string') continue;
     const path = repoPath(dir, value);
     if (files.has(path)) found.add(path);
-    else report('bin', value);
+    else if (!exists(path)) report('bin', value);
   }
 
   for (const value of exportTargets(manifest.json.exports)) {
     if (!value.startsWith('./')) continue;
     if (value.includes('*')) {
-      const regexp = globToRegExp(repoPath(dir, value));
+      const pattern = repoPath(dir, value);
+      const regexp = globToRegExp(pattern);
       const matches = [...files].filter((file) => regexp.test(file));
-      if (matches.length === 0) report('exports', value);
+      // A pattern under a directory that exists on disk may match unscanned files, so it is not reported.
+      const prefix = pattern.slice(0, pattern.indexOf('*'));
+      const prefixDir = prefix.includes('/') ? prefix.slice(0, prefix.lastIndexOf('/')) : '.';
+      const unscanned = prefixDir !== '.' && exists(prefixDir);
+      if (matches.length === 0 && !unscanned) report('exports', value);
       for (const file of matches) found.add(file);
       continue;
     }
     const path = repoPath(dir, value);
     if (files.has(path)) found.add(path);
-    else report('exports', value);
+    else if (!exists(path)) report('exports', value);
   }
 
   return [...found].sort(compareText);
 }
 
-/** `main` may omit its extension or name a directory, as Node resolves it. */
-function resolveMain(dir: string, main: string, files: ReadonlySet<string>): string | undefined {
+/** The files `main` may name, as Node resolves it: the path, the path with an extension, or an index. */
+function mainCandidates(dir: string, main: string): string[] {
   const base = repoPath(dir, main);
-  const candidates = [
+  return [
     base,
     `${base}.js`,
     `${base}.json`,
@@ -268,7 +278,6 @@ function resolveMain(dir: string, main: string, files: ReadonlySet<string>): str
     posix.join(base, 'index.js'),
     posix.join(base, 'index.json'),
   ];
-  return candidates.find((path) => files.has(path));
 }
 
 /** Every string in an `exports` value, whether a path, a conditions object or a fallback array. */

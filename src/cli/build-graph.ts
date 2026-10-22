@@ -11,6 +11,7 @@ import { filterFilesWithConfig, applyExplicitLineage } from '../config/index.js'
 import type { Balk2Config } from '../config/balk2-config.js';
 import type { ConfigProblem } from '../config/config-problem.js';
 import type { SyntaxErrorNote } from '../analyzer/repository-program.js';
+import { discoverRepositoryPackages } from '../packages/repository-packages.js';
 
 const DEFAULT_EXCLUDES = new Set([
   'node_modules',
@@ -54,6 +55,8 @@ export interface BuiltGraph {
   readonly problems: readonly ConfigProblem[];
   /** Syntax errors in analyzed source files. The graph is still built from the recovered trees. */
   readonly syntaxErrors: readonly SyntaxErrorNote[];
+  /** Manifests that cannot be read or resolved, reported as `manifest` diagnostics */
+  readonly manifestProblems: readonly { readonly path: string; readonly message: string }[];
 }
 
 /**
@@ -76,16 +79,38 @@ export function buildConnectionGraphDetailed(rootDir: string, config?: Balk2Conf
   const rawFiles = scanRepositoryFiles(rootDir);
   const files = filterFilesWithConfig(rawFiles, config?.include, config?.exclude);
 
-  // 2. Package discovery. Empty until Phase 4 (Python) and Phase 7 (Cargo and npm) add packages.
+  // 2. Package discovery. Cargo, npm and Python manifests yield package nodes, `packageRoot` edges
+  //    for Cargo and npm targets, and `dependsOn` edges. The Python front end adds its entry points.
+  const repositoryPackages = discoverRepositoryPackages(
+    files,
+    (filePath) => readRepositoryText(rootDir, filePath),
+    (filePath) => fs.existsSync(path.join(rootDir, filePath)),
+  );
+  for (const node of repositoryPackages.packages) graph.addPackage(node);
+  for (const root of repositoryPackages.packageRoots) {
+    graph.addRelationship('packageRoot', root.packageId, root.file, 'high', {
+      evidence: 'manifest',
+    });
+  }
+  for (const dependency of repositoryPackages.dependencies) {
+    graph.addRelationship('dependsOn', dependency.from, dependency.to, 'high', {
+      evidence: 'manifest',
+      metadata: dependency.metadata,
+    });
+  }
 
   // 3. Front ends, in a fixed order: JS/TS, then Python. Data artifacts are registered first so
   //    the front ends see them.
   registerDataArtifacts(files, graph);
   registerManifests(files, graph);
-  const input: FrontEndInput = { rootDir, files, config };
+  const input: FrontEndInput = { rootDir, files, config, packages: repositoryPackages };
   const jsTsResult = new JsTsFrontEnd().analyze(input, graph);
   const pythonResult = new PythonFrontEnd().analyze(input, graph);
   problems.push(...jsTsResult.problems, ...pythonResult.problems);
+  const manifestProblems = [
+    ...repositoryPackages.problems,
+    ...(pythonResult.manifestProblems ?? []),
+  ];
   const syntaxErrors: readonly SyntaxErrorNote[] = [
     ...jsTsResult.syntaxErrors,
     ...pythonResult.syntaxErrors,
@@ -134,7 +159,7 @@ export function buildConnectionGraphDetailed(rootDir: string, config?: Balk2Conf
     problems.push({ path: problem.path, message: problem.message });
   }
 
-  return { graph, problems, syntaxErrors };
+  return { graph, problems, syntaxErrors, manifestProblems };
 }
 
 /**
@@ -180,6 +205,15 @@ function isExcludedDirectory(parentDir: string, name: string, fullPath: string):
   if (name === 'target') return fs.existsSync(path.join(parentDir, 'Cargo.toml'));
   if (name === '.venv' || name === 'venv') return fs.existsSync(path.join(fullPath, 'pyvenv.cfg'));
   return false;
+}
+
+/** A repository file's text, or empty when it cannot be read. */
+function readRepositoryText(rootDir: string, filePath: string): string {
+  try {
+    return fs.readFileSync(path.join(rootDir, filePath), 'utf8');
+  } catch {
+    return '';
+  }
 }
 
 /** Recursively list repository-relative files, sorted, skipping excluded directories and locks. */

@@ -64,3 +64,13 @@ These are not fact passes. They keep their Phase 1 behavior until Phases 11 and 
 - `importlib.import_module` loads (`inspectImportModuleCalls`). These still use the legacy path
   resolver.
 - Source annotations (`python-source-apply.ts`).
+
+## Package facts (V3 Phase 7.5 wiring)
+
+These come from the manifests in `pyproject.toml` projects. Each is new output. No existing Python edge changed or was removed.
+
+- **Package nodes.** Each project is a `lib` package node. Each `[project.scripts]` entry is a `script` node.
+- **`packageRoot`.** A script node points at the module it runs, when the module resolves.
+- **`dependsOn`.** A path or uv workspace dependency on another project in the repository. Its `kind` is kept in metadata.
+- **`registers`.** An entry point in a `[project.entry-points."group"]` table points from its `registry:entry-points:<group>#<name>` key to its target symbol or file.
+- **Baseline.** `python-baseline` has no manifest, so `python-baseline.txt` is unchanged.

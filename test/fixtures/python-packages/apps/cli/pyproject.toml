@@ -1,0 +1,13 @@
+[project]
+name = "acme-cli"
+version = "0.2.0"
+dependencies = ["acme-core"]
+
+[project.scripts]
+acme = "acme_cli.main:run"
+
+[project.entry-points."acme.plugins"]
+core = "acme_core:helper"
+
+[tool.uv.sources]
+acme-core = { path = "../../libs/core" }

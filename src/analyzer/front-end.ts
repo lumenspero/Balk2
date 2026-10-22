@@ -1,4 +1,5 @@
 import type { ConnectionGraph } from '../graph.js';
+import type { RepositoryPackages } from '../packages/repository-packages.js';
 import type { Balk2Config } from '../config/balk2-config.js';
 import type { ConfigProblem } from '../config/config-problem.js';
 import type { Annotation, AnnotationProblem } from './annotations.js';
@@ -14,6 +15,8 @@ export interface FrontEndInput {
   readonly files: readonly string[];
   /** Parsed `.balk2.json`, when the repository has one. */
   readonly config?: Balk2Config;
+  /** Package facts from step 2 of the build. The Python front end finishes its entry points. */
+  readonly packages?: RepositoryPackages;
 }
 
 /** `# balk2:` or `// balk2:` directives read from one front end's files. */
@@ -29,6 +32,8 @@ export interface FrontEndResult {
   readonly syntaxErrors: readonly SyntaxErrorNote[];
   /** Source-comment directives from this front end's files. Undefined when it had no files. */
   readonly sourceAnnotations?: FrontEndSourceAnnotations;
+  /** Manifest problems found while finishing package facts, reported as `manifest` diagnostics. */
+  readonly manifestProblems?: readonly { readonly path: string; readonly message: string }[];
 }
 
 /**

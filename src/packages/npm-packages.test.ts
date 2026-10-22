@@ -200,6 +200,17 @@ describe('discoverNpmPackages', () => {
     expect(result.problems).toEqual([]);
   });
 
+  it('does not report an entry that exists on disk but was not scanned', () => {
+    const result = discoverNpmPackages(
+      ['pkg/package.json'],
+      () =>
+        '{"name":"pkg","main":"dist/index.js","exports":{".":"./dist/index.js","./x":"./dist/*.js"}}',
+      (path) => path === 'pkg/dist/index.js' || path === 'pkg/dist',
+    );
+    expect(result.problems).toEqual([]);
+    expect(result.packages[0]?.roots).toEqual([]);
+  });
+
   it('expands exports patterns and reports a pattern that matches nothing', () => {
     const matched = discover({
       'pkg/package.json': '{"name":"pkg","exports":{"./*":"./src/*.js"}}',

@@ -72,6 +72,7 @@ export function generateConnectionMap(options: GenerateOptions = {}): GenerateRe
     map,
     [...loaded.problems, ...built.problems],
     built.syntaxErrors,
+    built.manifestProblems,
   );
   return { jsonPath, mdPath, map, warnings, diagnostics };
 }
