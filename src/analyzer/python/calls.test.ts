@@ -99,6 +99,43 @@ describe('python calls: classes and constructors', () => {
   });
 });
 
+describe('python calls: self, cls and super through the MRO', () => {
+  it('resolves self.m() to a method of the same class', () => {
+    const src = 'class C:\n    def a(self):\n        pass\n    def b(self):\n        self.a()\n';
+    expect(edges(run({ 'm.py': src }))).toEqual(['m.py:C.b -> m.py:C.a [call]']);
+  });
+
+  it('resolves self.m() to a method inherited from a base class', () => {
+    const src =
+      'class Base:\n    def a(self):\n        pass\nclass C(Base):\n    def b(self):\n        self.a()\n';
+    expect(edges(run({ 'm.py': src }))).toEqual(['m.py:C.b -> m.py:Base.a [call]']);
+  });
+
+  it('resolves cls.m() inside a classmethod', () => {
+    const src =
+      'class C:\n    def build(cls):\n        pass\n    @classmethod\n    def make(cls):\n        cls.build()\n';
+    expect(edges(run({ 'm.py': src }))).toEqual(['m.py:C.make -> m.py:C.build [call]']);
+  });
+
+  it('resolves super().m() to the next method after the class in the MRO', () => {
+    const src =
+      'class Base:\n    def m(self):\n        pass\nclass C(Base):\n    def m(self):\n        super().m()\n';
+    expect(edges(run({ 'm.py': src }))).toEqual(['m.py:C.m -> m.py:Base.m [call]']);
+  });
+
+  it('emits no edge for self.m() when no class in the MRO defines m (negative)', () => {
+    expect(edges(run({ 'm.py': 'class C:\n    def b(self):\n        self.missing()\n' }))).toEqual(
+      [],
+    );
+  });
+
+  it('emits no edge for a method call on a static method receiver (negative)', () => {
+    const src =
+      'class C:\n    def a(self):\n        pass\n    @staticmethod\n    def s(self):\n        self.a()\n';
+    expect(edges(run({ 'm.py': src }))).toEqual([]);
+  });
+});
+
 describe('python calls: what is not resolved', () => {
   it('emits no edge for a method on a receiver of unknown type (negative)', () => {
     expect(edges(run({ 'm.py': 'def f(x):\n    x.run()\n' }))).toEqual([]);
