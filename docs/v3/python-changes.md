@@ -40,6 +40,10 @@ in `src/analyzer/python`.
   supported. Only repository files produce `imports` edges, as before.
 - **Evidence and spans.** Every edge derived from the fact passes carries `evidence: 'ast'` and its
   span. The canonical text in the snapshot does not print them.
+- **`PythonAnalyzer.analyzeFile` (deprecated).** The single-file API now writes the fact-based
+  output. `extends` targets are node ids (`file:Base`) where V2 wrote the base's text.
+- **Decorator sources.** A decorator call starts at the decorated function, method or class.
+- **Conditional imports.** A name imported in several branches calls each target, at medium confidence.
 - **Decorators.** Applying a repository decorator emits a `calls` edge with `mechanism: 'decorator'`.
   A call to a function with a non-identity decorator is at most medium confidence (5.5).
 

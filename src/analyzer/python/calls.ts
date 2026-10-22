@@ -24,8 +24,8 @@
  * - `functools.partial(f)(...)`, a name bound only to `functools.partial(f)`, and `f.__call__()`
  *   for a repository function `f` (5.4d).
  *
- * Decorators (5.5): applying a repository decorator emits a `call` from the decorated symbol's
- * owner to the decorator, with `mechanism: 'decorator'`. A decorator that returns its argument
+ * Decorators (5.5): applying a repository decorator emits a `call` from the decorated symbol to
+ * the decorator, with `mechanism: 'decorator'`. A decorator that returns its argument
  * unchanged (`IDENTITY_DECORATORS`, or a name in `CallOptions.identityDecorators`) keeps calls to
  * the decorated symbol at their usual confidence. Any other decorator drops those calls to medium.
  *
@@ -249,6 +249,36 @@ function typedReceiverCallee(
   return callee === undefined ? undefined : { callee, confidence: type.confidence };
 }
 
+/** The callees of a call to a symbol: a class is constructed, and a function or method is called. */
+function symbolCallees(
+  target: FactTarget,
+  types: ReadonlyMap<string, SymbolType>,
+  declared: ReadonlySet<string>,
+): CalleeRef[] {
+  if (target.kind !== 'symbol') return [];
+  const kind = types.get(target.id);
+  if (kind === 'class') {
+    const out: CalleeRef[] = [{ callee: target, role: 'construct', confidence: 'high' }];
+    const init = `${target.id}.__init__`;
+    if (declared.has(init)) {
+      out.push({ callee: { kind: 'symbol', id: init }, role: 'call', confidence: 'high' });
+    }
+    return out;
+  }
+  if (kind === 'function' || kind === 'method') {
+    return [{ callee: target, role: 'call', confidence: 'high' }];
+  }
+  return [];
+}
+
+/** Every target of a module-level name used as a callee, when it is bound in more than one branch. */
+function moduleAlternatives(func: Expr, info: FileInfo, ctx: InheritanceContext): FactTarget[] {
+  if (func.kind !== 'name') return [];
+  const resolution = info.uses.get(spanKey(func.span))?.resolution;
+  if (resolution?.kind !== 'scope' || resolution.scopeKind !== 'module') return [];
+  return ctx.symbols.resolveAlternatives(info.filePath, func.id);
+}
+
 /** The callees of a call, given the expression that is called. */
 function calleesOf(
   func: Expr,
@@ -260,22 +290,18 @@ function calleesOf(
   mro: ReadonlyMap<string, readonly string[] | null>,
   index: TypeIndex,
 ): CalleeRef[] {
-  const target = resolveBase(func, info, ctx, declared);
-  if (target?.kind === 'symbol') {
-    const kind = types.get(target.id);
-    if (kind === 'class') {
-      const out: CalleeRef[] = [{ callee: target, role: 'construct', confidence: 'high' }];
-      const init = `${target.id}.__init__`;
-      if (declared.has(init)) {
-        out.push({ callee: { kind: 'symbol', id: init }, role: 'call', confidence: 'high' });
-      }
-      return out;
-    }
-    if (kind === 'function' || kind === 'method') {
-      return [{ callee: target, role: 'call', confidence: 'high' }];
-    }
-    // A variable or constant can still be a partial, so fall through to the call forms below.
+  // A name bound in several branches (a `try`/`except ImportError` fallback) calls each target, at
+  // medium confidence, since only one of them runs.
+  const alternatives = moduleAlternatives(func, info, ctx);
+  if (alternatives.length > 1) {
+    return alternatives.flatMap((alt) =>
+      symbolCallees(alt, types, declared).map((c): CalleeRef => ({ ...c, confidence: 'medium' })),
+    );
   }
+  const target = resolveBase(func, info, ctx, declared);
+  const direct = target === undefined ? [] : symbolCallees(target, types, declared);
+  // A variable or constant can still be a partial, so an empty result falls through below.
+  if (direct.length > 0) return direct;
   const viaSelf = receiverCallee(func, frame, info, mro, types);
   if (viaSelf !== undefined) return [{ callee: viaSelf, role: 'call', confidence: 'high' }];
   const typed = typedReceiverCallee(func, info, ctx, declared, types, mro, index);
@@ -388,7 +414,8 @@ export function analyzePythonCalls(
       },
       onDecorator: (decorator, decoratedId, frame) => {
         if (!isIdentityDecorator(decorator, info, configured)) nonIdentity.add(decoratedId);
-        const owner = ownerOf(frame);
+        // The decorator call belongs to the decorated symbol: it is what the decorator wraps.
+        const owner = decoratedId;
         const target = decorator.kind === 'call' ? decorator.func : decorator;
         for (const c of calleesOf(target, frame, info, ctx, declared, types, mro, index)) {
           calls.push({

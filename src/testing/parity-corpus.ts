@@ -84,7 +84,6 @@ export const PARITY_CORPUS: readonly CorpusScenario[] = [
           relationships: ['calls main.py:run -> user.py:User.save'],
           symbols: ['user.py:User.save'],
         },
-        pending: '5',
       },
       rust: {
         files: {

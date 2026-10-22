@@ -20,7 +20,6 @@ export const PYTHON_CORPUS: readonly CorpusScenario[] = [
           relationships: ['imports app.py -> pkg/util.py'],
           absent: ['imports app.py -> pkg/value.py'],
         },
-        pending: '4.3',
       },
     },
   },
@@ -38,7 +37,6 @@ export const PYTHON_CORPUS: readonly CorpusScenario[] = [
         expect: {
           relationships: ['imports service.py -> models.py'],
         },
-        pending: '4.3',
       },
     },
   },
@@ -61,7 +59,6 @@ export const PYTHON_CORPUS: readonly CorpusScenario[] = [
             'calls codec.py:run -> fast.py:dump',
           ],
         },
-        pending: '5.4',
       },
     },
   },
@@ -83,7 +80,6 @@ export const PYTHON_CORPUS: readonly CorpusScenario[] = [
           // point go() at a.run, and must report the rebinding as an unresolved observation.
           absent: ['calls app.py:go -> a.py:run'],
         },
-        pending: '5.4',
       },
     },
   },
@@ -101,7 +97,6 @@ export const PYTHON_CORPUS: readonly CorpusScenario[] = [
         expect: {
           relationships: ['calls app.py:run -> util.py:item'],
         },
-        pending: '5.1',
       },
     },
   },
@@ -119,7 +114,6 @@ export const PYTHON_CORPUS: readonly CorpusScenario[] = [
         expect: {
           relationships: ['calls app.py:task -> deco.py:wrap', 'calls app.py:run -> app.py:task'],
         },
-        pending: '5.5',
       },
     },
   },
@@ -138,7 +132,6 @@ export const PYTHON_CORPUS: readonly CorpusScenario[] = [
           relationships: ['imports app.py -> util.py', 'calls app.py -> util.py:helper'],
           noSyntaxErrors: true,
         },
-        pending: '3.2',
       },
     },
   },
@@ -157,7 +150,6 @@ export const PYTHON_CORPUS: readonly CorpusScenario[] = [
           relationships: ['calls app.py:run -> names.py:label'],
           noSyntaxErrors: true,
         },
-        pending: '3.1',
       },
     },
   },

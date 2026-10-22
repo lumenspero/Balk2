@@ -305,21 +305,21 @@ function confidenceAt(r: CallAnalysis, id: string): string[] {
 }
 
 describe('python calls: decorators (5.5)', () => {
-  it('emits a decorator call from the owner to a repository decorator', () => {
+  it('emits a decorator call from the decorated function to a repository decorator', () => {
     const r = run({ 'm.py': 'def deco(fn):\n    return fn\n@deco\ndef f():\n    pass\n' });
-    expect(decorations(r)).toEqual(['<module> -> m.py:deco']);
+    expect(decorations(r)).toEqual(['m.py:f -> m.py:deco']);
   });
 
   it('emits the factory call for a decorator with arguments', () => {
     const src =
       'def make(n):\n    def wrap(fn):\n        return fn\n    return wrap\n@make(3)\ndef f():\n    pass\n';
-    expect(decorations(run({ 'm.py': src }))).toEqual(['<module> -> m.py:make']);
+    expect(decorations(run({ 'm.py': src }))).toEqual(['m.py:f -> m.py:make']);
   });
 
-  it('owns a method decorator by its class', () => {
+  it('sources a method decorator from the method', () => {
     const src =
       'def deco(fn):\n    return fn\nclass C:\n    @deco\n    def m(self):\n        pass\n';
-    expect(decorations(run({ 'm.py': src }))).toEqual(['m.py:C -> m.py:deco']);
+    expect(decorations(run({ 'm.py': src }))).toEqual(['m.py:C.m -> m.py:deco']);
   });
 
   it('keeps calls at high confidence for a stdlib identity decorator, and emits no edge for it', () => {
@@ -339,7 +339,7 @@ describe('python calls: decorators (5.5)', () => {
     const src = 'def deco(fn):\n    return fn\n@deco\ndef f():\n    pass\ndef g():\n    f()\n';
     const r = run({ 'm.py': src });
     expect(confidenceAt(r, 'm.py:f')).toEqual(['medium']);
-    expect(decorations(r)).toEqual(['<module> -> m.py:deco']);
+    expect(decorations(r)).toEqual(['m.py:f -> m.py:deco']);
   });
 
   it('drops calls to a function with an unresolved external decorator to medium', () => {

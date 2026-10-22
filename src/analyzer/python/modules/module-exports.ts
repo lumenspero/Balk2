@@ -1,5 +1,6 @@
 import type { FactTarget } from '../../../facts/types.js';
 import type { Expr, Stmt } from '../ast.js';
+import { stmtBlocks } from '../ast-walk.js';
 import { parseModuleRecovering } from '../statement-parser.js';
 import type { ImportResolver } from './import-resolution.js';
 import { moduleNames } from './module-names.js';
@@ -16,6 +17,8 @@ export interface ModuleExport {
 export interface SymbolResolver {
   /** What a name bound at module level refers to, following re-exports and star imports */
   resolveName(file: string, name: string): FactTarget;
+  /** Every target a module-level name can refer to across conditional branches (5.7c). */
+  resolveAlternatives(file: string, name: string): FactTarget[];
   /** The exports of a module, under the export rules of Phase 4.4 */
   exportsOf(file: string): ModuleExport[];
 }
@@ -37,12 +40,17 @@ interface StarBinding {
   readonly target?: FactTarget;
 }
 
-/** The top-level bindings of one module. Only top-level statements count, as in Phase 4.4. */
+/**
+ * The module-level bindings of one module. Statements in conditional blocks (`if`, `try`, `with`,
+ * `match`) bind at module level too, so they count. Function and class bodies do not.
+ */
 interface Bindings {
   readonly declared: ReadonlySet<string>;
   /** Names imported as `from x import y as y`, the redundant form that marks a re-export */
   readonly redundant: ReadonlySet<string>;
   readonly from: ReadonlyMap<string, FromBinding>;
+  /** Every `from` binding of a name, in source order. Conditional imports bind a name more than once. */
+  readonly fromAll: ReadonlyMap<string, readonly FromBinding[]>;
   readonly stars: readonly StarBinding[];
 }
 
@@ -78,9 +86,10 @@ export function createSymbolResolver(options: SymbolResolverOptions): SymbolReso
     const declared = new Set<string>();
     const redundant = new Set<string>();
     const from = new Map<string, FromBinding>();
+    const fromAll = new Map<string, FromBinding[]>();
     const stars: StarBinding[] = [];
 
-    for (const stmt of body) {
+    for (const stmt of flattenModuleStatements(body)) {
       if (stmt.kind !== 'importfrom') {
         for (const name of declaredNames(stmt)) declared.add(name);
         continue;
@@ -104,15 +113,17 @@ export function createSymbolResolver(options: SymbolResolverOptions): SymbolReso
             : edge?.via === 'attribute'
               ? 'attribute'
               : 'unresolved';
-        from.set(local, {
+        const entry: FromBinding = {
           specifier,
           original: alias.name,
           via,
           ...(edge ? { target: edge.target } : {}),
-        });
+        };
+        from.set(local, entry);
+        fromAll.set(local, [...(fromAll.get(local) ?? []), entry]);
       }
     }
-    return { declared, redundant, from, stars };
+    return { declared, redundant, from, fromAll, stars };
   };
 
   const resolveName = (file: string, name: string): FactTarget => {
@@ -148,6 +159,27 @@ export function createSymbolResolver(options: SymbolResolverOptions): SymbolReso
       if (origin.kind !== 'unresolved') return origin;
     }
     return unresolvedName(file, name);
+  };
+
+  /**
+   * Every target a module-level name can refer to, one per conditional branch that binds it. A
+   * declaration in the module wins, as it does for `resolveName`. Each target is listed once.
+   */
+  const resolveAlternatives = (file: string, name: string): FactTarget[] => {
+    const own = bindings(file);
+    const alts = own.fromAll.get(name);
+    if (own.declared.has(name) || alts === undefined || alts.length < 2) {
+      return [resolveName(file, name)];
+    }
+    const out: FactTarget[] = [];
+    for (const alt of alts) {
+      const target =
+        alt.via === 'attribute' && alt.target?.kind === 'file'
+          ? resolveName(alt.target.path, alt.original)
+          : (alt.target ?? unresolvedName(file, name));
+      if (!out.some((t) => JSON.stringify(t) === JSON.stringify(target))) out.push(target);
+    }
+    return out;
   };
 
   /** Whether a star import from `file` brings `name` in: its `__all__` when static, else public. */
@@ -193,8 +225,20 @@ export function createSymbolResolver(options: SymbolResolverOptions): SymbolReso
 
   return {
     resolveName,
+    resolveAlternatives,
     exportsOf,
   };
+}
+
+/** The module-level statements, including those nested in conditional blocks, in source order. */
+function flattenModuleStatements(body: readonly Stmt[]): Stmt[] {
+  const out: Stmt[] = [];
+  for (const st of body) {
+    out.push(st);
+    if (st.kind === 'funcdef' || st.kind === 'classdef') continue;
+    for (const block of stmtBlocks(st)) out.push(...flattenModuleStatements(block));
+  }
+  return out;
 }
 
 /** The names a top-level statement declares. Imports are handled separately. */
