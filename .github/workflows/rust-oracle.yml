@@ -1,0 +1,30 @@
+name: rust-oracle
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  rust-oracle:
+    name: rust-oracle (rustc stable)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Show rustc version
+        run: rustc --version
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compare module files with rustc dependency files
+        env:
+          BALK2_RUST_ORACLE: '1'
+        run: npx vitest run src/analyzer/rust/modules/rustc-oracle.test.ts

@@ -12,7 +12,7 @@ import type { Balk2Config } from '../config/balk2-config.js';
 import type { ConfigProblem } from '../config/config-problem.js';
 import type { SyntaxErrorNote } from '../analyzer/repository-program.js';
 import { discoverRepositoryPackages } from '../packages/repository-packages.js';
-import { buildModuleTree } from '../analyzer/rust/modules/tree.js';
+import { buildModuleTree, type ModuleTree } from '../analyzer/rust/modules/tree.js';
 import type { ModuleProblemInput } from './diagnostics.js';
 
 const DEFAULT_EXCLUDES = new Set([
@@ -61,6 +61,8 @@ export interface BuiltGraph {
   readonly manifestProblems: readonly { readonly path: string; readonly message: string }[];
   /** Rust module conflicts and unreachable files, reported as `module-conflict` and `unreachable-module` */
   readonly moduleProblems: readonly ModuleProblemInput[];
+  /** The Rust module tree: per-crate edges and files, for the rustc oracle (V3 Phase 8.5) */
+  readonly moduleTree: ModuleTree;
 }
 
 /**
@@ -214,7 +216,7 @@ export function buildConnectionGraphDetailed(rootDir: string, config?: Balk2Conf
     problems.push({ path: problem.path, message: problem.message });
   }
 
-  return { graph, problems, syntaxErrors, manifestProblems, moduleProblems };
+  return { graph, problems, syntaxErrors, manifestProblems, moduleProblems, moduleTree };
 }
 
 /**

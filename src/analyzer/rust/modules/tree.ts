@@ -33,11 +33,22 @@ export interface ModuleConflict {
   readonly message: string;
 }
 
+/** The module tree of one crate root, as its own walk found it (V3 Phase 8.5, for the oracle). */
+export interface CrateModules {
+  readonly root: string;
+  /** Sorted by source, then target, then cfg */
+  readonly edges: readonly ModuleEdge[];
+  /** The crate root and every file it reaches, sorted */
+  readonly files: readonly string[];
+}
+
 export interface ModuleTree {
   /** One per declaration whose file exists, in discovery order; crates are visited in path order */
   readonly edges: readonly ModuleEdge[];
   /** Every file that some crate root reaches, sorted */
   readonly files: readonly string[];
+  /** One entry per crate root that exists, sorted by root */
+  readonly crates: readonly CrateModules[];
   /** Sorted by file, line and column */
   readonly unresolved: readonly UnresolvedModule[];
   /** Sorted by file, line and column */
@@ -78,6 +89,12 @@ interface Pending {
   readonly modRs: boolean;
 }
 
+/** The files and edges of the crate currently being walked. */
+interface CrateSink {
+  readonly reached: Set<string>;
+  readonly edges: Map<string, ModuleEdge>;
+}
+
 interface Sink {
   readonly reached: Set<string>;
   readonly edges: Map<string, ModuleEdge>;
@@ -105,9 +122,20 @@ export function buildModuleTree(input: ModuleTreeInput): ModuleTree {
     ambiguous: new Set(),
   };
 
+  const crates: CrateModules[] = [];
   for (const root of [...new Set(input.crateRoots)].sort()) {
     if (!input.files.has(root)) continue;
-    walkCrate(root, input, sink);
+    const crate: CrateSink = { reached: new Set(), edges: new Map() };
+    walkCrate(root, input, sink, crate);
+    crates.push({
+      root,
+      edges: sortEdges([...crate.edges.values()]),
+      files: [...crate.reached].sort(),
+    });
+    for (const file of crate.reached) sink.reached.add(file);
+    for (const [key, edge] of crate.edges) {
+      if (!sink.edges.has(key)) sink.edges.set(key, edge);
+    }
   }
 
   const unreachable = [...input.files]
@@ -123,19 +151,18 @@ export function buildModuleTree(input: ModuleTreeInput): ModuleTree {
   return {
     edges: [...sink.edges.values()],
     files: [...sink.reached].sort(),
+    crates,
     unresolved: sortByLocation([...sink.unresolved.values()]),
     conflicts: sortByLocation([...sink.conflicts.values()]),
     unreachable,
   };
 }
 
-function walkCrate(root: string, input: ModuleTreeInput, sink: Sink): void {
-  const visited = new Set<string>();
+function walkCrate(root: string, input: ModuleTreeInput, sink: Sink, crate: CrateSink): void {
   const queue: Pending[] = [];
   const enqueue = (file: string, modRs: boolean): void => {
-    if (visited.has(file) || !input.files.has(file)) return;
-    visited.add(file);
-    sink.reached.add(file);
+    if (crate.reached.has(file) || !input.files.has(file)) return;
+    crate.reached.add(file);
     queue.push({ file, modRs });
   };
   enqueue(root, true);
@@ -153,7 +180,7 @@ function walkCrate(root: string, input: ModuleTreeInput, sink: Sink): void {
       declarations,
     );
     for (const declaration of declarations) {
-      resolveDeclaration(current, declaration, input, sink, enqueue);
+      resolveDeclaration(current, declaration, input, sink, crate, enqueue);
     }
   }
 }
@@ -163,6 +190,7 @@ function resolveDeclaration(
   declaration: Declaration,
   input: ModuleTreeInput,
   sink: Sink,
+  crate: CrateSink,
   enqueue: (file: string, modRs: boolean) => void,
 ): void {
   const unresolved = (detail: string): void => {
@@ -212,9 +240,9 @@ function resolveDeclaration(
     return;
   }
 
-  const edgeKey = `${current.file}\u0000${child}\u0000${declaration.cfg ?? ''}`;
-  if (!sink.edges.has(edgeKey)) {
-    sink.edges.set(edgeKey, { from: current.file, to: child, cfg: declaration.cfg });
+  const edgeKey = edgeId({ from: current.file, to: child, cfg: declaration.cfg });
+  if (!crate.edges.has(edgeKey)) {
+    crate.edges.set(edgeKey, { from: current.file, to: child, cfg: declaration.cfg });
   }
   enqueue(child, isModRsFile(child, { crateRoot: false, loadedByPath: pathAttr !== null }));
 }
@@ -340,6 +368,19 @@ function locationOf(file: string, span: Span): SourceSpan {
     endLine: span.endLine,
     endColumn: span.endColumn,
   };
+}
+
+function edgeId(edge: ModuleEdge): string {
+  return `${edge.from}\u0000${edge.to}\u0000${edge.cfg ?? ''}`;
+}
+
+function sortEdges(edges: readonly ModuleEdge[]): ModuleEdge[] {
+  return [...edges].sort(
+    (a, b) =>
+      compareText(a.from, b.from) ||
+      compareText(a.to, b.to) ||
+      compareText(a.cfg ?? '', b.cfg ?? ''),
+  );
 }
 
 function locationKey(location: SourceSpan): string {
