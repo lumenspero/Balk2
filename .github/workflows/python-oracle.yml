@@ -34,3 +34,12 @@ jobs:
           BALK2_PY_ORACLE_INVENTORY: ${{ runner.temp }}/inventory.json
           BALK2_PY_ORACLE_ROOT: test/python-oracle
         run: npx vitest run src/analyzer/python/oracle.test.ts
+
+      - name: Dump CPython import resolution
+        run: python3 test/python-oracle/resolve_oracle.py test/python-resolution > "$RUNNER_TEMP/resolution.json"
+
+      - name: Compare import resolution with importlib
+        env:
+          BALK2_PY_RESOLUTION_ORACLE: ${{ runner.temp }}/resolution.json
+          BALK2_PY_RESOLUTION_ROOT: test/python-resolution
+        run: npx vitest run src/analyzer/python/modules/resolution-oracle.test.ts
