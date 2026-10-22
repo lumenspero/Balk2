@@ -207,3 +207,52 @@ function checkPyCandidates(basePath: string, knownFiles: ReadonlySet<string>): s
 
   return undefined;
 }
+
+/**
+ * The non-fact mechanisms of one file (V3 Phase 5.7b): data artifact literals on every line, then
+ * importlib loads with their owners. Retired in Phases 11 and 12.
+ */
+export function addPythonMechanisms(
+  filePath: string,
+  content: string,
+  graph: ConnectionGraph,
+  knownFiles: ReadonlySet<string>,
+): void {
+  const lines = content.replace(/\r\n/g, '\n').split('\n');
+  const selfDirs = selfDirectories(lines);
+
+  // Names bound to importlib's import_module: `from importlib import import_module [as x]`.
+  const importModuleNames = new Set<string>();
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const fromImport = /^from\s+([a-zA-Z0-9_.]+)\s+import\s+(.+)/.exec(trimmed);
+    if (fromImport?.[1] !== 'importlib') continue;
+    for (const item of (fromImport[2] ?? '').split(',')) {
+      const parts = item.trim().split(/\s+as\s+/);
+      if (parts[0]?.trim() === 'import_module') {
+        importModuleNames.add((parts[1] ?? parts[0] ?? '').trim());
+      }
+    }
+  }
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    addDataLiteralsOnLine(trimmed, filePath, selfDirs, graph);
+  }
+
+  const owners = ownersByLine(content, filePath);
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = (lines[i] ?? '').trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    inspectImportModuleCalls(
+      trimmed,
+      owners[i] ?? filePath,
+      filePath,
+      i + 1,
+      importModuleNames,
+      knownFiles,
+      graph,
+    );
+  }
+}

@@ -8,7 +8,6 @@ pipeline/util.py
 scripts/collect.py
 # nodes: symbols
 app.py:main
-broken.py:broken
 pipeline/models.py:User
 pipeline/models.py:User.save
 pipeline/normalize.py:run
@@ -27,12 +26,13 @@ data/raw.json
 # nodes: unresolved
 # relationships
 calls app.py:main -> pipeline/models.py:User [high]
+calls app.py:main -> pipeline/models.py:User.save [high]
+calls pipeline/models.py:User.save -> pipeline/util.py:Base.describe [high]
 calls pipeline/models.py:User.save -> pipeline/util.py:helper [high]
 calls pipeline/normalize.py:run -> pipeline/util.py:helper [high]
 calls scripts/collect.py:main -> pipeline/normalize.py:run [high]
 consumes pipeline/normalize.py -> data/raw.json [high]
 exports app.py -> app.py:main [high]
-exports broken.py -> broken.py:broken [high]
 exports pipeline/models.py -> pipeline/models.py:User [high]
 exports pipeline/normalize.py -> pipeline/normalize.py:run [high]
 exports pipeline/util.py -> pipeline/util.py:Base [high]
@@ -46,6 +46,7 @@ imports pipeline/models.py -> pipeline/util.py [high]
 imports pipeline/normalize.py -> pipeline/util.py [high]
 imports pipeline/normalize.py:run -> pipeline/util.py [high]
 imports scripts/collect.py -> pipeline/normalize.py [high]
+references pipeline/models.py -> pipeline/util.py:Base [high]
 # problems
 annotations[0]: no calls relationship from app.py:main to pipeline/util.py:helper; annotation ignored
 # syntax

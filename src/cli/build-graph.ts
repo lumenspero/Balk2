@@ -4,7 +4,7 @@ import { ConnectionGraph, normalizePath } from '../graph.js';
 import { applyAnnotations, type Annotation } from '../analyzer/annotations.js';
 import type { FrontEndInput, FrontEndSourceAnnotations } from '../analyzer/front-end.js';
 import { JsTsFrontEnd } from '../analyzer/js-ts-front-end.js';
-import { LegacyPythonFrontEnd } from '../analyzer/legacy-python-front-end.js';
+import { PythonFrontEnd } from '../analyzer/python-front-end.js';
 import { registerDataArtifacts } from '../data/formats.js';
 import { registerManifests } from '../data/manifests.js';
 import { filterFilesWithConfig, applyExplicitLineage } from '../config/index.js';
@@ -84,7 +84,7 @@ export function buildConnectionGraphDetailed(rootDir: string, config?: Balk2Conf
   registerManifests(files, graph);
   const input: FrontEndInput = { rootDir, files, config };
   const jsTsResult = new JsTsFrontEnd().analyze(input, graph);
-  const pythonResult = new LegacyPythonFrontEnd().analyze(input, graph);
+  const pythonResult = new PythonFrontEnd().analyze(input, graph);
   problems.push(...jsTsResult.problems, ...pythonResult.problems);
   const syntaxErrors: readonly SyntaxErrorNote[] = [
     ...jsTsResult.syntaxErrors,
