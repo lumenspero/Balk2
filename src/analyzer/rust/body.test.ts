@@ -31,6 +31,8 @@ function summary(list: readonly BodyFact[]): string[] {
         return `closure:${fact.params.map((b) => b.name).join(',')}`;
       case 'match-arm':
         return `arm:${fact.bindings.map((b) => b.name).join(',')}`;
+      case 'struct-literal':
+        return `struct:${fact.path.join('::')}{${fact.fields.map((f) => (f.shorthand ? f.name : `${f.name}:`)).join(',')}}`;
     }
   });
 }
@@ -203,6 +205,59 @@ describe('rust body scan: match arms', () => {
       'path:p',
       'arm:x',
       'path:x',
+    ]);
+  });
+});
+
+describe('rust body scan: struct literals and headers', () => {
+  it('reads a struct literal, its shorthand field as a path, and its values', () => {
+    expect(summary(facts('fn f() { let p = Point { x: 1, y }; }'))).toEqual([
+      'let:p=',
+      'struct:Point{x:,y}',
+      'path:y',
+    ]);
+  });
+
+  it('scans a value and a functional-update base', () => {
+    expect(summary(facts('fn f() { Foo { a: g(x), ..Default::default() }; }'))).toEqual([
+      'struct:Foo{a:}',
+      'call:g',
+      'path:x',
+      'call:Default::default',
+    ]);
+  });
+
+  it('reads an empty struct literal', () => {
+    expect(summary(facts('fn f() { let f = Foo {}; }'))).toEqual(['let:f=', 'struct:Foo{}']);
+  });
+
+  it('gives the span of a struct literal from its path to its closing brace', () => {
+    const [literal] = facts('fn f() { Point { x: 1 }; }');
+    expect(literal?.span).toEqual({ line: 1, column: 10, endLine: 1, endColumn: 24 });
+  });
+
+  it('reads an if condition as a comparison, not a struct literal, before the block', () => {
+    expect(summary(facts('fn f() { if x == Y { z } }'))).toEqual(['path:x', 'path:Y', 'path:z']);
+  });
+
+  it('reads a while condition and a for iterator the same way', () => {
+    expect(summary(facts('fn f() { while n < MAX { n += 1 } }'))).toEqual([
+      'path:n',
+      'path:MAX',
+      'path:n',
+    ]);
+    expect(summary(facts('fn f() { for x in Items { x } }'))).toEqual([
+      'for:x',
+      'path:Items',
+      'path:x',
+    ]);
+  });
+
+  it('does not read a block that is not field-shaped as a struct literal', () => {
+    expect(summary(facts('fn f() { let v = Foo { g(); }; }'))).toEqual([
+      'let:v=',
+      'path:Foo',
+      'call:g',
     ]);
   });
 });

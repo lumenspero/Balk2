@@ -21,6 +21,13 @@ export interface Binding {
   readonly span: Span;
 }
 
+/** One field of a struct literal. `shorthand` is `Foo { name }`, where the value is the local `name`. */
+export interface StructField {
+  readonly name: string;
+  readonly shorthand: boolean;
+  readonly span: Span;
+}
+
 export type BodyFact =
   | {
       readonly kind: 'call';
@@ -53,7 +60,14 @@ export type BodyFact =
     }
   | { readonly kind: 'for'; readonly bindings: readonly Binding[]; readonly span: Span }
   | { readonly kind: 'closure'; readonly params: readonly Binding[]; readonly span: Span }
-  | { readonly kind: 'match-arm'; readonly bindings: readonly Binding[]; readonly span: Span };
+  | { readonly kind: 'match-arm'; readonly bindings: readonly Binding[]; readonly span: Span }
+  | {
+      /** `Path { field: value, shorthand, ..base }`. The values are scanned as their own facts. */
+      readonly kind: 'struct-literal';
+      readonly path: readonly string[];
+      readonly fields: readonly StructField[];
+      readonly span: Span;
+    };
 
 /** Keywords that can head a path. */
 const PATH_KEYWORDS: ReadonlySet<string> = new Set(['self', 'Self', 'super', 'crate']);
@@ -345,7 +359,7 @@ function scanFor(trees: readonly TokenTree[], i: number, facts: BodyFact[]): num
     bindings: patternBindings(trees.slice(i + 1, inAt)),
     span: spanOfRange(trees, i, inAt + 1),
   });
-  return inAt + 1;
+  return scanHeader(trees, inAt + 1, facts);
 }
 
 /** Match arms: `PAT (if GUARD)? => BODY ,?`. */
@@ -451,6 +465,64 @@ function closureAt(trees: readonly TokenTree[], i: number, facts: BodyFact[]): n
   return close + 1;
 }
 
+// ── Headers and struct literals ─────────────────────────────
+
+/**
+ * Scans the header of `if`, `while` or a `for` iterator: everything up to the first top-level
+ * `{`, which opens the body. Rust forbids struct literals in these positions, so `if x == Y { z }`
+ * reads as a comparison followed by a block. Returns the index of the body brace.
+ */
+function scanHeader(trees: readonly TokenTree[], from: number, facts: BodyFact[]): number {
+  const end = indexWhere(trees, from, trees.length, (t) => groupOf(t, '{') !== undefined);
+  const stop = end < 0 ? trees.length : end;
+  for (const fact of scanTokens(trees.slice(from, stop))) facts.push(fact);
+  return stop;
+}
+
+/** A field name: an identifier (not a keyword, except `self`) or a tuple index such as `0`. */
+function fieldNameOf(tree: TokenTree): RustToken | undefined {
+  if (isTokenGroup(tree)) return undefined;
+  if (tree.kind === 'int') return tree;
+  const token = identToken(tree);
+  if (token === undefined || (isKeyword(token) && !PATH_KEYWORDS.has(token.value)))
+    return undefined;
+  return token;
+}
+
+/**
+ * The fields of a struct literal body, with the tokens of each value. Returns undefined unless
+ * every comma-separated part is `name`, `name: value` or `..base`, so a block such as `{ f(); }`
+ * is never read as a literal.
+ */
+function structFields(
+  children: readonly TokenTree[],
+): { fields: StructField[]; values: TokenTree[][] } | undefined {
+  const segments = splitTopLevel(children, ',');
+  if (segments.at(-1)?.length === 0) segments.pop();
+  const fields: StructField[] = [];
+  const values: TokenTree[][] = [];
+  for (const segment of segments) {
+    const first = segment[0];
+    if (first === undefined) return undefined;
+    if (isPunct(first, '..')) {
+      values.push(segment.slice(1));
+      continue;
+    }
+    const token = fieldNameOf(first);
+    if (token === undefined) return undefined;
+    const name = String(token.kind === 'int' ? token.text : token.value);
+    if (segment.length === 1) {
+      fields.push({ name, shorthand: true, span: spanOfToken(token) });
+      values.push(segment);
+      continue;
+    }
+    if (!isPunct(segment[1], ':') || segment.length < 3) return undefined;
+    fields.push({ name, shorthand: false, span: spanOfToken(token) });
+    values.push(segment.slice(2));
+  }
+  return { fields, values };
+}
+
 // ── The scan ────────────────────────────────────────────────
 
 /** The macro arguments after `path!`, or undefined when the path is not a macro call. */
@@ -495,6 +567,10 @@ export function scanTokens(trees: readonly TokenTree[]): BodyFact[] {
         i = scanLet(trees, i, facts);
         continue;
       }
+      if (token.value === 'if' || token.value === 'while') {
+        i = scanHeader(trees, i + 1, facts);
+        continue;
+      }
       if (token.value === 'for') {
         i = scanFor(trees, i, facts);
         continue;
@@ -520,6 +596,21 @@ export function scanTokens(trees: readonly TokenTree[]): BodyFact[] {
         span: spanOfRange(trees, i, path.end + 2),
       });
       i = path.end + 2;
+      continue;
+    }
+    const body = groupOf(trees[path.end], '{');
+    const literal = body === undefined ? undefined : structFields(body.children);
+    if (body !== undefined && literal !== undefined) {
+      facts.push({
+        kind: 'struct-literal',
+        path: path.segments,
+        fields: literal.fields,
+        span: spanBetween(tree, body),
+      });
+      for (const value of literal.values) {
+        for (const fact of scanTokens(value)) facts.push(fact);
+      }
+      i = path.end + 1;
       continue;
     }
     const args = groupOf(trees[path.end], '(');
