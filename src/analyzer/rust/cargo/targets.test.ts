@@ -142,3 +142,38 @@ describe('discoverTargets: names and directories', () => {
     expect(targetsOf('.', '[package]\nedition = "2021"\n', ['src/lib.rs'])).toEqual([]);
   });
 });
+
+describe('discoverTargets: missing source files', () => {
+  it('names the declared path when it does not exist, and leaves the root unset', () => {
+    const targets = targetsOf(
+      '.',
+      `${PACKAGE}\n[[bin]]\nname = "gone"\npath = "bin/gone.rs"\n`,
+      [],
+    );
+    expect(targets).toEqual([
+      expect.objectContaining({ root: undefined, missing: 'bin/gone.rs', inferred: false }),
+    ]);
+  });
+
+  it('names the first inferred path when an explicit target has no path and no file', () => {
+    const targets = targetsOf('.', `${PACKAGE}\n[[example]]\nname = "walk"\n`, []);
+    expect(targets).toEqual([
+      expect.objectContaining({ missing: 'examples/walk.rs', root: undefined }),
+    ]);
+  });
+
+  it('reports a missing lib and a missing explicit build path', () => {
+    const lib = targetsOf('.', `${PACKAGE}\n[lib]\npath = "src/core.rs"\n`, []);
+    expect(lib).toEqual([expect.objectContaining({ kind: 'lib', missing: 'src/core.rs' })]);
+    const build = targetsOf('.', `${PACKAGE}build = "gen.rs"\n`, []);
+    expect(build).toEqual([expect.objectContaining({ kind: 'build-script', missing: 'gen.rs' })]);
+  });
+
+  it('leaves missing unset for a target whose file exists', () => {
+    const targets = targetsOf('.', `${PACKAGE}\n[[bin]]\nname = "ok"\npath = "bin/ok.rs"\n`, [
+      'bin/ok.rs',
+    ]);
+    expect(targets[0]?.missing).toBeUndefined();
+    expect(targets[0]?.root).toBe('bin/ok.rs');
+  });
+});

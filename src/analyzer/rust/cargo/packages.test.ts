@@ -79,6 +79,7 @@ describe('discoverCargoPackages', () => {
       'crates/b/Cargo.toml': '[package]\nname = "b"\nversion = { workspace = true }\n',
     });
     expect(result.problems.map((p) => p.message)).toEqual([
+      'workspace member "crates/a" matches no package',
       'package is inside the workspace at . but is not one of its members',
       '[package] version inherits from [workspace.package], which does not set it',
     ]);
@@ -127,5 +128,45 @@ describe('discoverCargoPackages', () => {
       'package:cargo:a#lib:a',
       'package:cargo:b#lib:b',
     ]);
+  });
+
+  it('reports a workspace member pattern that matches no package', () => {
+    const result = discover({
+      'Cargo.toml': '[workspace]\nmembers = ["crates/*", "tools/gone"]\n',
+      'crates/a/Cargo.toml': '[package]\nname = "a"\n',
+      'crates/a/src/lib.rs': '',
+    });
+    expect(result.problems).toEqual([
+      { path: 'Cargo.toml', message: 'workspace member "tools/gone" matches no package' },
+    ]);
+  });
+
+  it('reports a target whose source file does not exist, and keeps the node with no roots', () => {
+    const result = discover({
+      'Cargo.toml': '[package]\nname = "app"\n[[bin]]\nname = "tool"\npath = "bin/tool.rs"\n',
+      'src/lib.rs': '',
+    });
+    expect(result.problems).toEqual([
+      {
+        path: 'Cargo.toml',
+        message: 'bin target "tool" has no source file at "bin/tool.rs"',
+      },
+    ]);
+    expect(result.packages.find((p) => p.target === 'bin')).toMatchObject({
+      id: 'package:cargo:.#bin:tool',
+      roots: [],
+    });
+    expect(result.packageRoots.map((r) => r.packageId)).toEqual(['package:cargo:.#lib:app']);
+  });
+
+  it('reports a parse failure as a problem for that manifest only', () => {
+    const result = discover({
+      'Cargo.toml': '[workspace]\nmembers = ["good"]\n',
+      'good/Cargo.toml': '[package]\nname = "good"\n',
+      'good/src/lib.rs': '',
+      'bad/Cargo.toml': '[package\nname = "bad"\n',
+    });
+    expect(result.problems.map((p) => p.path)).toEqual(['bad/Cargo.toml']);
+    expect(result.packages.map((p) => p.id)).toEqual(['package:cargo:good#lib:good']);
   });
 });

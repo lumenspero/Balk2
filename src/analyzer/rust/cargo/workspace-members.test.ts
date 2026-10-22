@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseCargoManifest } from './manifest.js';
-import { globToRegExp, workspaceMemberDirs } from './workspace-members.js';
+import { globToRegExp, unmatchedMemberPatterns, workspaceMemberDirs } from './workspace-members.js';
 
 describe('globToRegExp', () => {
   it('matches * within one segment only', () => {
@@ -56,5 +56,24 @@ describe('workspaceMemberDirs', () => {
   it('includes the root itself when it is a package', () => {
     const members = workspaceMemberDirs('.', workspace!, [], true);
     expect([...members]).toEqual(['.']);
+  });
+});
+
+describe('unmatchedMemberPatterns', () => {
+  it('lists the member patterns that match no package directory, as written', () => {
+    const workspace = parseCargoManifest(
+      'Cargo.toml',
+      '[workspace]\nmembers = ["crates/*", "tools/gone", "crates/core"]\n',
+    ).workspace;
+    expect(unmatchedMemberPatterns('.', workspace!, ['crates/core'])).toEqual(['tools/gone']);
+  });
+
+  it('resolves patterns against the root directory', () => {
+    const workspace = parseCargoManifest(
+      'tools/Cargo.toml',
+      '[workspace]\nmembers = ["cli"]\n',
+    ).workspace;
+    expect(unmatchedMemberPatterns('tools', workspace!, ['tools/cli'])).toEqual([]);
+    expect(unmatchedMemberPatterns('tools', workspace!, ['other/cli'])).toEqual(['cli']);
   });
 });

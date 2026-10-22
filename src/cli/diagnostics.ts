@@ -49,14 +49,25 @@ export interface Diagnostic {
 const CONFIG_PATH = '.balk2.json';
 
 /**
+ * A problem in a package manifest: an unparseable file, a missing workspace member, a missing
+ * source file or a path dependency that names no package (V3 Phase 7.4).
+ */
+export interface ManifestProblemInput {
+  readonly path: string;
+  readonly message: string;
+}
+
+/**
  * The diagnostics for one run, in a fixed order: by path, then line, column, kind, and message. The
  * sort uses code-unit comparison, not the locale, so output is the same on every machine. Internal
  * unresolved references are skipped because nothing in the repository can act on them.
+ * `manifestProblems` are the problems that package discovery reports for manifests.
  */
 export function collectDiagnostics(
   map: ConnectionMap,
   problems: readonly ConfigProblem[],
   syntaxErrors: readonly SyntaxErrorNote[],
+  manifestProblems: readonly ManifestProblemInput[] = [],
 ): Diagnostic[] {
   const found: Diagnostic[] = [];
 
@@ -76,6 +87,10 @@ export function collectDiagnostics(
       path: CONFIG_PATH,
       message: problem.path ? `${problem.path}: ${problem.message}` : problem.message,
     });
+  }
+
+  for (const problem of manifestProblems) {
+    found.push({ kind: 'manifest', path: problem.path, message: problem.message });
   }
 
   for (const node of Object.values(map.unresolved)) {

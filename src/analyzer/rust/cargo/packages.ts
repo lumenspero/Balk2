@@ -14,7 +14,7 @@ import {
   resolveCargoDependencies,
 } from './dependencies.js';
 import { discoverTargets } from './targets.js';
-import { workspaceMemberDirs } from './workspace-members.js';
+import { unmatchedMemberPatterns, workspaceMemberDirs } from './workspace-members.js';
 
 /** A `packageRoot` fact: the file a target is built from (V3 Phase 7.2). */
 export interface CargoPackageRoot {
@@ -79,11 +79,23 @@ export function discoverCargoPackages(
 
   for (const dir of dirs) {
     const manifest = parsed.get(dir);
+    if (!manifest?.workspace) continue;
+    for (const pattern of unmatchedMemberPatterns(dir, manifest.workspace, dirs)) {
+      problems.push({
+        path: manifest.path,
+        message: `workspace member "${pattern}" matches no package`,
+      });
+    }
+  }
+
+  for (const dir of dirs) {
+    const manifest = parsed.get(dir);
     if (!manifest) continue;
 
     let root: CargoManifest | undefined;
     const owner = workspaceOwner(dir, parsed);
-    if (owner !== undefined) {
+    // Only a package has to be a member: a virtual or unparseable manifest needs no membership.
+    if (owner !== undefined && manifest.package !== undefined) {
       if (owner === dir || memberDirs.get(owner)?.has(dir)) {
         root = parsed.get(owner);
       } else {
@@ -105,6 +117,12 @@ export function discoverCargoPackages(
     for (const target of targets) {
       if (seen.has(target.id)) continue;
       seen.add(target.id);
+      if (target.missing !== undefined) {
+        problems.push({
+          path: manifest.path,
+          message: `${target.kind} target "${target.name}" has no source file at "${target.missing}"`,
+        });
+      }
       packages.push({
         kind: 'package',
         id: target.id,

@@ -30,6 +30,21 @@ export function globToRegExp(glob: string): RegExp {
 }
 
 /**
+ * The member patterns of a workspace root that match no package directory, as written (Phase 7.4).
+ * A pattern that matches only excluded directories still counts as matched.
+ */
+export function unmatchedMemberPatterns(
+  rootDir: string,
+  workspace: CargoWorkspaceSection,
+  candidateDirs: readonly string[],
+): string[] {
+  return workspace.members.filter((pattern) => {
+    const regex = globToRegExp(joinRepoPath(rootDir, pattern));
+    return !candidateDirs.some((dir) => regex.test(dir));
+  });
+}
+
+/**
  * The repository-relative package directories that a workspace root makes members (V3 Phase 7.2).
  * `members` and `exclude` are resolved against the root's directory, and only directories that
  * contain a `Cargo.toml` (`candidateDirs`) can match. A root package is always a member.

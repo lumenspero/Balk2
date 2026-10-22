@@ -129,3 +129,27 @@ describe('cargo fixtures: dependsOn edges (V3 Phase 7.3)', () => {
     }
   });
 });
+
+describe('cargo fixtures: manifest problems (V3 Phase 7.4)', () => {
+  it('missing paths: an unmatched member, a missing bin path and a missing build script', () => {
+    const result = discoverFixture('cargo-missing-paths');
+    expect(result.problems.map((p) => [p.path, p.message]).sort()).toEqual(
+      [
+        ['Cargo.toml', 'workspace member "crates/gone" matches no package'],
+        [
+          'crates/app/Cargo.toml',
+          'bin target "tool" has no source file at "crates/app/bin/tool.rs"',
+        ],
+        [
+          'crates/app/Cargo.toml',
+          'build-script target "build" has no source file at "crates/app/gen.rs"',
+        ],
+      ].sort(),
+    );
+    expect(result.packages.map((p) => p.id)).toEqual([
+      'package:cargo:crates/app#bin:tool',
+      'package:cargo:crates/app#build-script:build',
+      'package:cargo:crates/app#lib:app',
+    ]);
+  });
+});

@@ -10,6 +10,8 @@ export interface CargoTarget {
   readonly name: string;
   /** Repository-relative root file. Absent when the file does not exist. */
   readonly root?: string;
+  /** The source file the target names but that does not exist (V3 Phase 7.4) */
+  readonly missing?: string;
   /** Found by auto-discovery rather than declared in the manifest */
   readonly inferred: boolean;
 }
@@ -65,6 +67,7 @@ export function discoverTargets(
     kind,
     name: codeName(name),
     root: root !== undefined && files.has(root) ? root : undefined,
+    missing: root !== undefined && !files.has(root) ? root : undefined,
     inferred,
   });
 
@@ -128,7 +131,8 @@ export function discoverTargets(
     const candidates: string[] = [];
     if (rule.mainFile !== undefined && name === packageName) candidates.push(at(rule.mainFile));
     candidates.push(at(`${rule.dir}/${name}.rs`), at(`${rule.dir}/${name}/main.rs`));
-    return candidates.find((candidate) => files.has(candidate));
+    // When no candidate exists, the first one is the file the target names, for the diagnostic.
+    return candidates.find((candidate) => files.has(candidate)) ?? candidates[0];
   }
 
   /** The targets auto-discovery finds for one kind, as `[name, root]` sorted by name. */
