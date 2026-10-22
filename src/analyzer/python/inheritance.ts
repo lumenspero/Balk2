@@ -97,8 +97,9 @@ interface Located {
   readonly chain: readonly OwnerScope[];
 }
 
-interface FileInfo {
+export interface FileInfo {
   readonly filePath: string;
+  readonly body: readonly Stmt[];
   readonly declarations: PythonSymbolAnalysis['declarations'];
   readonly scopes: ScopeAnalysis;
   readonly uses: ReadonlyMap<string, NameUse>;
@@ -115,7 +116,7 @@ interface ClassRecord {
   readonly directAbstract: boolean;
 }
 
-function toSourceSpan(span: Span, filePath: string): SourceSpan {
+export function toSourceSpan(span: Span, filePath: string): SourceSpan {
   return {
     filePath,
     startLine: span.line,
@@ -125,7 +126,7 @@ function toSourceSpan(span: Span, filePath: string): SourceSpan {
   };
 }
 
-function spanKey(span: Span): string {
+export function spanKey(span: Span): string {
   return `${span.line}:${span.column}`;
 }
 
@@ -188,7 +189,7 @@ function importsOf(located: readonly Located[]): Map<string, ImportedName> {
   return out;
 }
 
-function buildFileInfo(file: InheritanceFile, ctx: InheritanceContext): FileInfo {
+export function buildFileInfo(file: InheritanceFile, ctx: InheritanceContext): FileInfo {
   const { body } = parseModuleRecovering(file.source);
   const scopes = analyzeScopes(body);
   const uses = new Map<string, NameUse>();
@@ -197,6 +198,7 @@ function buildFileInfo(file: InheritanceFile, ctx: InheritanceContext): FileInfo
   locate(body, [], located);
   return {
     filePath: file.filePath,
+    body,
     declarations: analyzePythonSymbols(file.source, file.filePath).declarations,
     scopes,
     uses,
@@ -227,7 +229,7 @@ function moduleFileOf(info: FileInfo, name: string): string | undefined {
   return found !== undefined && found.target.kind === 'file' ? found.target.path : undefined;
 }
 
-function resolveBase(
+export function resolveBase(
   e: Expr,
   info: FileInfo,
   ctx: InheritanceContext,
