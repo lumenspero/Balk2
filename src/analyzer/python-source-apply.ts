@@ -1,5 +1,5 @@
 import type { Annotation, AnnotationProblem } from './annotations.js';
-import { ownersByLine } from './python-analyzer.js';
+import { ownersByLine } from './python-mechanisms.js';
 import { normalizePath } from '../graph.js';
 import { scanPythonSourceAnnotations } from './python-source-annotations.js';
 
