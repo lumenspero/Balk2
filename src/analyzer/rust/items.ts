@@ -70,6 +70,30 @@ export type ItemBody =
       readonly items: readonly Item[];
     }
   | { readonly kind: 'use'; readonly tree: UseTree | null }
+  | {
+      readonly kind: 'trait';
+      readonly name: string;
+      readonly generics: readonly GenericParam[];
+      readonly unsafe: boolean;
+      readonly auto: boolean;
+      /** The supertrait bounds after `:`, or null. */
+      readonly supertraits: Fragment | null;
+      readonly where: string;
+      readonly innerAttrs: readonly Attribute[];
+      readonly items: readonly Item[];
+    }
+  | {
+      readonly kind: 'impl';
+      readonly generics: readonly GenericParam[];
+      readonly unsafe: boolean;
+      readonly negative: boolean;
+      /** The trait path for `impl Trait for Type`, or null for an inherent impl. */
+      readonly trait: Fragment | null;
+      readonly selfTy: Fragment;
+      readonly where: string;
+      readonly innerAttrs: readonly Attribute[];
+      readonly items: readonly Item[];
+    }
   | DeclBody
   | { readonly kind: 'unknown'; readonly keyword: string | null };
 
@@ -498,6 +522,7 @@ export type DeclBody =
       readonly kind: 'type';
       readonly name: string;
       readonly generics: readonly GenericParam[];
+      readonly bounds: Fragment | null;
       readonly ty: Fragment | null;
     }
   | {
@@ -911,16 +936,19 @@ function parseValueTail(c: TreeCursor, errors: RustLexNote[]): Fragment | null {
 function parseTypeAlias(c: TreeCursor, errors: RustLexNote[]): ItemBody {
   const header = parseHeader(c, errors, 'type');
   if (!header) return { kind: 'unknown', keyword: 'type' };
-  if (!isPunct(c.peek(), '=')) {
-    fail(errors, c, 'expected `=` in type alias');
-    skipUnknownItem(c);
-    return { kind: 'type', name: header.name, generics: header.generics, ty: null };
+  let bounds: Fragment | null = null;
+  if (isPunct(c.peek(), ':')) {
+    c.next();
+    bounds = fragmentOf(takeUntil(c, (t) => isPunct(t, '=') || isPunct(t, ';')));
   }
-  c.next();
-  const ty = fragmentOf(takeUntil(c, (t) => isPunct(t, ';')));
+  let ty: Fragment | null = null;
+  if (isPunct(c.peek(), '=')) {
+    c.next();
+    ty = fragmentOf(takeUntil(c, (t) => isPunct(t, ';')));
+  }
   if (isPunct(c.peek(), ';')) c.next();
   else fail(errors, c, 'expected `;` after type alias');
-  return { kind: 'type', name: header.name, generics: header.generics, ty };
+  return { kind: 'type', name: header.name, generics: header.generics, bounds, ty };
 }
 
 function parseConst(c: TreeCursor, errors: RustLexNote[]): ItemBody {
@@ -986,7 +1014,128 @@ function parseBody(c: TreeCursor, errors: RustLexNote[], keyword: string | null)
       return parseConst(c, errors);
     case 'static':
       return parseStatic(c, errors);
+    case 'trait':
+      return parseTrait(c, errors, { unsafe: false, auto: false });
+    case 'impl':
+      return parseImpl(c, errors, false);
+    case 'unsafe':
+    case 'auto':
+      return isQualifiedTraitOrImpl(c)
+        ? parseQualifiedTraitOrImpl(c, errors, keyword)
+        : parseUnknown(c, keyword);
     default:
       return parseUnknown(c, keyword);
   }
+}
+
+// ── Traits and impls (V3 Phase 6.3c) ────────────────────────
+
+/** The `{ … }` body of a trait or impl, parsed as items. Null (with a note) if missing. */
+function parseBlock(
+  c: TreeCursor,
+  errors: RustLexNote[],
+): { innerAttrs: Attribute[]; items: Item[] } | null {
+  const body = groupOf(c.peek(), '{');
+  if (!body) {
+    fail(errors, c, 'expected `{` to open the body');
+    if (isPunct(c.peek(), ';')) c.next();
+    return null;
+  }
+  c.next();
+  return parseItems(new TreeCursor(body.children), errors);
+}
+
+function parseTrait(
+  c: TreeCursor,
+  errors: RustLexNote[],
+  flags: { unsafe: boolean; auto: boolean },
+): ItemBody {
+  const header = parseHeader(c, errors, 'trait');
+  if (!header) return { kind: 'unknown', keyword: 'trait' };
+
+  let supertraits: Fragment | null = null;
+  if (isPunct(c.peek(), ':')) {
+    c.next();
+    supertraits = fragmentOf(
+      takeUntil(c, (t) => isWord(t, 'where') || groupOf(t, '{') !== undefined),
+    );
+  }
+  const where = parseWhere(c);
+  const block = parseBlock(c, errors);
+  if (!block) return { kind: 'unknown', keyword: 'trait' };
+  return {
+    kind: 'trait',
+    name: header.name,
+    generics: header.generics,
+    unsafe: flags.unsafe,
+    auto: flags.auto,
+    supertraits,
+    where,
+    innerAttrs: block.innerAttrs,
+    items: block.items,
+  };
+}
+
+/** Index of the `for` that separates an impl's trait from its self type, outside angle brackets. */
+function indexOfTopLevelFor(trees: readonly TokenTree[]): number {
+  let depth = 0;
+  for (const [index, tree] of trees.entries()) {
+    if (depth === 0 && isWord(tree, 'for')) return index;
+    depth = Math.max(0, depth + angleDelta(tree));
+  }
+  return -1;
+}
+
+function parseImpl(c: TreeCursor, errors: RustLexNote[], unsafe: boolean): ItemBody {
+  c.next();
+  const generics = parseGenerics(c, errors);
+  const header = takeUntil(
+    c,
+    (t) => isWord(t, 'where') || groupOf(t, '{') !== undefined || isPunct(t, ';'),
+  );
+
+  let traitTokens: TokenTree[] | null = null;
+  let selfTokens: TokenTree[] = header;
+  const forAt = indexOfTopLevelFor(header);
+  if (forAt >= 0) {
+    traitTokens = header.slice(0, forAt);
+    selfTokens = header.slice(forAt + 1);
+  }
+  let negative = false;
+  if (traitTokens !== null && isPunct(traitTokens[0], '!')) {
+    negative = true;
+    traitTokens = traitTokens.slice(1);
+  }
+
+  const where = parseWhere(c);
+  const block = parseBlock(c, errors);
+  if (!block) return { kind: 'unknown', keyword: 'impl' };
+  return {
+    kind: 'impl',
+    generics,
+    unsafe,
+    negative,
+    trait: traitTokens === null ? null : fragmentOf(traitTokens),
+    selfTy: fragmentOf(selfTokens),
+    where,
+    innerAttrs: block.innerAttrs,
+    items: block.items,
+  };
+}
+
+/** `unsafe trait`, `unsafe impl`, or `auto trait`. */
+function isQualifiedTraitOrImpl(c: TreeCursor): boolean {
+  if (isWord(c.peek(1), 'trait')) return true;
+  return isWord(c.peek(), 'unsafe') && isWord(c.peek(1), 'impl');
+}
+
+function parseQualifiedTraitOrImpl(
+  c: TreeCursor,
+  errors: RustLexNote[],
+  keyword: string,
+): ItemBody {
+  const unsafe = keyword === 'unsafe';
+  c.next();
+  if (isWord(c.peek(), 'impl')) return parseImpl(c, errors, true);
+  return parseTrait(c, errors, { unsafe, auto: !unsafe });
 }
