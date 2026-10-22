@@ -288,7 +288,7 @@ function collectDeclarations(
 }
 
 /** The `#[path]` attribute of an item, with a conditional or malformed one marked invalid. */
-function pathAttrOf(attrs: readonly Attribute[]): PathAttr {
+export function pathAttrOf(attrs: readonly Attribute[]): PathAttr {
   if (attrs.some((attr) => attr.path === 'cfg_attr' && containsIdent(attr.args, 'path'))) {
     return {
       kind: 'invalid',
