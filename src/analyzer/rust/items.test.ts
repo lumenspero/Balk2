@@ -100,8 +100,8 @@ describe('rust items: modules', () => {
     const [item] = parse('mod b { fn f() {} use x; }');
     expect(item).toMatchObject({ kind: 'mod', name: 'b', inline: true });
     if (item?.kind !== 'mod') throw new Error('expected a module');
-    expect(item.items.map((i) => i.kind)).toEqual(['unknown', 'use']);
-    expect(item.items[0]).toMatchObject({ kind: 'unknown', keyword: 'fn' });
+    expect(item.items.map((i) => i.kind)).toEqual(['fn', 'use']);
+    expect(item.items[0]).toMatchObject({ kind: 'fn', name: 'f' });
   });
 
   it('reads inner attributes of an inline module', () => {
@@ -125,11 +125,12 @@ describe('rust items: modules', () => {
 
 describe('rust items: unknown forms and spans', () => {
   it('keeps unparsed forms as unknown items without an error', () => {
-    const file = parseRustFile('struct S(u8);\nconst X: [u8; 2] = [1, 2];\n');
+    const file = parseRustFile('impl X {}\ntrait T {}\nextern crate foo;\n');
     expect(file.errors).toEqual([]);
     expect(file.items.map((i) => (i.kind === 'unknown' ? i.keyword : i.kind))).toEqual([
-      'struct',
-      'const',
+      'impl',
+      'trait',
+      'extern',
     ]);
   });
 
