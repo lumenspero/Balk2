@@ -1,5 +1,5 @@
 /**
- * Python calls (V3 Phase 5.4a and 5.4b).
+ * Python calls (V3 Phase 5.4a, 5.4b and 5.4c).
  *
  * Emits one call fact for each call whose callee resolves to a repository symbol through the
  * bindings of its module. The owner is the function or method that contains the call, or null for
@@ -17,10 +17,12 @@
  * - `super().m()` (zero-argument form) inside a method. The target is the first method named `m`
  *   after the enclosing class in its MRO.
  *
- * Not resolved yet, and emitting no edge: calls through other local names (a parameter, a local
- * variable, a nested function), the two-argument `super(C, self)` form (5.4b follow-up),
- * receivers with a known type (5.4c), `functools.partial` and `__call__` (5.4d), and anything
- * external.
+ * - A receiver with a type from the local-type rules (5.4c): an annotated parameter or variable,
+ *   a name bound only to one class's constructor, a call returning a class or `Self` (medium), or
+ *   a constructor used directly. The method is looked up through the class's MRO.
+ *
+ * Not resolved yet, and emitting no edge: the two-argument `super(C, self)` form, `functools.partial`
+ * and `__call__` (5.4d), and anything external.
  */
 import { ownerIdOf, type OwnerScope } from '../../facts/owner-rule.js';
 import type { FactTarget } from '../../facts/types.js';
@@ -28,6 +30,7 @@ import type { Confidence, SourceSpan, SymbolType } from '../../types.js';
 import type { Expr, Stmt } from './ast.js';
 import { exprChildren, stmtBlocks, stmtOwnExprs } from './ast-walk.js';
 import { formatExpr } from './expression-format.js';
+import { buildTypeIndex, localTypeOf, typeOfValue, type TypeIndex } from './typed-receivers.js';
 import {
   analyzeInheritance,
   buildFileInfo,
@@ -153,6 +156,38 @@ function receiverCallee(
   return order === undefined || order === null ? undefined : firstMethod(order, func.attr, types);
 }
 
+/** A resolved callee, its role and its confidence. */
+interface CalleeRef {
+  readonly callee: FactTarget;
+  readonly role: 'call' | 'construct';
+  readonly confidence: Confidence;
+}
+
+/** A receiver typed by the rules: `x.m()` for a typed name, or `C().m()` for a constructor. */
+function typedReceiverCallee(
+  call: CallExpr,
+  info: FileInfo,
+  ctx: InheritanceContext,
+  declared: ReadonlySet<string>,
+  types: ReadonlyMap<string, SymbolType>,
+  mro: ReadonlyMap<string, readonly string[] | null>,
+  index: TypeIndex,
+): { readonly callee: FactTarget; readonly confidence: Confidence } | undefined {
+  const func = call.func;
+  if (func.kind !== 'attribute') return undefined;
+  const type =
+    func.value.kind === 'name'
+      ? localTypeOf(func.value, info, index)
+      : typeOfValue(func.value, info, ctx, declared, types, index.callables);
+  if (type === undefined) return undefined;
+  const name = type.name;
+  if (name.kind !== 'symbol' || types.get(name.id) !== 'class') return undefined;
+  const order = mro.get(name.id);
+  if (order === undefined || order === null) return undefined;
+  const callee = firstMethod(order, func.attr, types);
+  return callee === undefined ? undefined : { callee, confidence: type.confidence };
+}
+
 function calleesOf(
   call: CallExpr,
   frame: Frame,
@@ -161,23 +196,30 @@ function calleesOf(
   declared: ReadonlySet<string>,
   types: ReadonlyMap<string, SymbolType>,
   mro: ReadonlyMap<string, readonly string[] | null>,
-): { readonly callee: FactTarget; readonly role: 'call' | 'construct' }[] {
+  index: TypeIndex,
+): CalleeRef[] {
   const target = resolveBase(call.func, info, ctx, declared);
-  if (target?.kind !== 'symbol') {
-    const viaReceiver = receiverCallee(call, frame, info, mro, types);
-    return viaReceiver === undefined ? [] : [{ callee: viaReceiver, role: 'call' }];
+  if (target?.kind === 'symbol') {
+    const kind = types.get(target.id);
+    if (kind === 'class') {
+      const out: CalleeRef[] = [{ callee: target, role: 'construct', confidence: 'high' }];
+      const init = `${target.id}.__init__`;
+      if (declared.has(init)) {
+        out.push({ callee: { kind: 'symbol', id: init }, role: 'call', confidence: 'high' });
+      }
+      return out;
+    }
+    if (kind === 'function' || kind === 'method') {
+      return [{ callee: target, role: 'call', confidence: 'high' }];
+    }
+    return [];
   }
-  const kind = types.get(target.id);
-  if (kind === 'class') {
-    const out: { callee: FactTarget; role: 'call' | 'construct' }[] = [
-      { callee: target, role: 'construct' },
-    ];
-    const init = `${target.id}.__init__`;
-    if (declared.has(init)) out.push({ callee: { kind: 'symbol', id: init }, role: 'call' });
-    return out;
-  }
-  if (kind === 'function' || kind === 'method') return [{ callee: target, role: 'call' }];
-  return [];
+  const viaSelf = receiverCallee(call, frame, info, mro, types);
+  if (viaSelf !== undefined) return [{ callee: viaSelf, role: 'call', confidence: 'high' }];
+  const typed = typedReceiverCallee(call, info, ctx, declared, types, mro, index);
+  return typed === undefined
+    ? []
+    : [{ callee: typed.callee, role: 'call', confidence: typed.confidence }];
 }
 
 /** Analyzes the calls in a set of Python files. Never throws on malformed input. */
@@ -200,19 +242,20 @@ export function analyzePythonCalls(
   for (const c of analyzeInheritance(files, ctx).classes) {
     if (!mro.has(c.id)) mro.set(c.id, c.mro);
   }
+  const index = buildTypeIndex(infos, ctx, declared, types);
 
   const calls: PythonCall[] = [];
   for (const info of infos) {
     visitStmts(info.body, { chain: [], method: undefined }, info.filePath, (call, frame) => {
       const owner = frame.chain.length === 0 ? null : ownerIdOf(info.filePath, frame.chain);
-      for (const c of calleesOf(call, frame, info, ctx, declared, types, mro)) {
+      for (const c of calleesOf(call, frame, info, ctx, declared, types, mro, index)) {
         calls.push({
           filePath: info.filePath,
           owner,
           span: toSourceSpan(call.span, info.filePath),
           callee: c.callee,
           role: c.role,
-          confidence: 'high',
+          confidence: c.confidence,
         });
       }
     });

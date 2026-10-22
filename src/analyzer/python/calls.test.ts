@@ -136,6 +136,71 @@ describe('python calls: self, cls and super through the MRO', () => {
   });
 });
 
+function confidencesOf(r: CallAnalysis, id: string): string[] {
+  return r.calls
+    .filter((c) => c.callee.kind === 'symbol' && c.callee.id === id)
+    .map((c) => c.confidence);
+}
+
+describe('python calls: typed receivers', () => {
+  const user = 'class User:\n    def save(self):\n        pass\n';
+
+  it('types an annotated parameter as high confidence', () => {
+    const r = run({ 'm.py': user + 'def f(u: User):\n    u.save()\n' });
+    expect(edges(r)).toContain('m.py:f -> m.py:User.save [call]');
+    expect(confidencesOf(r, 'm.py:User.save')).toEqual(['high']);
+  });
+
+  it('types a local bound to a constructor call as high confidence', () => {
+    const r = run({ 'm.py': user + 'def f():\n    u = User()\n    u.save()\n' });
+    expect(confidencesOf(r, 'm.py:User.save')).toEqual(['high']);
+  });
+
+  it('keeps the type when a name is rebound to the same class', () => {
+    const r = run({ 'm.py': user + 'def f():\n    x = User()\n    x = User()\n    x.save()\n' });
+    expect(confidencesOf(r, 'm.py:User.save')).toEqual(['high']);
+  });
+
+  it('drops the type when a name is rebound to a different class (negative)', () => {
+    const src =
+      'class A:\n    def run(self):\n        pass\nclass B:\n    def run(self):\n        pass\n' +
+      'def f():\n    x = A()\n    x = B()\n    x.run()\n';
+    expect(edges(run({ 'm.py': src })).filter((e) => e.includes('.run'))).toEqual([]);
+  });
+
+  it('types a call returning a class as medium confidence', () => {
+    const src =
+      user + 'def make() -> User:\n    return User()\ndef f():\n    u = make()\n    u.save()\n';
+    expect(confidencesOf(run({ 'm.py': src }), 'm.py:User.save')).toEqual(['medium']);
+  });
+
+  it('peels Optional to reach the class', () => {
+    const src =
+      'from typing import Optional\n' + user + 'def f(u: Optional[User]):\n    u.save()\n';
+    expect(confidencesOf(run({ 'm.py': src }), 'm.py:User.save')).toEqual(['high']);
+  });
+
+  it('emits no edge for an unannotated parameter (negative)', () => {
+    expect(
+      edges(run({ 'm.py': user + 'def f(u):\n    u.save()\n' })).filter((e) => e.includes('.save')),
+    ).toEqual([]);
+  });
+
+  it('emits no edge for a loop variable, which is untyped (negative)', () => {
+    expect(
+      edges(run({ 'm.py': user + 'def f(xs):\n    for u in xs:\n        u.save()\n' })).filter(
+        (e) => e.includes('.save'),
+      ),
+    ).toEqual([]);
+  });
+
+  it('types a constructor used directly as the receiver', () => {
+    expect(edges(run({ 'm.py': user + 'User().save()\n' }))).toContain(
+      '<module> -> m.py:User.save [call]',
+    );
+  });
+});
+
 describe('python calls: what is not resolved', () => {
   it('emits no edge for a method on a receiver of unknown type (negative)', () => {
     expect(edges(run({ 'm.py': 'def f(x):\n    x.run()\n' }))).toEqual([]);
@@ -180,5 +245,18 @@ describe('python calls: baseline floor', () => {
         'scripts/collect.py:main -> pipeline/normalize.py:run [call]',
       ]),
     );
+  });
+
+  it('adds the constructor-receiver edge app.py:main -> User.save, which the baseline lacked', () => {
+    const files: Record<string, string> = {};
+    for (const name of [
+      'app.py',
+      'pipeline/models.py',
+      'pipeline/util.py',
+      'pipeline/normalize.py',
+    ]) {
+      files[name] = fs.readFileSync(path.join(FIXTURE, name), 'utf8');
+    }
+    expect(edges(run(files))).toContain('app.py:main -> pipeline/models.py:User.save [call]');
   });
 });
