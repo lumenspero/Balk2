@@ -4,11 +4,11 @@ import { describe, expect, it } from 'vitest';
 import { createImportResolver } from './modules/import-resolution.js';
 import { createSymbolResolver } from './modules/module-exports.js';
 import { ModuleIndex } from './modules/module-index.js';
-import { analyzePythonCalls, type CallAnalysis } from './calls.js';
+import { analyzePythonCalls, type CallAnalysis, type CallOptions } from './calls.js';
 
 const FIXTURE = path.resolve(__dirname, '../../../test/fixtures/python-baseline');
 
-function run(files: Record<string, string>): CallAnalysis {
+function run(files: Record<string, string>, options?: CallOptions): CallAnalysis {
   const index = new ModuleIndex(Object.keys(files));
   const readText = (p: string): string => files[p] ?? '';
   const imports = createImportResolver(index, { roots: ['.'], readText });
@@ -16,6 +16,7 @@ function run(files: Record<string, string>): CallAnalysis {
   return analyzePythonCalls(
     Object.entries(files).map(([filePath, source]) => ({ filePath, source })),
     { symbols, imports },
+    options,
   );
 }
 
@@ -283,5 +284,78 @@ describe('python calls: baseline floor', () => {
       files[name] = fs.readFileSync(path.join(FIXTURE, name), 'utf8');
     }
     expect(edges(run(files))).toContain('app.py:main -> pipeline/models.py:User.save [call]');
+  });
+});
+
+/** The decorator applications, as `owner -> decorator`. */
+function decorations(r: CallAnalysis): string[] {
+  return r.calls
+    .filter((c) => c.mechanism === 'decorator')
+    .map(
+      (c) =>
+        `${c.owner ?? '<module>'} -> ${c.callee.kind === 'symbol' ? c.callee.id : c.callee.kind}`,
+    );
+}
+
+/** The confidence of each ordinary call (not a decorator application) to `id`. */
+function confidenceAt(r: CallAnalysis, id: string): string[] {
+  return r.calls
+    .filter((c) => c.mechanism === undefined && c.callee.kind === 'symbol' && c.callee.id === id)
+    .map((c) => c.confidence);
+}
+
+describe('python calls: decorators (5.5)', () => {
+  it('emits a decorator call from the owner to a repository decorator', () => {
+    const r = run({ 'm.py': 'def deco(fn):\n    return fn\n@deco\ndef f():\n    pass\n' });
+    expect(decorations(r)).toEqual(['<module> -> m.py:deco']);
+  });
+
+  it('emits the factory call for a decorator with arguments', () => {
+    const src =
+      'def make(n):\n    def wrap(fn):\n        return fn\n    return wrap\n@make(3)\ndef f():\n    pass\n';
+    expect(decorations(run({ 'm.py': src }))).toEqual(['<module> -> m.py:make']);
+  });
+
+  it('owns a method decorator by its class', () => {
+    const src =
+      'def deco(fn):\n    return fn\nclass C:\n    @deco\n    def m(self):\n        pass\n';
+    expect(decorations(run({ 'm.py': src }))).toEqual(['m.py:C -> m.py:deco']);
+  });
+
+  it('keeps calls at high confidence for a stdlib identity decorator, and emits no edge for it', () => {
+    const src = 'import functools\n@functools.cache\ndef f():\n    pass\ndef g():\n    f()\n';
+    const r = run({ 'm.py': src });
+    expect(confidenceAt(r, 'm.py:f')).toEqual(['high']);
+    expect(decorations(r)).toEqual([]);
+  });
+
+  it('recognizes a from-imported identity decorator', () => {
+    const src =
+      'from functools import lru_cache\n@lru_cache(maxsize=None)\ndef f():\n    pass\ndef g():\n    f()\n';
+    expect(confidenceAt(run({ 'm.py': src }), 'm.py:f')).toEqual(['high']);
+  });
+
+  it('drops calls to a function with a repository decorator to medium', () => {
+    const src = 'def deco(fn):\n    return fn\n@deco\ndef f():\n    pass\ndef g():\n    f()\n';
+    const r = run({ 'm.py': src });
+    expect(confidenceAt(r, 'm.py:f')).toEqual(['medium']);
+    expect(decorations(r)).toEqual(['<module> -> m.py:deco']);
+  });
+
+  it('drops calls to a function with an unresolved external decorator to medium', () => {
+    const src =
+      'from web import app\n@app.route("/")\ndef index():\n    pass\ndef main():\n    index()\n';
+    const r = run({ 'm.py': src });
+    expect(confidenceAt(r, 'm.py:index')).toEqual(['medium']);
+    expect(decorations(r)).toEqual([]);
+  });
+
+  it('keeps calls at high confidence for a configured identity decorator', () => {
+    const src =
+      'def my_cache(fn):\n    return fn\n@my_cache\ndef f():\n    pass\ndef g():\n    f()\n';
+    expect(confidenceAt(run({ 'm.py': src }), 'm.py:f')).toEqual(['medium']);
+    expect(
+      confidenceAt(run({ 'm.py': src }, { identityDecorators: ['my_cache'] }), 'm.py:f'),
+    ).toEqual(['high']);
   });
 });

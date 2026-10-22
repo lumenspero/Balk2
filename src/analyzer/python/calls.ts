@@ -1,5 +1,5 @@
 /**
- * Python calls (V3 Phase 5.4a through 5.4d).
+ * Python calls (V3 Phase 5.4a through 5.5).
  *
  * Emits one call fact for each call whose callee resolves to a repository symbol through the
  * bindings of its module. The owner is the function or method that contains the call, or null for
@@ -23,6 +23,11 @@
  *
  * - `functools.partial(f)(...)`, a name bound only to `functools.partial(f)`, and `f.__call__()`
  *   for a repository function `f` (5.4d).
+ *
+ * Decorators (5.5): applying a repository decorator emits a `call` from the decorated symbol's
+ * owner to the decorator, with `mechanism: 'decorator'`. A decorator that returns its argument
+ * unchanged (`IDENTITY_DECORATORS`, or a name in `CallOptions.identityDecorators`) keeps calls to
+ * the decorated symbol at their usual confidence. Any other decorator drops those calls to medium.
  *
  * Not resolved yet, and emitting no edge: the two-argument `super(C, self)` form, and anything
  * external.
@@ -53,6 +58,24 @@ import {
 } from './inheritance.js';
 
 type CallExpr = Extract<Expr, { kind: 'call' }>;
+type NameExpr = Extract<Expr, { kind: 'name' }>;
+
+/** Decorators that return their argument unchanged, by the qualified name they resolve to. */
+const IDENTITY_DECORATORS: ReadonlySet<string> = new Set([
+  'property',
+  'staticmethod',
+  'classmethod',
+  'functools.wraps',
+  'functools.cache',
+  'functools.lru_cache',
+  'dataclasses.dataclass',
+  'contextlib.contextmanager',
+]);
+
+export interface CallOptions {
+  /** Repository decorators that return their argument unchanged, as written (`python.identityDecorators`). */
+  readonly identityDecorators?: readonly string[];
+}
 
 export interface PythonCall {
   readonly filePath: string;
@@ -62,6 +85,8 @@ export interface PythonCall {
   readonly callee: FactTarget;
   readonly role: 'call' | 'construct';
   readonly confidence: Confidence;
+  /** `decorator` for the call that applies a decorator (5.5). */
+  readonly mechanism?: 'decorator';
 }
 
 export interface CallAnalysis {
@@ -83,14 +108,34 @@ interface Frame {
 }
 
 type OnCall = (call: CallExpr, frame: Frame) => void;
+type OnDecorator = (decorator: Expr, decoratedId: string, frame: Frame) => void;
 
-function visitStmts(stmts: readonly Stmt[], frame: Frame, filePath: string, onCall: OnCall): void {
+interface Visitor {
+  readonly onCall: OnCall;
+  readonly onDecorator: OnDecorator;
+}
+
+/** The scope chain of a `def` or `class` statement, including the statement itself. */
+function definedChain(st: Stmt, frame: Frame): readonly OwnerScope[] | undefined {
+  if (st.kind === 'classdef') return [...frame.chain, { kind: 'class', name: st.name }];
+  if (st.kind !== 'funcdef') return undefined;
+  const inClass = frame.chain[frame.chain.length - 1]?.kind === 'class';
+  return [...frame.chain, { kind: inClass ? 'method' : 'function', name: st.name }];
+}
+
+function visitStmts(stmts: readonly Stmt[], frame: Frame, filePath: string, v: Visitor): void {
   for (const st of stmts) {
-    for (const e of stmtOwnExprs(st)) visitExpr(e, frame, onCall);
-    if (st.kind === 'funcdef') {
+    const chain = definedChain(st, frame);
+    // Decorators run in the enclosing scope, before the statement's own expressions. They are
+    // visited here, so `stmtOwnExprs` below skips them.
+    const decorators: readonly Expr[] =
+      st.kind === 'funcdef' || st.kind === 'classdef' ? st.decorators : [];
+    if (chain !== undefined) visitDecorators(decorators, ownerIdOf(filePath, chain), frame, v);
+    for (const e of stmtOwnExprs(st)) {
+      if (!decorators.includes(e)) visitExpr(e, frame, v.onCall);
+    }
+    if (chain !== undefined && st.kind === 'funcdef') {
       const inClass = frame.chain[frame.chain.length - 1]?.kind === 'class';
-      const scope: OwnerScope = { kind: inClass ? 'method' : 'function', name: st.name };
-      const chain = [...frame.chain, scope];
       let method = frame.method;
       if (inClass) {
         const isStatic = st.decorators.some((d) => dottedName(d) === 'staticmethod');
@@ -103,16 +148,24 @@ function visitStmts(stmts: readonly Stmt[], frame: Frame, filePath: string, onCa
           receiver,
         };
       }
-      visitStmts(st.body, { chain, method }, filePath, onCall);
-    } else if (st.kind === 'classdef') {
-      visitStmts(
-        st.body,
-        { chain: [...frame.chain, { kind: 'class', name: st.name }], method: undefined },
-        filePath,
-        onCall,
-      );
+      visitStmts(st.body, { chain, method }, filePath, v);
+    } else if (chain !== undefined && st.kind === 'classdef') {
+      visitStmts(st.body, { chain, method: undefined }, filePath, v);
     }
-    for (const block of stmtBlocks(st)) visitStmts(block, frame, filePath, onCall);
+    for (const block of stmtBlocks(st)) visitStmts(block, frame, filePath, v);
+  }
+}
+
+function visitDecorators(
+  decorators: readonly Expr[],
+  decoratedId: string,
+  frame: Frame,
+  v: Visitor,
+): void {
+  for (const d of decorators) {
+    v.onDecorator(d, decoratedId, frame);
+    // The decorator's own call is reported by `onDecorator`; only its arguments are visited here.
+    for (const child of exprChildren(d)) visitExpr(child, frame, v.onCall);
   }
 }
 
@@ -136,14 +189,13 @@ function firstMethod(
 
 /** `self.m()`, `cls.m()` and zero-argument `super().m()` inside a method. */
 function receiverCallee(
-  call: CallExpr,
+  func: Expr,
   frame: Frame,
   info: FileInfo,
   mro: ReadonlyMap<string, readonly string[] | null>,
   types: ReadonlyMap<string, SymbolType>,
 ): FactTarget | undefined {
   const method = frame.method;
-  const func = call.func;
   if (method === undefined || func.kind !== 'attribute') return undefined;
 
   if (func.value.kind === 'call' && func.value.args.length === 0) {
@@ -175,7 +227,7 @@ interface CalleeRef {
 
 /** A receiver typed by the rules: `x.m()` for a typed name, or `C().m()` for a constructor. */
 function typedReceiverCallee(
-  call: CallExpr,
+  func: Expr,
   info: FileInfo,
   ctx: InheritanceContext,
   declared: ReadonlySet<string>,
@@ -183,7 +235,6 @@ function typedReceiverCallee(
   mro: ReadonlyMap<string, readonly string[] | null>,
   index: TypeIndex,
 ): { readonly callee: FactTarget; readonly confidence: Confidence } | undefined {
-  const func = call.func;
   if (func.kind !== 'attribute') return undefined;
   const type =
     func.value.kind === 'name'
@@ -198,8 +249,9 @@ function typedReceiverCallee(
   return callee === undefined ? undefined : { callee, confidence: type.confidence };
 }
 
+/** The callees of a call, given the expression that is called. */
 function calleesOf(
-  call: CallExpr,
+  func: Expr,
   frame: Frame,
   info: FileInfo,
   ctx: InheritanceContext,
@@ -208,7 +260,7 @@ function calleesOf(
   mro: ReadonlyMap<string, readonly string[] | null>,
   index: TypeIndex,
 ): CalleeRef[] {
-  const target = resolveBase(call.func, info, ctx, declared);
+  const target = resolveBase(func, info, ctx, declared);
   if (target?.kind === 'symbol') {
     const kind = types.get(target.id);
     if (kind === 'class') {
@@ -224,12 +276,12 @@ function calleesOf(
     }
     // A variable or constant can still be a partial, so fall through to the call forms below.
   }
-  const viaSelf = receiverCallee(call, frame, info, mro, types);
+  const viaSelf = receiverCallee(func, frame, info, mro, types);
   if (viaSelf !== undefined) return [{ callee: viaSelf, role: 'call', confidence: 'high' }];
-  const typed = typedReceiverCallee(call, info, ctx, declared, types, mro, index);
+  const typed = typedReceiverCallee(func, info, ctx, declared, types, mro, index);
   if (typed !== undefined)
     return [{ callee: typed.callee, role: 'call', confidence: typed.confidence }];
-  const viaPartial = partialCallee(call, info, ctx, declared, types, index);
+  const viaPartial = partialCallee(func, info, ctx, declared, types, index);
   return viaPartial === undefined ? [] : [{ callee: viaPartial, role: 'call', confidence: 'high' }];
 }
 
@@ -238,14 +290,13 @@ function calleesOf(
  * for a repository function `f`.
  */
 function partialCallee(
-  call: CallExpr,
+  func: Expr,
   info: FileInfo,
   ctx: InheritanceContext,
   declared: ReadonlySet<string>,
   types: ReadonlyMap<string, SymbolType>,
   index: TypeIndex,
 ): FactTarget | undefined {
-  const func = call.func;
   if (func.kind === 'call') {
     const id = partialTargetOf(func, info, ctx, declared, types);
     return id === undefined ? undefined : { kind: 'symbol', id };
@@ -262,10 +313,40 @@ function partialCallee(
   return undefined;
 }
 
+/** The name at the root of a name or attribute chain, such as `functools` in `functools.cache`. */
+function rootName(e: Expr): NameExpr | undefined {
+  let cur: Expr = e;
+  while (cur.kind === 'attribute') cur = cur.value;
+  return cur.kind === 'name' ? cur : undefined;
+}
+
+/**
+ * Whether a decorator returns its argument unchanged. A stdlib decorator is matched by the
+ * qualified name it resolves to, so `from functools import cache` and `@functools.cache` both count.
+ * A configured name matches as it is written.
+ */
+function isIdentityDecorator(d: Expr, info: FileInfo, configured: ReadonlySet<string>): boolean {
+  const head = d.kind === 'call' ? d.func : d;
+  const written = dottedName(head);
+  if (written === undefined) return false;
+  if (configured.has(written)) return true;
+  const root = rootName(head);
+  if (root === undefined) return false;
+  if (info.uses.get(spanKey(root.span))?.resolution.kind === 'builtin') {
+    return IDENTITY_DECORATORS.has(written);
+  }
+  const imp = info.imported.get(root.id);
+  if (imp === undefined) return false;
+  const base = imp.name === null ? imp.module : `${imp.module}.${imp.name}`;
+  const rest = written.split('.').slice(1);
+  return IDENTITY_DECORATORS.has([base, ...rest].join('.'));
+}
+
 /** Analyzes the calls in a set of Python files. Never throws on malformed input. */
 export function analyzePythonCalls(
   files: readonly InheritanceFile[],
   ctx: InheritanceContext,
+  options: CallOptions = {},
 ): CallAnalysis {
   const infos = files.map((f) => buildFileInfo(f, ctx));
   const declared = new Set<string>();
@@ -283,22 +364,53 @@ export function analyzePythonCalls(
     if (!mro.has(c.id)) mro.set(c.id, c.mro);
   }
   const index = buildTypeIndex(infos, ctx, declared, types);
+  const configured: ReadonlySet<string> = new Set(options.identityDecorators ?? []);
+  // Decorated symbols with at least one decorator that is not an identity decorator.
+  const nonIdentity = new Set<string>();
 
   const calls: PythonCall[] = [];
   for (const info of infos) {
-    visitStmts(info.body, { chain: [], method: undefined }, info.filePath, (call, frame) => {
-      const owner = frame.chain.length === 0 ? null : ownerIdOf(info.filePath, frame.chain);
-      for (const c of calleesOf(call, frame, info, ctx, declared, types, mro, index)) {
-        calls.push({
-          filePath: info.filePath,
-          owner,
-          span: toSourceSpan(call.span, info.filePath),
-          callee: c.callee,
-          role: c.role,
-          confidence: c.confidence,
-        });
-      }
-    });
+    const ownerOf = (frame: Frame): string | null =>
+      frame.chain.length === 0 ? null : ownerIdOf(info.filePath, frame.chain);
+    const visitor: Visitor = {
+      onCall: (call, frame) => {
+        const owner = ownerOf(frame);
+        for (const c of calleesOf(call.func, frame, info, ctx, declared, types, mro, index)) {
+          calls.push({
+            filePath: info.filePath,
+            owner,
+            span: toSourceSpan(call.span, info.filePath),
+            callee: c.callee,
+            role: c.role,
+            confidence: c.confidence,
+          });
+        }
+      },
+      onDecorator: (decorator, decoratedId, frame) => {
+        if (!isIdentityDecorator(decorator, info, configured)) nonIdentity.add(decoratedId);
+        const owner = ownerOf(frame);
+        const target = decorator.kind === 'call' ? decorator.func : decorator;
+        for (const c of calleesOf(target, frame, info, ctx, declared, types, mro, index)) {
+          calls.push({
+            filePath: info.filePath,
+            owner,
+            span: toSourceSpan(decorator.span, info.filePath),
+            callee: c.callee,
+            role: c.role,
+            confidence: c.confidence,
+            mechanism: 'decorator',
+          });
+        }
+      },
+    };
+    visitStmts(info.body, { chain: [], method: undefined }, info.filePath, visitor);
   }
-  return { calls };
+
+  // A call to a decorated symbol with a non-identity decorator is at most medium confidence (5.5).
+  const out = calls.map((c): PythonCall =>
+    c.callee.kind === 'symbol' && c.confidence === 'high' && nonIdentity.has(c.callee.id)
+      ? { ...c, confidence: 'medium' }
+      : c,
+  );
+  return { calls: out };
 }
