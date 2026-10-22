@@ -77,7 +77,7 @@ class CustomService(BaseService):
           (r) =>
             r.type === 'extends' &&
             r.from === 'scripts/service.py:CustomService' &&
-            r.to === 'BaseService',
+            r.to === 'scripts/service.py:BaseService',
         ),
       ).toBe(true);
     });

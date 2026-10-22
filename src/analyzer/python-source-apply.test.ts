@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PythonAnalyzer } from './python-analyzer.js';
+import { analyzePythonSources } from './python-front-end.js';
 import { collectPythonSourceAnnotations } from './python-source-apply.js';
 import { applyAnnotations, type Annotation } from './annotations.js';
 import { ConnectionGraph } from '../graph.js';
@@ -14,11 +14,13 @@ interface RunResult {
 
 /** Analyze Python files as build-graph does, then collect and apply their source directives. */
 function run(files: Record<string, string>, config: readonly Annotation[] = []): RunResult {
-  const knownFiles = Object.keys(files);
   const graph = new ConnectionGraph();
-  for (const [path, content] of Object.entries(files)) {
-    new PythonAnalyzer().analyzeFile(path, content, graph, { rootDir: '.', knownFiles });
-  }
+  analyzePythonSources(
+    Object.entries(files).map(([filePath, source]) => ({ filePath, source })),
+    new Set(Object.keys(files)),
+    (p) => files[p] ?? '',
+    graph,
+  );
   const collected = collectPythonSourceAnnotations(files, config);
   const problems = [...collected.problems, ...applyAnnotations(graph, collected.annotations)];
   graph.build(META);

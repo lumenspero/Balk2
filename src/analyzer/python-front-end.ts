@@ -1,5 +1,5 @@
 /**
- * The Python front end (V3 Phase 5.7b). It runs the fact passes over the repository's Python files
+ * The Python front end (V3 Phase 5.7b and 5.7c). It runs the fact passes over a set of Python files
  * and writes their graph entries: files, symbols, exports, imports, `extends`, `implements`,
  * `calls` and `references`. Every fact-derived edge carries `evidence: 'ast'` and its spans.
  *
@@ -26,12 +26,100 @@ import { analyzeInheritance, toSourceSpan, type InheritanceFile } from './python
 import { analyzePythonReferences } from './python/references.js';
 import { analyzePythonSymbols } from './python/symbols.js';
 
+function isPythonPath(filePath: string): boolean {
+  return normalizePath(filePath).toLowerCase().endsWith('.py');
+}
+
+/**
+ * Writes the graph entries of a set of Python files (V3 Phase 5.7c). `sources` are the files to
+ * analyze. `knownFiles` are every repository file, which module resolution searches. `readText`
+ * returns the text of any Python file, so an import can be resolved against its exports.
+ */
+export function analyzePythonSources(
+  sources: readonly InheritanceFile[],
+  knownFiles: ReadonlySet<string>,
+  readText: (filePath: string) => string,
+  graph: ConnectionGraph,
+): void {
+  const modules = [...new Set([...knownFiles, ...sources.map((s) => s.filePath)])].filter(
+    isPythonPath,
+  );
+  const index = new ModuleIndex(modules);
+  const imports = createImportResolver(index, { roots: ['.'], readText });
+  const symbols = createSymbolResolver({ resolver: imports, readText });
+  const ctx = { symbols, imports };
+
+  for (const { filePath } of sources) graph.addFile(filePath, 'python');
+
+  // Imports: a repository file is an edge, with the statement's span as evidence.
+  for (const { filePath, source } of sources) {
+    for (const r of imports.resolveFile(filePath, source)) {
+      if (r.target.kind !== 'file') continue;
+      graph.addRelationship('imports', filePath, r.target.path, 'high', {
+        evidence: 'ast',
+        spans: [toSourceSpan(r.span, filePath)],
+      });
+    }
+  }
+
+  // Symbols and exports. A symbol's id is `file:qualified.name`, which `addSymbol` builds from
+  // the name, so the qualified name is taken from the declaration id.
+  for (const { filePath, source } of sources) {
+    for (const d of analyzePythonSymbols(source, filePath).declarations) {
+      graph.addSymbol(filePath, d.id.slice(filePath.length + 1), d.symbolType);
+      if (d.exported) graph.addRelationship('exports', filePath, d.id);
+    }
+  }
+
+  // Inheritance: `extends` to repository classes, and `implements` from `ABC.register`.
+  const inheritance = analyzeInheritance(sources, ctx);
+  for (const c of inheritance.classes) {
+    for (const base of c.bases) {
+      if (base.target?.kind !== 'symbol') continue;
+      graph.addRelationship('extends', c.id, base.target.id, 'high', {
+        evidence: 'ast',
+        spans: [base.span],
+      });
+    }
+  }
+  for (const im of inheritance.implementations) {
+    graph.addRelationship('implements', im.classId, im.abcId, 'high', {
+      evidence: 'ast',
+      spans: [im.span],
+    });
+  }
+
+  // Calls. The owner is the enclosing function or method, or the file for module-level code.
+  for (const c of analyzePythonCalls(sources, ctx).calls) {
+    if (c.callee.kind !== 'symbol') continue;
+    graph.addRelationship('calls', c.owner ?? c.filePath, c.callee.id, c.confidence, {
+      evidence: 'ast',
+      spans: [c.span],
+      ...(c.mechanism === undefined ? {} : { metadata: { mechanism: c.mechanism } }),
+    });
+  }
+
+  // References: annotations, bases, isinstance targets, except classes and match classes.
+  for (const r of analyzePythonReferences(sources, ctx).references) {
+    if (r.target.kind !== 'symbol') continue;
+    graph.addRelationship('references', r.owner ?? r.filePath, r.target.id, r.confidence, {
+      evidence: 'ast',
+      spans: [r.span],
+    });
+  }
+
+  // Non-fact mechanisms, until Phases 11 and 12.
+  for (const { filePath, source } of sources) {
+    addPythonMechanisms(filePath, source, graph, knownFiles);
+  }
+}
+
 export class PythonFrontEnd implements LanguageFrontEnd {
   readonly name = 'PythonFrontEnd';
   readonly languages: readonly FrontEndLanguage[] = ['python'];
 
   canHandle(filePath: string): boolean {
-    return normalizePath(filePath).toLowerCase().endsWith('.py');
+    return isPythonPath(filePath);
   }
 
   analyze(input: FrontEndInput, graph: ConnectionGraph): FrontEndResult {
@@ -49,76 +137,12 @@ export class PythonFrontEnd implements LanguageFrontEnd {
       }
     }
 
-    const readText = (p: string): string => sourceTexts[p] ?? '';
-    const index = new ModuleIndex(files.map((f) => f.filePath));
-    const imports = createImportResolver(index, { roots: ['.'], readText });
-    const symbols = createSymbolResolver({ resolver: imports, readText });
-    const ctx = { symbols, imports };
-
-    for (const { filePath } of files) graph.addFile(filePath, 'python');
-
-    // Imports: a repository file is an edge, with the statement's span as evidence.
-    for (const { filePath, source } of files) {
-      for (const r of imports.resolveFile(filePath, source)) {
-        if (r.target.kind !== 'file') continue;
-        graph.addRelationship('imports', filePath, r.target.path, 'high', {
-          evidence: 'ast',
-          spans: [toSourceSpan(r.span, filePath)],
-        });
-      }
-    }
-
-    // Symbols and exports. A symbol's id is `file:qualified.name`, which `addSymbol` builds from
-    // the name, so the qualified name is taken from the declaration id.
-    for (const { filePath, source } of files) {
-      for (const d of analyzePythonSymbols(source, filePath).declarations) {
-        graph.addSymbol(filePath, d.id.slice(filePath.length + 1), d.symbolType);
-        if (d.exported) graph.addRelationship('exports', filePath, d.id);
-      }
-    }
-
-    // Inheritance: `extends` to repository classes, and `implements` from `ABC.register`.
-    const inheritance = analyzeInheritance(files, ctx);
-    for (const c of inheritance.classes) {
-      for (const base of c.bases) {
-        if (base.target?.kind !== 'symbol') continue;
-        graph.addRelationship('extends', c.id, base.target.id, 'high', {
-          evidence: 'ast',
-          spans: [base.span],
-        });
-      }
-    }
-    for (const im of inheritance.implementations) {
-      graph.addRelationship('implements', im.classId, im.abcId, 'high', {
-        evidence: 'ast',
-        spans: [im.span],
-      });
-    }
-
-    // Calls. The owner is the enclosing function or method, or the file for module-level code.
-    for (const c of analyzePythonCalls(files, ctx).calls) {
-      if (c.callee.kind !== 'symbol') continue;
-      graph.addRelationship('calls', c.owner ?? c.filePath, c.callee.id, c.confidence, {
-        evidence: 'ast',
-        spans: [c.span],
-        ...(c.mechanism === undefined ? {} : { metadata: { mechanism: c.mechanism } }),
-      });
-    }
-
-    // References: annotations, bases, isinstance targets, except classes and match classes.
-    for (const r of analyzePythonReferences(files, ctx).references) {
-      if (r.target.kind !== 'symbol') continue;
-      graph.addRelationship('references', r.owner ?? r.filePath, r.target.id, r.confidence, {
-        evidence: 'ast',
-        spans: [r.span],
-      });
-    }
-
-    // Non-fact mechanisms, until Phases 11 and 12.
-    const knownFiles = new Set(input.files.map(normalizePath));
-    for (const { filePath, source } of files) {
-      addPythonMechanisms(filePath, source, graph, knownFiles);
-    }
+    analyzePythonSources(
+      files,
+      new Set(input.files.map(normalizePath)),
+      (p) => sourceTexts[p] ?? '',
+      graph,
+    );
 
     return {
       problems: [],
