@@ -201,6 +201,31 @@ describe('python calls: typed receivers', () => {
   });
 });
 
+describe('python calls: __call__ and functools.partial', () => {
+  it('resolves f.__call__() to the function', () => {
+    expect(edges(run({ 'm.py': 'def f():\n    pass\ndef g():\n    f.__call__()\n' }))).toEqual([
+      'm.py:g -> m.py:f [call]',
+    ]);
+  });
+
+  it('resolves an inline functools.partial(f)(...) call to f', () => {
+    const src = 'import functools\ndef f(x):\n    pass\ndef g():\n    functools.partial(f, 1)(2)\n';
+    expect(edges(run({ 'm.py': src }))).toContain('m.py:g -> m.py:f [call]');
+  });
+
+  it('resolves a name bound to functools.partial(f) to f', () => {
+    const src =
+      'from functools import partial\ndef f(x):\n    pass\ndef g():\n    p = partial(f, 1)\n    p(2)\n';
+    expect(edges(run({ 'm.py': src }))).toContain('m.py:g -> m.py:f [call]');
+  });
+
+  it('emits no edge for a partial name rebound to a different function (negative)', () => {
+    const src =
+      'from functools import partial\ndef f(x):\n    pass\ndef h(x):\n    pass\ndef g():\n    p = partial(f)\n    p = partial(h)\n    p()\n';
+    expect(edges(run({ 'm.py': src })).filter((e) => e.startsWith('m.py:g ->'))).toEqual([]);
+  });
+});
+
 describe('python calls: what is not resolved', () => {
   it('emits no edge for a method on a receiver of unknown type (negative)', () => {
     expect(edges(run({ 'm.py': 'def f(x):\n    x.run()\n' }))).toEqual([]);

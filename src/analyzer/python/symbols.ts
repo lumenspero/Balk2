@@ -29,14 +29,11 @@ import type { SourceSpan } from '../../types.js';
 import { ownerIdOf } from '../../facts/owner-rule.js';
 import type { OwnerScope } from '../../facts/owner-rule.js';
 import type { Expr, Span, Stmt } from './ast.js';
-import { formatExpr } from './expression-format.js';
+import { dottedName, formatExpr } from './expression-format.js';
 import { moduleNames } from './modules/module-names.js';
 import { parseModuleRecovering } from './statement-parser.js';
 
 const CONSTANT_NAME = /^_*[A-Z][A-Z0-9_]*$/;
-const FINAL_ANNOTATION = /^(typing\.)?Final(\[|$)/;
-const DATACLASS_DECORATOR = /^(dataclasses\.)?dataclass(\(|$)/;
-const NAMED_TUPLE_BASE = /^(typing\.)?NamedTuple$/;
 
 /** The annotation of a dataclass or `NamedTuple` field, for the references phase. */
 export interface PythonFieldAnnotation {
@@ -95,15 +92,23 @@ function innermostIsClass(chain: readonly OwnerScope[]): boolean {
   return chain[chain.length - 1]?.kind === 'class';
 }
 
+/** The name an annotation or base is written with, without `typing.`, and without subscripts. */
+function bareName(e: Expr): string | undefined {
+  const name = dottedName(e.kind === 'subscript' ? e.value : e);
+  return name?.replace(/^typing\./, '');
+}
+
 function isFinal(annotation: Expr): boolean {
-  return FINAL_ANNOTATION.test(formatExpr(annotation));
+  return bareName(annotation) === 'Final';
 }
 
 function isDataclassLike(st: Extract<Stmt, { kind: 'classdef' }>): boolean {
-  return (
-    st.decorators.some((d) => DATACLASS_DECORATOR.test(formatExpr(d))) ||
-    st.bases.some((b) => NAMED_TUPLE_BASE.test(formatExpr(b.value)))
-  );
+  const decorated = st.decorators.some((d) => {
+    const name = dottedName(d.kind === 'call' ? d.func : d);
+    return name === 'dataclass' || name === 'dataclasses.dataclass';
+  });
+  const named = st.bases.some((b) => bareName(b.value) === 'NamedTuple');
+  return decorated || named;
 }
 
 class SymbolWalker {

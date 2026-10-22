@@ -32,7 +32,7 @@ import {
 import type { Confidence, SymbolType } from '../../types.js';
 import type { Expr, Stmt } from './ast.js';
 import { exprChildren, stmtBlocks, stmtOwnExprs } from './ast-walk.js';
-import { formatExpr } from './expression-format.js';
+import { dottedName } from './expression-format.js';
 import { resolveBase, spanKey, type FileInfo, type InheritanceContext } from './inheritance.js';
 import type { Scope } from './scopes.js';
 
@@ -41,11 +41,15 @@ export interface TypeIndex {
   readonly callables: ReadonlyMap<string, CallableSymbol>;
   /** Typed names, keyed by `scopeKey`. A name with no entry has no type. */
   readonly locals: ReadonlyMap<string, ReadonlyMap<string, LocalType>>;
+  /** Names bound only to `functools.partial(f)`, keyed by `scopeKey`, with the id of `f`. */
+  readonly partials: ReadonlyMap<string, ReadonlyMap<string, string>>;
 }
 
 interface Source {
   readonly name: string;
   readonly type: LocalType | undefined;
+  /** The function a `functools.partial` binding refers to, when the binding is one. */
+  readonly callee?: string | undefined;
 }
 
 const CONFIDENCE_RANK: Record<Confidence, number> = { high: 0, medium: 1, low: 2 };
@@ -63,17 +67,17 @@ function topLevel(dotted: string): string {
 
 /** True when `e` names `typing.<name>`, or `<name>` imported from typing. */
 function isTypingName(e: Expr, info: FileInfo, name: string): boolean {
-  const text = formatExpr(e);
-  if (text === `typing.${name}`) return true;
-  if (text !== name) return false;
+  const dotted = dottedName(e);
+  if (dotted === `typing.${name}`) return true;
+  if (dotted !== name) return false;
   const imp = info.imported.get(name);
   return imp?.module === 'typing' && imp.name === name;
 }
 
 /** The wrapper names peeled to reach a class: `Optional` and `Annotated`. */
 function wrapperName(e: Expr): 'Optional' | 'Annotated' | undefined {
-  const text = formatExpr(e).replace(/^typing\./, '');
-  return text === 'Optional' || text === 'Annotated' ? text : undefined;
+  const dotted = dottedName(e)?.replace(/^typing\./, '');
+  return dotted === 'Optional' || dotted === 'Annotated' ? dotted : undefined;
 }
 
 function isNone(e: Expr): boolean {
@@ -153,6 +157,53 @@ export function localTypeOf(
   return index.locals.get(scopeKey(info.filePath, scope))?.get(e.id);
 }
 
+/** True when `e` names `functools.partial`, by the module's own import. */
+function isPartialName(e: Expr, info: FileInfo): boolean {
+  const dotted = dottedName(e);
+  if (dotted === 'functools.partial') {
+    const imp = info.imported.get('functools');
+    return imp?.module === 'functools' && imp.name === null;
+  }
+  if (dotted === 'partial') {
+    const imp = info.imported.get('partial');
+    return imp?.module === 'functools' && imp.name === 'partial';
+  }
+  return false;
+}
+
+/**
+ * The id of `f` when `e` is `functools.partial(f, ...)` and `f` is a repository function or
+ * method. Anything else is undefined.
+ */
+export function partialTargetOf(
+  e: Expr,
+  info: FileInfo,
+  ctx: InheritanceContext,
+  declared: ReadonlySet<string>,
+  types: ReadonlyMap<string, SymbolType>,
+): string | undefined {
+  if (e.kind !== 'call' || !isPartialName(e.func, info)) return undefined;
+  const first = e.args[0];
+  if (first === undefined || first.kind !== 'positional') return undefined;
+  const target = resolveBase(first.value, info, ctx, declared);
+  if (target?.kind !== 'symbol') return undefined;
+  const kind = types.get(target.id);
+  return kind === 'function' || kind === 'method' ? target.id : undefined;
+}
+
+/** The partial target of a name, from the scope its binding lives in. */
+export function localPartialOf(
+  e: Extract<Expr, { kind: 'name' }>,
+  info: FileInfo,
+  index: TypeIndex,
+): string | undefined {
+  const resolution = info.uses.get(spanKey(e.span))?.resolution;
+  if (resolution?.kind !== 'scope') return undefined;
+  const scope = info.scopes.scopes.find((s) => s.id === resolution.scope);
+  if (scope === undefined) return undefined;
+  return index.partials.get(scopeKey(info.filePath, scope))?.get(e.id);
+}
+
 function namesIn(target: Expr): string[] {
   switch (target.kind) {
     case 'name':
@@ -187,6 +238,7 @@ function sourcesOf(
   st: Stmt,
   typeOf: (e: Expr) => LocalType | undefined,
   annotated: (e: Expr) => LocalType | undefined,
+  calleeOf: (e: Expr) => string | undefined,
 ): Source[] {
   const out: Source[] = [];
   const untyped = (names: readonly string[]): void => {
@@ -196,7 +248,7 @@ function sourcesOf(
     case 'assign': {
       const only = st.targets[0];
       if (st.targets.length === 1 && only?.kind === 'name') {
-        out.push({ name: only.id, type: typeOf(st.value) });
+        out.push({ name: only.id, type: typeOf(st.value), callee: calleeOf(st.value) });
       } else {
         for (const t of st.targets) untyped(namesIn(t));
       }
@@ -251,6 +303,13 @@ function fold(types: readonly (LocalType | undefined)[]): LocalType | undefined 
     acc = { ...acc, confidence: weaker };
   }
   return acc;
+}
+
+/** The partial target of a name whose every binding is a partial of the same function. */
+function foldCallees(callees: readonly (string | undefined)[]): string | undefined {
+  const first = callees[0];
+  if (first === undefined) return undefined;
+  return callees.every((c) => c === first) ? first : undefined;
 }
 
 /**
@@ -321,7 +380,9 @@ export function buildTypeIndex(
     for (const st of stmts) {
       const typeOf = (e: Expr): LocalType | undefined =>
         typeOfValue(e, info, ctx, declared, types, callables);
-      push(key, sourcesOf(st, typeOf, annotated(info)));
+      const calleeOf = (e: Expr): string | undefined =>
+        partialTargetOf(e, info, ctx, declared, types);
+      push(key, sourcesOf(st, typeOf, annotated(info), calleeOf));
       if (st.kind === 'funcdef') {
         const scope = scopeOfSpan(info, st.span, 'function');
         if (scope !== undefined) {
@@ -360,24 +421,29 @@ export function buildTypeIndex(
     readSources(info, info.body, key);
   }
 
-  // A name is typed when every binding site of it in its scope was read, and they agree.
+  // A name is typed (or a partial) when every binding site of it in its scope was read, and they agree.
   const locals = new Map<string, ReadonlyMap<string, LocalType>>();
+  const partials = new Map<string, ReadonlyMap<string, string>>();
   for (const [key, list] of sources) {
     const scope = scopes.get(key);
     if (scope === undefined) continue;
-    const byName = new Map<string, (LocalType | undefined)[]>();
-    for (const s of list) {
-      const bucket = byName.get(s.name) ?? [];
-      bucket.push(s.type);
-      byName.set(s.name, bucket);
+    const byName = new Map<string, Source[]>();
+    for (const src of list) {
+      const bucket = byName.get(src.name) ?? [];
+      bucket.push(src);
+      byName.set(src.name, bucket);
     }
     const typed = new Map<string, LocalType>();
+    const bound = new Map<string, string>();
     for (const [name, bucket] of byName) {
       if ((scope.bindings.get(name) ?? []).length !== bucket.length) continue;
-      const t = fold(bucket);
+      const t = fold(bucket.map((src) => src.type));
       if (t !== undefined) typed.set(name, t);
+      const callee = foldCallees(bucket.map((src) => src.callee));
+      if (callee !== undefined) bound.set(name, callee);
     }
     locals.set(key, typed);
+    partials.set(key, bound);
   }
-  return { callables, locals };
+  return { callables, locals, partials };
 }

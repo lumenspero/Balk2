@@ -1,5 +1,5 @@
 /**
- * Python calls (V3 Phase 5.4a, 5.4b and 5.4c).
+ * Python calls (V3 Phase 5.4a through 5.4d).
  *
  * Emits one call fact for each call whose callee resolves to a repository symbol through the
  * bindings of its module. The owner is the function or method that contains the call, or null for
@@ -21,16 +21,26 @@
  *   a name bound only to one class's constructor, a call returning a class or `Self` (medium), or
  *   a constructor used directly. The method is looked up through the class's MRO.
  *
- * Not resolved yet, and emitting no edge: the two-argument `super(C, self)` form, `functools.partial`
- * and `__call__` (5.4d), and anything external.
+ * - `functools.partial(f)(...)`, a name bound only to `functools.partial(f)`, and `f.__call__()`
+ *   for a repository function `f` (5.4d).
+ *
+ * Not resolved yet, and emitting no edge: the two-argument `super(C, self)` form, and anything
+ * external.
  */
 import { ownerIdOf, type OwnerScope } from '../../facts/owner-rule.js';
 import type { FactTarget } from '../../facts/types.js';
 import type { Confidence, SourceSpan, SymbolType } from '../../types.js';
 import type { Expr, Stmt } from './ast.js';
 import { exprChildren, stmtBlocks, stmtOwnExprs } from './ast-walk.js';
-import { formatExpr } from './expression-format.js';
-import { buildTypeIndex, localTypeOf, typeOfValue, type TypeIndex } from './typed-receivers.js';
+import { dottedName } from './expression-format.js';
+import {
+  buildTypeIndex,
+  localPartialOf,
+  localTypeOf,
+  partialTargetOf,
+  typeOfValue,
+  type TypeIndex,
+} from './typed-receivers.js';
 import {
   analyzeInheritance,
   buildFileInfo,
@@ -83,7 +93,7 @@ function visitStmts(stmts: readonly Stmt[], frame: Frame, filePath: string, onCa
       const chain = [...frame.chain, scope];
       let method = frame.method;
       if (inClass) {
-        const isStatic = st.decorators.some((d) => formatExpr(d) === 'staticmethod');
+        const isStatic = st.decorators.some((d) => dottedName(d) === 'staticmethod');
         const first = st.params[0];
         const receiver =
           !isStatic && first?.kind === 'normal' && first.name !== null ? first.name : undefined;
@@ -212,14 +222,44 @@ function calleesOf(
     if (kind === 'function' || kind === 'method') {
       return [{ callee: target, role: 'call', confidence: 'high' }];
     }
-    return [];
+    // A variable or constant can still be a partial, so fall through to the call forms below.
   }
   const viaSelf = receiverCallee(call, frame, info, mro, types);
   if (viaSelf !== undefined) return [{ callee: viaSelf, role: 'call', confidence: 'high' }];
   const typed = typedReceiverCallee(call, info, ctx, declared, types, mro, index);
-  return typed === undefined
-    ? []
-    : [{ callee: typed.callee, role: 'call', confidence: typed.confidence }];
+  if (typed !== undefined)
+    return [{ callee: typed.callee, role: 'call', confidence: typed.confidence }];
+  const viaPartial = partialCallee(call, info, ctx, declared, types, index);
+  return viaPartial === undefined ? [] : [{ callee: viaPartial, role: 'call', confidence: 'high' }];
+}
+
+/**
+ * `functools.partial(f)(...)`, a name bound only to `functools.partial(f)`, and `f.__call__(...)`
+ * for a repository function `f`.
+ */
+function partialCallee(
+  call: CallExpr,
+  info: FileInfo,
+  ctx: InheritanceContext,
+  declared: ReadonlySet<string>,
+  types: ReadonlyMap<string, SymbolType>,
+  index: TypeIndex,
+): FactTarget | undefined {
+  const func = call.func;
+  if (func.kind === 'call') {
+    const id = partialTargetOf(func, info, ctx, declared, types);
+    return id === undefined ? undefined : { kind: 'symbol', id };
+  }
+  if (func.kind === 'name') {
+    const id = localPartialOf(func, info, index);
+    return id === undefined ? undefined : { kind: 'symbol', id };
+  }
+  if (func.kind === 'attribute' && func.attr === '__call__') {
+    const target = resolveBase(func.value, info, ctx, declared);
+    const kind = target?.kind === 'symbol' ? types.get(target.id) : undefined;
+    if (target?.kind === 'symbol' && (kind === 'function' || kind === 'method')) return target;
+  }
+  return undefined;
 }
 
 /** Analyzes the calls in a set of Python files. Never throws on malformed input. */

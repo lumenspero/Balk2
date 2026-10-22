@@ -156,6 +156,15 @@ describe('python symbols: dataclass and NamedTuple fields', () => {
     expect(analysis.fieldAnnotations[0]?.annotation.kind).toBe('name');
   });
 
+  it('recognizes the dataclass decorator in its call and module-qualified forms', () => {
+    for (const decorator of ['@dataclass(frozen=True)', '@dataclasses.dataclass']) {
+      const src = `import dataclasses\nfrom dataclasses import dataclass\n${decorator}\nclass U:\n    name: str\n`;
+      expect(analyzePythonSymbols(src, 'm.py').declarations.map((d) => d.id)).toContain(
+        'm.py:U.name',
+      );
+    }
+  });
+
   it('declares NamedTuple fields and ignores annotations on an ordinary class', () => {
     expect(
       analyzePythonSymbols('class P(NamedTuple):\n    x: int\n', 'm.py').declarations.map(

@@ -107,3 +107,16 @@ function formatGenerator(gen: Comprehension): string {
   const ifs = gen.ifs.map((cond) => ` if ${formatExpr(cond)}`).join('');
   return `for ${formatExpr(gen.target)} in ${formatExpr(gen.iter)}${ifs}`;
 }
+
+/**
+ * The dotted name of a name or attribute chain, such as `functools.partial`. Undefined for any
+ * other expression. Use this for matching names: `formatExpr` writes an s-expression, not a name.
+ */
+export function dottedName(e: Expr): string | undefined {
+  if (e.kind === 'name') return e.id;
+  if (e.kind === 'attribute') {
+    const base = dottedName(e.value);
+    return base === undefined ? undefined : `${base}.${e.attr}`;
+  }
+  return undefined;
+}
