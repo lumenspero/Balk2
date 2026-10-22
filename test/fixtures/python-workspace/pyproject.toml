@@ -1,0 +1,3 @@
+# A virtual uv workspace root: it declares members and no project of its own.
+[tool.uv.workspace]
+members = ["packages/*"]

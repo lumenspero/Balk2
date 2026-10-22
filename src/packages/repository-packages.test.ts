@@ -66,6 +66,16 @@ describe('discoverRepositoryPackages', () => {
     ]);
   });
 
+  it('carries Cargo externs for name resolution', () => {
+    const result = discover({
+      'Cargo.toml': '[package]\nname = "app"\nversion = "0.1.0"\n[dependencies]\nserde = "1"\n',
+      'src/lib.rs': '',
+    });
+    expect(result.externs).toEqual([
+      { manifest: 'Cargo.toml', name: 'serde', kind: 'normal', source: 'registry' },
+    ]);
+  });
+
   it('reports a manifest that cannot be read, and leaves its package out', () => {
     const files: Record<string, string> = {
       'package.json': '{"name":"root"}',

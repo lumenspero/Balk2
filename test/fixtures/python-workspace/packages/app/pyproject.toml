@@ -1,0 +1,10 @@
+[project]
+name = "ws-app"
+version = "0.1.0"
+dependencies = ["ws-core"]
+
+[project.scripts]
+ws-app = "ws_app.main:run"
+
+[tool.uv.sources]
+ws-core = { workspace = true }

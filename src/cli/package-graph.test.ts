@@ -63,3 +63,24 @@ describe('package facts in the connection map (V3 Phase 7.5 wiring)', () => {
     ]);
   });
 });
+
+describe('uv workspace package facts (V3 Phase 7 gap closure)', () => {
+  it('links workspace members by name and skips the virtual root', () => {
+    const config: Balk2Config = {
+      version: 2,
+      python: { roots: ['packages/app', 'packages/core'] },
+    };
+    const { built, map } = build('python-workspace', config);
+    expect(built.manifestProblems).toEqual([]);
+    expect(Object.keys(map.packages)).toEqual([
+      'package:python:packages/app',
+      'package:python:packages/app#script:ws-app',
+      'package:python:packages/core',
+    ]);
+    expect(
+      map.relationships
+        .filter((r) => r.type === 'dependsOn')
+        .map((r) => [r.from, r.to, r.metadata?.kind]),
+    ).toEqual([['package:python:packages/app', 'package:python:packages/core', 'normal']]);
+  });
+});

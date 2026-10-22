@@ -1,4 +1,5 @@
 import { discoverCargoPackages } from '../analyzer/rust/cargo/packages.js';
+import type { CargoExtern } from '../analyzer/rust/cargo/dependencies.js';
 import {
   discoverPythonPackages,
   type PythonPackageDiscovery,
@@ -31,6 +32,11 @@ export interface RepositoryPackages {
   readonly dependencies: readonly RepositoryDependency[];
   /** Kept whole, because the Python front end resolves its entry points against its module index */
   readonly python: PythonPackageDiscovery;
+  /**
+   * Cargo dependencies that are not packages in the repository (registry, git, or a path outside
+   * it). The Rust name resolver reads them, so `use serde::...` is external rather than unresolved.
+   */
+  readonly externs: readonly CargoExtern[];
   readonly problems: readonly RepositoryPackageProblem[];
 }
 
@@ -105,6 +111,7 @@ export function discoverRepositoryPackages(
       })),
     ]),
     python,
+    externs: cargo.externs,
     problems: [...readProblems, ...cargo.problems, ...npm.problems, ...python.problems],
   };
 }
