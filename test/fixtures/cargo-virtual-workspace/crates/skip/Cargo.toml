@@ -1,0 +1,6 @@
+# Excluded from the workspace, and a workspace root of its own.
+[package]
+name = "skip"
+edition = "2018"
+
+[workspace]

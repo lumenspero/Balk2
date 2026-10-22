@@ -153,10 +153,10 @@ export function parseCargoManifest(path: string, text: string): CargoManifest {
  */
 export function resolveWorkspaceInheritance(
   member: CargoManifest,
-  root: CargoManifest,
+  root: CargoManifest | undefined,
 ): CargoManifest {
   const ctx: Context = { path: member.path, problems: [...member.problems] };
-  const shared = root.workspace;
+  const shared = root?.workspace;
   return {
     ...member,
     package: member.package ? resolvePackage(ctx, member.package, shared) : undefined,
@@ -415,7 +415,7 @@ function isWorkspaceInherit(value: unknown): boolean {
   return isTable(value) && value.workspace === true;
 }
 
-function joinRepoPath(dir: string, relative: string): string {
+export function joinRepoPath(dir: string, relative: string): string {
   return posix.normalize(posix.join(dir, relative));
 }
 

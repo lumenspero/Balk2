@@ -1,0 +1,12 @@
+[package]
+name = "my-crate"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "renamed_lib"
+path = "src/core.rs"
+
+[[bin]]
+name = "cli-tool"
+path = "src/tool/entry.rs"

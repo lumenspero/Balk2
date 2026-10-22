@@ -1,0 +1,12 @@
+[package]
+name = "custom"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "custom-cli"
+path = "src/main.rs"
+
+[[bin]]
+name = "app"
+path = "bin/app.rs"
