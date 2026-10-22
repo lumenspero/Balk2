@@ -3,6 +3,7 @@ import { normalizePath } from '../../../path-utils.js';
 import type { PackageNode } from '../../../types.js';
 import { dirOf, joinRepoPath } from './paths.js';
 import { listValue, parseSetupCfg, type IniSection } from './setup-cfg.js';
+import { readSetupPy } from './setup-py.js';
 
 /** A manifest that cannot be read or understood. Problems are data here; Phase 5 reports them. */
 export interface ManifestProblem {
@@ -24,11 +25,27 @@ export interface PythonEntryPointDeclaration {
   readonly target: string;
 }
 
+export type PythonDependencyKind = 'normal' | 'dev' | 'build' | 'optional';
+
+/** An internal dependency between two Python distributions (V3 Phase 4.1, `dependsOn`). */
+export interface PythonPackageDependency {
+  /** The depending distribution's `lib` package id */
+  readonly from: string;
+  /** The distribution it depends on, also a `lib` package id */
+  readonly to: string;
+  readonly kind: PythonDependencyKind;
+  /** The normalized dependency name */
+  readonly name: string;
+  readonly manifest: string;
+}
+
 export interface PythonPackageDiscovery {
   /** Sorted by id. A `lib` node per distribution, then its `script` nodes. */
   readonly packages: readonly PackageNode[];
   /** Sorted by package id, then kind, group and name */
   readonly entryPoints: readonly PythonEntryPointDeclaration[];
+  /** Sorted by source, target, kind and name, with each edge once */
+  readonly dependencies: readonly PythonPackageDependency[];
   readonly problems: readonly ManifestProblem[];
 }
 
@@ -41,25 +58,44 @@ interface GroupedTarget extends NamedTarget {
   readonly group: string;
 }
 
+/**
+ * A dependency as a manifest declares it. `path` is relative to the manifest directory, and is
+ * absent for a dependency that is not inside the repository.
+ */
+interface DeclaredDependency {
+  readonly kind: PythonDependencyKind;
+  readonly name: string;
+  readonly path?: string;
+  readonly workspace: boolean;
+}
+
 /** What one manifest declares. Roots are repository-relative directories, sorted and unique. */
 interface ManifestFacts {
   readonly name?: string;
   readonly roots: readonly string[];
   readonly scripts: readonly NamedTarget[];
   readonly entryPoints: readonly GroupedTarget[];
+  readonly dependencies: readonly DeclaredDependency[];
 }
 
 type Table = Record<string, unknown>;
 
 /**
- * Discover Python distributions from `pyproject.toml` and `setup.cfg` (V3 Phase 4.1).
+ * Discover Python distributions from `pyproject.toml`, `setup.cfg` and `setup.py` (V3 Phases 4.1
+ * and 4.5).
  *
  * A directory with a manifest yields one `lib` package node, with the import root directories it
  * declares as `roots`. Each `[project.scripts]` entry adds a `script` node, and each
  * `[project.entry-points]` entry is an `entry-point` declaration. Targets are resolved in Phase 4.5.
+ *
+ * Within one directory, `pyproject.toml` comes first. `setup.cfg` and then `setup.py` fill in what it
+ * leaves unset. Only `pyproject.toml` declares scripts, entry points and dependencies.
+ *
  * A `pyproject.toml` that cannot be parsed yields a problem and no packages for that directory. A
  * `pyproject.toml` that only configures tools (for example ruff) yields nothing and no problem.
- * `setup.cfg` fills in whatever `pyproject.toml` leaves unset in the same directory.
+ *
+ * A dependency on a path inside the repository, or a uv `workspace = true` source, becomes a
+ * `dependsOn` edge to that distribution. A path outside the repository is ignored.
  *
  * `readText` receives a repository-relative path that is already normalized to forward slashes.
  */
@@ -67,28 +103,35 @@ export function discoverPythonPackages(
   filePaths: readonly string[],
   readText: (path: string) => string,
 ): PythonPackageDiscovery {
-  const groups = new Map<string, { pyproject?: string; setupCfg?: string }>();
+  const groups = new Map<string, { pyproject?: string; setupCfg?: string; setupPy?: string }>();
   for (const raw of filePaths) {
     const path = normalizePath(raw);
     const base = path.slice(path.lastIndexOf('/') + 1).toLowerCase();
-    if (base !== 'pyproject.toml' && base !== 'setup.cfg') continue;
+    if (base !== 'pyproject.toml' && base !== 'setup.cfg' && base !== 'setup.py') continue;
     const dir = dirOf(path);
     const group = groups.get(dir) ?? {};
     if (base === 'pyproject.toml') group.pyproject = path;
-    else group.setupCfg = path;
+    else if (base === 'setup.cfg') group.setupCfg = path;
+    else group.setupPy = path;
     groups.set(dir, group);
   }
 
   const packages: PackageNode[] = [];
   const entryPoints: PythonEntryPointDeclaration[] = [];
   const problems: ManifestProblem[] = [];
+  const declared: Array<{
+    id: string;
+    dir: string;
+    manifest: string;
+    dependencies: readonly DeclaredDependency[];
+  }> = [];
   for (const dir of [...groups.keys()].sort()) {
     const group = groups.get(dir);
     if (!group) continue;
     const facts = readGroup(dir, group, readText, problems);
     if (!facts) continue;
 
-    const manifest = group.pyproject ?? group.setupCfg ?? dir;
+    const manifest = group.pyproject ?? group.setupCfg ?? group.setupPy ?? dir;
     if (facts.name === undefined) {
       if (facts.roots.length > 0 || facts.scripts.length > 0 || facts.entryPoints.length > 0) {
         problems.push({ path: manifest, message: 'declares package roots or scripts but no name' });
@@ -106,6 +149,7 @@ export function discoverPythonPackages(
       manifest,
       roots: [...facts.roots],
     });
+    declared.push({ id, dir, manifest, dependencies: facts.dependencies });
     for (const script of [...facts.scripts].sort((a, b) => compare(a.name, b.name))) {
       const scriptId = `${id}#script:${script.name}`;
       packages.push({
@@ -136,6 +180,8 @@ export function discoverPythonPackages(
       });
     }
   }
+
+  const dependencies = resolveDependencies(packages, declared, problems);
   packages.sort((a, b) => compare(a.id, b.id));
   entryPoints.sort(
     (a, b) =>
@@ -144,17 +190,84 @@ export function discoverPythonPackages(
       compare(a.group ?? '', b.group ?? '') ||
       compare(a.name, b.name),
   );
-  return { packages, entryPoints, problems };
+  return { packages, entryPoints, dependencies, problems };
+}
+
+/** Turn declared dependencies into `dependsOn` edges between discovered distributions. */
+function resolveDependencies(
+  packages: readonly PackageNode[],
+  declared: ReadonlyArray<{
+    id: string;
+    dir: string;
+    manifest: string;
+    dependencies: readonly DeclaredDependency[];
+  }>,
+  problems: ManifestProblem[],
+): PythonPackageDependency[] {
+  const libByDir = new Map<string, string>();
+  const libByName = new Map<string, string>();
+  for (const node of packages) {
+    if (node.target !== 'lib') continue;
+    const dir = node.id.slice('package:python:'.length);
+    libByDir.set(dir, node.id);
+    const key = normalizeName(node.name);
+    if (!libByName.has(key)) libByName.set(key, node.id);
+  }
+
+  const edges = new Map<string, PythonPackageDependency>();
+  for (const source of declared) {
+    for (const dependency of source.dependencies) {
+      if (dependency.path === undefined && !dependency.workspace) continue;
+      let to: string | undefined;
+      if (dependency.path !== undefined) {
+        const targetDir = joinRepoPath(source.dir, dependency.path);
+        to = libByDir.get(targetDir);
+        if (!to) {
+          problems.push({
+            path: source.manifest,
+            message: `dependency "${dependency.name}" path "${dependency.path}" names no package`,
+          });
+          continue;
+        }
+      } else {
+        to = libByName.get(dependency.name);
+        if (!to) {
+          problems.push({
+            path: source.manifest,
+            message: `workspace dependency "${dependency.name}" names no package`,
+          });
+          continue;
+        }
+      }
+      if (to === source.id) continue;
+      const key = `${source.id}\u0000${to}\u0000${dependency.kind}\u0000${dependency.name}`;
+      edges.set(key, {
+        from: source.id,
+        to,
+        kind: dependency.kind,
+        name: dependency.name,
+        manifest: source.manifest,
+      });
+    }
+  }
+  return [...edges.values()].sort(
+    (a, b) =>
+      compare(a.from, b.from) ||
+      compare(a.to, b.to) ||
+      compare(a.kind, b.kind) ||
+      compare(a.name, b.name),
+  );
 }
 
 function readGroup(
   dir: string,
-  group: { pyproject?: string; setupCfg?: string },
+  group: { pyproject?: string; setupCfg?: string; setupPy?: string },
   readText: (path: string) => string,
   problems: ManifestProblem[],
 ): ManifestFacts | undefined {
   let pyproject: ManifestFacts | undefined;
   let setupCfg: ManifestFacts | undefined;
+  let setupPy: ManifestFacts | undefined;
 
   if (group.pyproject) {
     try {
@@ -172,18 +285,32 @@ function readGroup(
     }
     setupCfg = setupCfgFacts(dir, parsed.sections);
   }
+  if (group.setupPy) {
+    const parsed = readSetupPy(dir, readText(group.setupPy));
+    for (const note of parsed.notes) {
+      problems.push({ path: group.setupPy, message: `line ${note.line}: ${note.message}` });
+    }
+    setupPy = {
+      ...(parsed.name !== undefined ? { name: parsed.name } : {}),
+      roots: parsed.roots,
+      scripts: [],
+      entryPoints: [],
+      dependencies: [],
+    };
+  }
 
-  if (!pyproject) return setupCfg;
-  if (!setupCfg) return pyproject;
+  const sources = [pyproject, setupCfg, setupPy];
+  if (!sources.some((facts) => facts !== undefined)) return undefined;
   return {
-    name: pyproject.name ?? setupCfg.name,
-    roots: pyproject.roots.length > 0 ? pyproject.roots : setupCfg.roots,
-    scripts: pyproject.scripts,
-    entryPoints: pyproject.entryPoints,
+    name: sources.find((facts) => facts?.name !== undefined)?.name,
+    roots: sources.find((facts) => (facts?.roots.length ?? 0) > 0)?.roots ?? [],
+    scripts: pyproject?.scripts ?? [],
+    entryPoints: pyproject?.entryPoints ?? [],
+    dependencies: pyproject?.dependencies ?? [],
   };
 }
 
-/** Read the package layout and entry points a pyproject.toml declares. */
+/** Read the package layout, entry points and dependencies a pyproject.toml declares. */
 function pyprojectFacts(dir: string, doc: Table): ManifestFacts {
   const roots: string[] = [];
   const add = (relative: string | undefined): void => {
@@ -224,7 +351,119 @@ function pyprojectFacts(dir: string, doc: Table): ManifestFacts {
       target,
     })),
     entryPoints: groupedEntries(table(dig(doc, 'project', 'entry-points'))),
+    dependencies: collectDependencies(doc),
   };
+}
+
+/**
+ * Every dependency the pyproject declares, in the forms the Phase 4.1 tools use: PEP 508 strings
+ * (with `name @ file:` and `-e file:` path forms), Poetry tables, and the uv `tool.uv.sources`
+ * table, which gives a path or `workspace = true` to a declared name.
+ */
+function collectDependencies(doc: Table): DeclaredDependency[] {
+  const out: Array<{
+    kind: PythonDependencyKind;
+    name: string;
+    path?: string;
+    workspace: boolean;
+  }> = [];
+
+  const addRequirements = (kind: PythonDependencyKind, value: unknown): void => {
+    if (!Array.isArray(value)) return;
+    for (const entry of value) {
+      if (typeof entry !== 'string') continue;
+      const name = requirementName(entry);
+      if (name === undefined) continue;
+      const path = fileReference(entry);
+      out.push({ kind, name, ...(path !== undefined ? { path } : {}), workspace: false });
+    }
+  };
+  const addTables = (kind: PythonDependencyKind, value: unknown): void => {
+    for (const [name, spec] of Object.entries(table(value) ?? {})) {
+      if (normalizeName(name) === 'python') continue;
+      const entry = table(spec);
+      const path = pathValue(entry?.path);
+      const optional = entry?.optional === true;
+      out.push({
+        kind: kind === 'normal' && optional ? 'optional' : kind,
+        name: normalizeName(name),
+        ...(path !== undefined ? { path } : {}),
+        workspace: entry?.workspace === true,
+      });
+    }
+  };
+  const addGroups = (kind: PythonDependencyKind, value: unknown): void => {
+    for (const group of Object.values(table(value) ?? {})) addRequirements(kind, group);
+  };
+
+  addRequirements('normal', dig(doc, 'project', 'dependencies'));
+  addGroups('optional', dig(doc, 'project', 'optional-dependencies'));
+  addGroups('dev', dig(doc, 'dependency-groups'));
+  addRequirements('build', dig(doc, 'build-system', 'requires'));
+  addRequirements('dev', dig(doc, 'tool', 'uv', 'dev-dependencies'));
+  addGroups('dev', dig(doc, 'tool', 'pdm', 'dev-dependencies'));
+  addTables('normal', dig(doc, 'tool', 'poetry', 'dependencies'));
+  addTables('dev', dig(doc, 'tool', 'poetry', 'dev-dependencies'));
+  for (const group of Object.values(table(dig(doc, 'tool', 'poetry', 'group')) ?? {})) {
+    addTables('dev', table(group)?.dependencies);
+  }
+
+  // A uv source gives a path or workspace to the dependency of the same name, whatever its kind.
+  const sources = new Map<string, Table>();
+  for (const [name, spec] of Object.entries(table(dig(doc, 'tool', 'uv', 'sources')) ?? {})) {
+    const source = table(spec);
+    if (source) sources.set(normalizeName(name), source);
+  }
+  return out.map((dependency) => {
+    const source = sources.get(dependency.name);
+    if (!source || dependency.path !== undefined || dependency.workspace) return dependency;
+    const path = pathValue(source.path);
+    return {
+      ...dependency,
+      ...(path !== undefined ? { path } : {}),
+      workspace: source.workspace === true,
+    };
+  });
+}
+
+/** The PEP 503 normalized name of a requirement string, such as `Demo_Pkg[extra]>=1`. */
+function requirementName(spec: string): string | undefined {
+  const egg = /#egg=([A-Za-z0-9][A-Za-z0-9._-]*)/.exec(spec);
+  if (spec.trimStart().startsWith('-e') && egg?.[1]) return normalizeName(egg[1]);
+  const match = /^\s*([A-Za-z0-9][A-Za-z0-9._-]*)/.exec(spec);
+  return match?.[1] ? normalizeName(match[1]) : undefined;
+}
+
+/**
+ * The repository-relative path of a `file:` reference, with `${PROJECT_ROOT}` standing for the
+ * manifest directory. An absolute path is outside the repository, so it has no path here.
+ */
+function fileReference(spec: string): string | undefined {
+  const match = /\bfile:(\/\/)?([^\s;#]+)/.exec(spec);
+  if (!match) return undefined;
+  let rest = match[2] ?? '';
+  // "/${PROJECT_ROOT}/x" after file:// is the project root, not an absolute path.
+  if (rest.startsWith('/${PROJECT_ROOT}')) rest = rest.slice(1);
+  if (rest.startsWith('${PROJECT_ROOT}')) {
+    return rest.slice('${PROJECT_ROOT}'.length).replace(/^\//, '') || '.';
+  }
+  if (rest.startsWith('/')) return undefined;
+  return rest || '.';
+}
+
+/** A path value from a manifest, when it is repository-relative. */
+function pathValue(value: unknown): string | undefined {
+  const path = text(value);
+  if (path === undefined || isAbsolutePath(path)) return undefined;
+  return path;
+}
+
+function isAbsolutePath(path: string): boolean {
+  return path.startsWith('/') || path.startsWith('\\') || /^[A-Za-z]:/.test(path);
+}
+
+function normalizeName(name: string): string {
+  return name.toLowerCase().replace(/[-_.]+/g, '-');
 }
 
 /** Read the layout a setup.cfg declares: package_dir and packages.find where. */
@@ -254,6 +493,7 @@ function setupCfgFacts(dir: string, sections: ReadonlyMap<string, IniSection>): 
     roots: unique(roots),
     scripts: [],
     entryPoints: [],
+    dependencies: [],
   };
 }
 
