@@ -95,3 +95,37 @@ describe('cargo fixtures (V3 Phase 7.2)', () => {
     ]);
   });
 });
+
+describe('cargo fixtures: dependsOn edges (V3 Phase 7.3)', () => {
+  it('virtual workspace: app depends on core-lib through its path', () => {
+    const result = discoverFixture('cargo-virtual-workspace');
+    expect(result.dependencies.map((edge) => [edge.from, edge.to, edge.kind, edge.name])).toEqual([
+      [
+        'package:cargo:crates/app#bin:app',
+        'package:cargo:crates/core#lib:core_lib',
+        'normal',
+        'core_lib',
+      ],
+    ]);
+    expect(result.externs).toEqual([]);
+  });
+
+  it('proc-macro: the consumer library depends on the proc-macro crate', () => {
+    const result = discoverFixture('cargo-proc-macro');
+    expect(result.dependencies.map((edge) => [edge.from, edge.to, edge.kind])).toEqual([
+      [
+        'package:cargo:crates/consumer#lib:consumer',
+        'package:cargo:crates/derive#proc-macro:my_derive',
+        'normal',
+      ],
+    ]);
+  });
+
+  it('single crate and renames: no dependencies, only implicit edges to their own library', () => {
+    for (const name of ['cargo-single', 'cargo-renames']) {
+      const edges = discoverFixture(name).dependencies;
+      expect(edges.length).toBeGreaterThan(0);
+      expect(edges.every((edge) => edge.implicit && edge.kind === 'normal')).toBe(true);
+    }
+  });
+});

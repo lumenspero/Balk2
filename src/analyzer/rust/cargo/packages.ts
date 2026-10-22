@@ -7,6 +7,12 @@ import {
   parseCargoManifest,
   resolveWorkspaceInheritance,
 } from './manifest.js';
+import {
+  type CargoExtern,
+  type CargoPackageDependency,
+  type CargoPackageInput,
+  resolveCargoDependencies,
+} from './dependencies.js';
 import { discoverTargets } from './targets.js';
 import { workspaceMemberDirs } from './workspace-members.js';
 
@@ -22,8 +28,12 @@ export interface CargoPackageDiscovery {
   readonly packages: readonly PackageNode[];
   /** Sorted by package id, then file */
   readonly packageRoots: readonly CargoPackageRoot[];
-  /** Every parsed manifest, resolved against its workspace and sorted by path. Phase 7.3 reads these. */
+  /** Every parsed manifest, resolved against its workspace and sorted by path */
   readonly manifests: readonly CargoManifest[];
+  /** `dependsOn` edges between targets in the repository */
+  readonly dependencies: readonly CargoPackageDependency[];
+  /** Dependencies that are not packages in the repository, for name resolution */
+  readonly externs: readonly CargoExtern[];
   readonly problems: readonly CargoManifestProblem[];
 }
 
@@ -63,6 +73,7 @@ export function discoverCargoPackages(
   const packages: PackageNode[] = [];
   const packageRoots: CargoPackageRoot[] = [];
   const manifests: CargoManifest[] = [];
+  const inputs: CargoPackageInput[] = [];
   const problems: CargoManifestProblem[] = [];
   const seen = new Set<string>();
 
@@ -89,7 +100,9 @@ export function discoverCargoPackages(
     if (!resolved.package) continue;
 
     const edition = resolved.package.edition ?? DEFAULT_EDITION;
-    for (const target of discoverTargets(resolved, dir, files)) {
+    const targets = discoverTargets(resolved, dir, files);
+    inputs.push({ dir, manifest: resolved, targets });
+    for (const target of targets) {
       if (seen.has(target.id)) continue;
       seen.add(target.id);
       packages.push({
@@ -109,7 +122,8 @@ export function discoverCargoPackages(
   packages.sort((a, b) => compareText(a.id, b.id));
   packageRoots.sort((a, b) => compareText(a.packageId, b.packageId) || compareText(a.file, b.file));
   manifests.sort((a, b) => compareText(a.path, b.path));
-  return { packages, packageRoots, manifests, problems };
+  const { dependencies, externs } = resolveCargoDependencies(inputs, problems);
+  return { packages, packageRoots, manifests, dependencies, externs, problems };
 }
 
 /** The directory of the nearest manifest with a `[workspace]` table, starting at `dir` itself. */
