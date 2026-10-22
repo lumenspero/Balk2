@@ -232,7 +232,8 @@ function emitFrom(
   }
 
   const attributes: string[] = [];
-  const bound = baseFile ? new Set(names(baseFile.path).bound) : new Set<string>();
+  const bound =
+    baseFile && baseFile.path !== file ? new Set(names(baseFile.path).bound) : new Set<string>();
   const submodules: Array<{ alias: Alias; target: FactTarget }> = [];
   const unresolved: Array<{ alias: Alias }> = [];
   for (const alias of stmt.names) {
@@ -299,7 +300,7 @@ function relativeBaseDir(file: string, level: number): string | undefined {
 }
 
 /** The target for a dotted name that did not resolve: internal failures stay internal. */
-function missingTarget(
+export function missingTarget(
   specifier: string,
   parts: readonly string[],
   index: ModuleIndex,

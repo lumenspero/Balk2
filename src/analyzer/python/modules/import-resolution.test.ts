@@ -253,3 +253,14 @@ describe('star imports', () => {
     expect(edge?.names).toEqual(['visible']);
   });
 });
+
+describe('self imports', () => {
+  it('treats `from . import x` in a package init as a submodule, not an attribute of itself', () => {
+    const results = resolve(
+      { 'pkg/__init__.py': 'from . import core\n', 'pkg/core.py': '' },
+      'pkg/__init__.py',
+    );
+    expect(results.map((r) => r.via)).toEqual(['whole', 'submodule']);
+    expect(results[1]?.target).toEqual({ kind: 'file', path: 'pkg/core.py' });
+  });
+});

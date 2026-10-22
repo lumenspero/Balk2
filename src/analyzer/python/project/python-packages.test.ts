@@ -80,7 +80,7 @@ describe('discoverPythonPackages: pyproject.toml layouts', () => {
 
   it('treats a tool-only pyproject.toml as no package and no problem', () => {
     const result = discover({ 'pyproject.toml': '[tool.ruff]\nline-length = 100' });
-    expect(result).toEqual({ packages: [], problems: [] });
+    expect(result).toEqual({ packages: [], entryPoints: [], problems: [] });
   });
 });
 
@@ -168,5 +168,38 @@ describe('discoverPythonPackages: ordering and paths', () => {
       'package:python:tools/zeta',
     ]);
     expect(result.packages[1]?.manifest).toBe('tools/zeta/pyproject.toml');
+  });
+});
+
+describe('discoverPythonPackages: entry points', () => {
+  it('keeps script targets and entry-point groups as declarations', () => {
+    const result = discover({
+      'pyproject.toml': [
+        '[project]',
+        'name = "demo"',
+        '[project.scripts]',
+        'demo-cli = "demo.cli:main"',
+        '[project.entry-points."pytest11"]',
+        'demo = "demo.plugin:Plugin [extra]"',
+      ].join('\n'),
+    });
+    // Sorted by package id, so the distribution's entry point comes before its script node.
+    expect(result.entryPoints).toEqual([
+      {
+        kind: 'entry-point',
+        manifest: 'pyproject.toml',
+        packageId: 'package:python:.',
+        group: 'pytest11',
+        name: 'demo',
+        target: 'demo.plugin:Plugin [extra]',
+      },
+      {
+        kind: 'script',
+        manifest: 'pyproject.toml',
+        packageId: 'package:python:.#script:demo-cli',
+        name: 'demo-cli',
+        target: 'demo.cli:main',
+      },
+    ]);
   });
 });
