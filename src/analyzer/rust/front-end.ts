@@ -18,6 +18,7 @@ import type {
 import type { SyntaxErrorNote } from '../repository-program.js';
 import type { Span } from './items.js';
 import { parseRustFile } from './items.js';
+import { computeExports } from './names/exports.js';
 import { bindImports } from './names/imports.js';
 import { buildCrateIndex, type RustCrateIndex } from './names/module-index.js';
 import type { RustNameEnvironment } from './names/resolve.js';
@@ -61,7 +62,15 @@ export class RustFrontEnd implements LanguageFrontEnd {
     }
 
     const { crates, env } = buildCrates(input, rustFiles);
-    for (const crate of crates) {
+    for (const { index: crate, exporting } of crates) {
+      if (exporting) {
+        for (const edge of computeExports(crate)) {
+          graph.addRelationship('exports', edge.from, edge.id, 'high', {
+            evidence: 'ast',
+            metadata: { visibility: 'public' },
+          });
+        }
+      }
       const result = bindImports(crate, env);
       for (const edge of result.edges) {
         graph.addRelationship('imports', edge.file, edge.target, 'high', {
@@ -95,7 +104,7 @@ export class RustFrontEnd implements LanguageFrontEnd {
 function buildCrates(
   input: FrontEndInput,
   rustFiles: ReadonlySet<string>,
-): { crates: RustCrateIndex[]; env: RustNameEnvironment } {
+): { crates: { index: RustCrateIndex; exporting: boolean }[]; env: RustNameEnvironment } {
   const externs = new Set<string>();
   const repoCrates = new Map<string, RustCrateIndex>();
   const env: RustNameEnvironment = { externs, repoCrates };
@@ -112,7 +121,7 @@ function buildCrates(
   };
   const packageById = new Map(packages.packages.map((node) => [node.id, node]));
   const indexByPackage = new Map<string, RustCrateIndex>();
-  const crates: RustCrateIndex[] = [];
+  const crates: { index: RustCrateIndex; exporting: boolean }[] = [];
   for (const root of packages.packageRoots) {
     if (!root.packageId.startsWith('package:cargo:')) continue;
     const file = normalizePath(root.file);
@@ -123,7 +132,8 @@ function buildCrates(
       readText,
       edition: packageById.get(root.packageId)?.edition ?? '2021',
     });
-    crates.push(index);
+    const target = packageById.get(root.packageId)?.target;
+    crates.push({ index, exporting: target === 'lib' || target === 'proc-macro' });
     indexByPackage.set(root.packageId, index);
   }
   for (const node of packages.packages) {

@@ -53,6 +53,8 @@ export interface RustModuleNode {
   readonly file: string;
   /** The module's scope key in the namespace tables (see names/namespaces.ts). */
   readonly scope: string;
+  /** Whether the module is declared `pub`, so its items can be reached from outside the crate. */
+  readonly public: boolean;
   /** The declaring module, or null at the crate root. */
   readonly parent: RustModuleNode | null;
   readonly children: Map<string, RustModuleNode>;
@@ -120,6 +122,7 @@ export function buildCrateIndex(input: CrateIndexInput): RustCrateIndex {
     file: input.root,
     scope: input.root,
     parent: null,
+    public: true,
   });
   visitItems(build, root, rootFile.items, '', [], true);
 
@@ -155,6 +158,7 @@ function newNode(
     file: string;
     scope: string;
     parent: RustModuleNode | null;
+    public: boolean;
   },
 ): RustModuleNode {
   return {
@@ -196,6 +200,7 @@ function visitItems(
         node.file,
         true,
         `${node.file}:${childInline}`,
+        item.vis.kind === 'public',
       );
       visitItems(
         build,
@@ -219,7 +224,15 @@ function visitItems(
     const [childFile, ...others] = existing;
     if (childFile === undefined || others.length > 0) continue;
 
-    const child = addChild(build, node, item.name, childFile, false, childFile);
+    const child = addChild(
+      build,
+      node,
+      item.name,
+      childFile,
+      false,
+      childFile,
+      item.vis.kind === 'public',
+    );
     if (child.file !== childFile || build.loaded.has(childFile)) continue;
     build.loaded.add(childFile);
     const childRoot = loadFile(build, childFile);
@@ -242,6 +255,7 @@ function addChild(
   file: string,
   inline: boolean,
   scope: string,
+  isPub: boolean,
 ): RustModuleNode {
   const existing = parent.children.get(name);
   if (existing !== undefined) {
@@ -254,6 +268,7 @@ function addChild(
     file,
     scope,
     parent,
+    public: isPub,
   });
   parent.children.set(name, child);
   return child;

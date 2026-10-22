@@ -202,3 +202,11 @@ This local run sets the provisional budget. The contract records the budget from
 - Binding is by rounds until no more names bind, so a `use` may name something another `use` brings in. Explicit uses shadow globs, and items shadow both.
 - Edition 2015 resolves `use` paths from the crate root, unless they start with `self`, `super` or `crate`.
 - Not in 9.3: `pub use` re-exports for `exports` (9.4), the leading `::` on a `use` path (the parser does not keep it, so it resolves as a uniform path), `use` inside function bodies (Phase 10), and enum variant globs.
+
+## Phase 9.4 output change (Rust exports)
+
+- Lib and proc-macro crates get `exports` edges (`src/analyzer/rust/names/exports.ts`), from the file that declares an item, or from the file of a `pub use`, to the symbol id, with `metadata.visibility: 'public'`. Binary, test, example and bench crates get none.
+- An item is exported when a path from the crate root reaches it: through `pub` items, `pub` child modules, `pub use` bindings, and `pub use path::*` globs. A glob's source can be private, so the common `mod inner; pub use inner::*;` layout exports its public items.
+- A private module is not walked, even when its items are declared `pub`. `pub(crate)` items are not exported.
+- `Declaration.exported` stays false. The export is the `exports` edge.
+- Not in 9.4: `#[macro_export]` (Phase 10), enum variants re-exported as associated paths (they are not symbols yet), and checking that a `pub use` names a public item.
