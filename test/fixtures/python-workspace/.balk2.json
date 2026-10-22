@@ -1,0 +1,6 @@
+{
+  "version": 2,
+  "python": {
+    "roots": ["packages/app", "packages/core"]
+  }
+}

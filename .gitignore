@@ -1,5 +1,7 @@
 node_modules/
 dist/
+# The npm workspace fixture models built output, so its dist/ is committed
+!test/fixtures/npm-workspaces/packages/core/dist/
 coverage/
 *.tgz
 .DS_Store
@@ -7,6 +9,9 @@ coverage/
 # Balk2 Connection Map
 /connection-map
 .balk2.json
+# Python fixtures commit their configuration
+!test/fixtures/python-packages/.balk2.json
+!test/fixtures/python-workspace/.balk2.json
 connection-map.json
 connection-map.md
 
