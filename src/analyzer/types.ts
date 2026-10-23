@@ -16,6 +16,11 @@ export interface AnalyzerOptions {
   readonly knownFiles?: ReadonlySet<string> | readonly string[];
   /** Shared repository analysis session, when the caller has one. */
   readonly repository?: RepositoryProgram;
+  /**
+   * Every scanned repository path, data files included (Phase 11.4). A bare relative data path is
+   * placed by checking these, so an artifact that exists in the file's directory is found there.
+   */
+  readonly dataPaths?: ReadonlySet<string>;
 }
 
 /**

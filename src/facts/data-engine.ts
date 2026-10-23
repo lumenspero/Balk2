@@ -1,6 +1,7 @@
 import { detectArtifactFormat } from '../data/formats.js';
 import { normalizePath } from '../graph.js';
 import type { ArtifactFormat, Confidence } from '../types.js';
+import { resolveBarePath, type BareBases } from './path-value.js';
 import type { DataReferenceFact } from './types.js';
 
 /**
@@ -56,14 +57,33 @@ const READ_KEYWORDS = [
   'fetch',
 ];
 
+/**
+ * How a bare relative path is placed in the repository (Phase 11.4). `exists` tells whether a
+ * repository path is a scanned file, and `bases` gives the bases for one fact's file.
+ */
+export interface DataPathContext {
+  readonly exists: (repoPath: string) => boolean;
+  readonly bases: (fact: DataReferenceFact) => BareBases;
+}
+
+/** The repository path an artifact fact names, or the path as written when no context is given. */
+function artifactPathOf(fact: DataReferenceFact, paths: DataPathContext | undefined): string {
+  const written = normalizePath(fact.path);
+  if (paths === undefined || written.startsWith('../') || written.startsWith('/')) return written;
+  return resolveBarePath(written, paths.bases(fact), paths.exists) ?? written;
+}
+
 /** Runs the data engine over every data-reference fact, in order. */
-export function runDataEngine(input: { readonly facts: readonly DataReferenceFact[] }): DataEdge[] {
+export function runDataEngine(input: {
+  readonly facts: readonly DataReferenceFact[];
+  readonly paths?: DataPathContext;
+}): DataEdge[] {
   return input.facts.map((fact) => {
     // A call the front end resolved to a catalog API has a known direction (Phase 11.1).
     const direction: InferredDirection = fact.api
       ? { type: fact.api.direction, certain: true }
       : inferDataDirection(fact.context);
-    const artifact = normalizePath(fact.path);
+    const artifact = artifactPathOf(fact, input.paths);
     return {
       source: normalizePath(fact.filePath),
       artifact,

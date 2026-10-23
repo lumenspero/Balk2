@@ -29,6 +29,7 @@ function analyzeModuleLoad(index: number): ConnectionMap {
   try {
     const graph = new ConnectionGraph();
     new JsTsAnalyzer().analyzeRepository(repo.repository, graph, {
+      dataPaths: new Set(repo.repository.sourceFiles.keys()),
       loaders: fixture.loaders ?? [],
     });
     return graph.build({ generatedAt: '2026-01-01T00:00:00Z' });

@@ -28,11 +28,14 @@ import type { ConnectionGraph } from '../graph.js';
 import { normalizePath } from '../graph.js';
 import type { SymbolType } from '../types.js';
 import { applyDataEdges } from '../data/data-analyzer.js';
-import { runDataEngine } from '../facts/data-engine.js';
+import { runDataEngine, type DataPathContext } from '../facts/data-engine.js';
+import { defaultBareBases } from '../facts/path-value.js';
 import type { DataReferenceFact, FactLanguage } from '../facts/types.js';
 import { dataReferenceFact } from './data-facts.js';
 
 export interface RepositoryAnalysisOptions {
+  /** Every scanned repository path, used to place bare relative data paths (Phase 11.4). */
+  readonly dataPaths?: ReadonlySet<string>;
   /** Global-symbol behavior from `.balk2.json`. */
   readonly globals?: GlobalSymbolOptions;
   /** Event protocol customization from `protocols.events` in `.balk2.json`. */
@@ -103,6 +106,7 @@ export class JsTsAnalyzer implements Analyzer {
         rootDir: repository.rootDir,
         knownFiles,
         repository,
+        dataPaths: options.dataPaths,
       });
     }
 
@@ -272,7 +276,13 @@ export class JsTsAnalyzer implements Analyzer {
     };
 
     visitFirstPass(sourceFile);
-    applyDataEdges(graph, runDataEngine({ facts: dataFacts }));
+    applyDataEdges(
+      graph,
+      runDataEngine({
+        facts: dataFacts,
+        paths: dataPathContext(normalizedPath, language, options?.dataPaths),
+      }),
+    );
 
     // Pass 2: Discover call relationships with enclosing symbol awareness
     const visitSecondPass = (node: ts.Node, currentSymbolId?: string): void => {
@@ -576,4 +586,22 @@ function handleCall(
   if (localSym) {
     graph.addRelationship('calls', callerId, localSym.id);
   }
+}
+
+/**
+ * The path context for one file's data facts (Phase 11.4). Without a set of scanned paths the
+ * facts keep their paths as written, as a single-file analysis does.
+ */
+function dataPathContext(
+  filePath: string,
+  language: FactLanguage,
+  dataPaths: ReadonlySet<string> | undefined,
+): DataPathContext | undefined {
+  if (dataPaths === undefined) return undefined;
+  const slash = filePath.lastIndexOf('/');
+  const fileDir = slash < 0 ? '' : filePath.slice(0, slash);
+  return {
+    exists: (repoPath) => dataPaths.has(repoPath),
+    bases: () => defaultBareBases(language, { file: fileDir }),
+  };
 }

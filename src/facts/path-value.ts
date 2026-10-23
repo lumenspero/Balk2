@@ -88,3 +88,58 @@ export function isDataPathLiteral(text: string): boolean {
 function isRemoteOrTemplate(text: string): boolean {
   return text.includes('://') || text.startsWith('/') || /[{}]/.test(text);
 }
+
+/** A base a bare relative path can be taken against (Phase 11.4). */
+export type PathBase = 'file' | 'package' | 'repository';
+
+/**
+ * The bases for one bare relative path. `order` is most specific first, and always ends with the
+ * repository root. `dirs` gives the directory of each base the file has, so a base the file does not
+ * have (no package, for example) is skipped.
+ */
+export interface BareBases {
+  readonly order: readonly PathBase[];
+  readonly dirs: Readonly<Partial<Record<PathBase, string>>>;
+}
+
+/**
+ * The default base order by language (Phase 11.4). Python and JavaScript/TypeScript check the
+ * directory of the script or module first; Cargo checks the package directory first. Each then
+ * checks the repository root. `data.pathBase` (Phase 15.3) overrides this order for every language.
+ */
+export function defaultBareBases(
+  language: 'javascript' | 'typescript' | 'python' | 'rust',
+  dirs: { readonly file: string; readonly package?: string },
+): BareBases {
+  const order: readonly PathBase[] =
+    language === 'rust' ? ['package', 'repository'] : ['file', 'repository'];
+  return { order, dirs: { file: dirs.file, package: dirs.package } };
+}
+
+/**
+ * The repository-relative path a bare relative path names (Phase 11.4). Each base gives one
+ * candidate, in order, with duplicates removed. A single existing candidate is used. Otherwise the
+ * first candidate is used, which is the most specific base.
+ * Returns undefined when no candidate stays inside the repository.
+ */
+export function resolveBarePath(
+  path: string,
+  bases: BareBases,
+  exists: (repoPath: string) => boolean,
+): string | undefined {
+  if (path.startsWith('/')) return undefined;
+
+  const candidates: string[] = [];
+  for (const base of bases.order) {
+    const dir = base === 'repository' ? '' : bases.dirs[base];
+    if (dir === undefined) continue;
+    const joined = nodePath.posix.normalize(nodePath.posix.join(dir, path));
+    if (joined === '..' || joined.startsWith('../') || joined.startsWith('/')) continue;
+    const repoPath = joined === '.' ? '' : joined;
+    if (!candidates.includes(repoPath)) candidates.push(repoPath);
+  }
+
+  if (candidates.length === 0) return undefined;
+  const existing = candidates.filter((candidate) => exists(candidate));
+  return existing.length === 1 ? existing[0] : candidates[0];
+}

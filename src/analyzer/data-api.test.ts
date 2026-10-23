@@ -197,3 +197,43 @@ describe('data catalog: negatives (Phase 11.1)', () => {
     ).toEqual([false]);
   });
 });
+
+describe('bare data path placement (Phase 11.4)', () => {
+  const LOADER = {
+    'src/app/load.ts': [
+      "import * as fs from 'fs';",
+      "export function load(): string { return fs.readFileSync('data.json', 'utf8'); }",
+    ].join('\n'),
+  };
+
+  function artifactOf(files: Record<string, string>, dataPaths?: string[]): string[] {
+    return withFixture(files, (fixture) => {
+      const graph = new ConnectionGraph();
+      const options = dataPaths ? { dataPaths: new Set(dataPaths) } : {};
+      new JsTsAnalyzer().analyzeRepository(fixture.repository, graph, options);
+      return dataEdges(graph.build(META));
+    });
+  }
+
+  it('keeps the path as written when the caller gives no scanned paths', () => {
+    expect(artifactOf(LOADER)).toEqual(['consumes src/app/load.ts -> data.json']);
+  });
+
+  it('places the path at the root when only the root file exists', () => {
+    expect(artifactOf(LOADER, ['src/app/load.ts', 'data.json'])).toEqual([
+      'consumes src/app/load.ts -> data.json',
+    ]);
+  });
+
+  it('places the path next to the file when only that file exists', () => {
+    expect(artifactOf(LOADER, ['src/app/load.ts', 'src/app/data.json'])).toEqual([
+      'consumes src/app/load.ts -> src/app/data.json',
+    ]);
+  });
+
+  it('places the path next to the file when neither candidate exists', () => {
+    expect(artifactOf(LOADER, ['src/app/load.ts'])).toEqual([
+      'consumes src/app/load.ts -> src/app/data.json',
+    ]);
+  });
+});
