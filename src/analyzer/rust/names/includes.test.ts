@@ -6,6 +6,7 @@ import { buildCrateIndex } from './module-index.js';
 function crateOf(root: string, files: Record<string, string>, packageDir: string | undefined): IncludeCrate {
   return {
     packageDir,
+    packageId: `package:cargo:${packageDir ?? ''}#lib:app`,
     index: buildCrateIndex({
       root,
       files: new Set(Object.keys(files)),
@@ -27,6 +28,8 @@ function linesOf(edges: readonly IncludeEdge[]): string[] {
         return `consumes ${edge.from} -> ${edge.artifactPath} ${edge.format}`;
       case 'observation':
         return `observation ${edge.attempted} ${edge.reason}`;
+      case 'build-output':
+        return `build-output ${edge.from}`;
     }
   });
 }
@@ -97,10 +100,16 @@ describe('bindIncludes: observations (V3 Phase 10.4)', () => {
     ]);
   });
 
-  it('reports an environment variable other than CARGO_MANIFEST_DIR as dynamic', () => {
+  it('reports an environment variable other than CARGO_MANIFEST_DIR or OUT_DIR as dynamic', () => {
     expect(
-      includesOf('pub fn load() -> &\'static str { include_str!(concat!(env!("OUT_DIR"), "/x.txt")) }'),
+      includesOf('pub fn load() -> &\'static str { include_str!(concat!(env!("FOO_DIR"), "/x.txt")) }'),
     ).toEqual(['observation consumes dynamic-include-path']);
+  });
+
+  it('links an include of OUT_DIR to the package build output, not a dynamic observation', () => {
+    expect(
+      includesOf('include!(concat!(env!("OUT_DIR"), "/generated.rs"));', {}, ''),
+    ).toEqual(['build-output package:cargo:#lib:app']);
   });
 
   it('reports a path that names no file in the repository as unresolved', () => {

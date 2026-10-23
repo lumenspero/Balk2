@@ -350,3 +350,11 @@ This local run sets the provisional budget. The contract records the budget from
   - `file!()`, `module_path!()` and other macros that name a path.
   - `#[path]` on an `include!`.
   - The `rustc` oracle for includes. The `rust-oracle` job compares module files against dep-info, and an include comparison needs an oracle workspace that uses `include_*` and runs `cargo build` in CI. It is not verified in this sandbox, because it has no `cargo`.
+
+## Phase 10.5 output change (Rust build scripts)
+
+- A build script (`build.rs`) prints `cargo:rerun-if-changed=PATH`, or `cargo::rerun-if-changed=PATH`, through `println!` or `print!`. Each such line gives a `reads` edge from the function that prints it to the file it names, with `metadata.mechanism: "build-script"` and `high` confidence (`src/analyzer/rust/names/build-scripts.ts`). A file that is not a data format is an artifact of format `unknown`.
+- Cargo runs a build script from the package directory, so the path is relative to the package, and it resolves through the package anchor. A path with a format placeholder such as `{}` gives a `dynamic-include-path` observation. A path that names no repository file gives an `unresolved-module-path` observation. Each is a `low` edge to an unresolved node, attempted as `reads`.
+- An `include!`, `include_str!` or `include_bytes!` of `env!("OUT_DIR")` no longer gives the 10.4 dynamic observation when its package has a build script. It gives a `dependsOn` edge from the package target that includes the file to the package's `build-script` target, with `metadata.kind: "build-output"` and `medium` confidence, as the plan requires. A package with no build script keeps a `dynamic-include-path` observation, attempted as `imports`.
+- The build script of a package is the `build-script` target with the same manifest. A package has at most one.
+- Not in 10.5: other build-script output directives (`cargo:rustc-cfg`, `cargo:rustc-env`, `cargo:rustc-link-lib`) and `cargo:rerun-if-env-changed`, which read no file. Environment variables set by Cargo other than `OUT_DIR` and `CARGO_MANIFEST_DIR` remain dynamic.

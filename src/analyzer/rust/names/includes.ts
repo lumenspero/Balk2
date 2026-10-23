@@ -25,11 +25,22 @@ import type { RustCrateIndex, RustModuleNode } from './module-index.js';
 /** A crate of the repository, with the directory of its package (where `Cargo.toml` sits). */
 export interface IncludeCrate {
   readonly index: RustCrateIndex;
+  /** The crate's target id, which a build-output dependency leaves from (10.5). */
+  readonly packageId: string;
   /** Repository-relative directory of the package, `''` at the root, or undefined if unknown. */
   readonly packageDir: string | undefined;
 }
 
 export type IncludeEdge =
+  | {
+      /** An `include!` or `include_str!` of a file under `OUT_DIR`, written by the package's build script (10.5). */
+      readonly kind: 'build-output';
+      /** The package target that includes the file. */
+      readonly from: string;
+      readonly subject: string;
+      readonly file: string;
+      readonly span: Span;
+    }
   | {
       readonly kind: 'imports';
       /** The including file. */
@@ -73,6 +84,7 @@ interface Site {
   readonly from: string;
   readonly file: string;
   readonly packageDir: string | undefined;
+  readonly packageId: string;
   readonly name: string;
   readonly args: TokenGroup;
   readonly span: Span;
@@ -97,11 +109,12 @@ export function bindIncludes(
     file: string,
     args: TokenGroup,
     span: Span,
+    packageId: string,
   ): void => {
     if (!INCLUDE_MACROS.has(name)) return;
     const from = name === 'include' ? file : owner;
     const edge = includeEdge(
-      { from, file, packageDir: packageDirOf.get(file), name, args, span },
+      { from, file, packageDir: packageDirOf.get(file), packageId, name, args, span },
       files,
     );
     if (edge !== undefined) edges.push(edge);
@@ -112,7 +125,9 @@ export function bindIncludes(
       const body = fn.item.body;
       if (body === null) continue;
       for (const fact of scanFunctionBody(body)) {
-        if (fact.kind === 'macro-call') visit(lastOf(fact.path), fn.id, fn.owner.file, fact.args, fact.span);
+        if (fact.kind === 'macro-call') {
+          visit(lastOf(fact.path), fn.id, fn.owner.file, fact.args, fact.span, crate.packageId);
+        }
       }
     }
     for (const decl of crate.index.decls) {
@@ -120,11 +135,13 @@ export function bindIncludes(
       if ((item.kind !== 'const' && item.kind !== 'static') || item.value === null) continue;
       const facts = factsOutside(scanTokens(item.value.tokens), blocksOfTokens(item.value.tokens));
       for (const fact of facts) {
-        if (fact.kind === 'macro-call') visit(lastOf(fact.path), decl.id, decl.owner.file, fact.args, fact.span);
+        if (fact.kind === 'macro-call') {
+          visit(lastOf(fact.path), decl.id, decl.owner.file, fact.args, fact.span, crate.packageId);
+        }
       }
     }
     for (const call of crate.index.macroCalls) {
-      visit(lastOf(call.path), call.owner.file, call.owner.file, call.args, call.span);
+      visit(lastOf(call.path), call.owner.file, call.owner.file, call.args, call.span, crate.packageId);
     }
   }
   return edges;
@@ -133,6 +150,15 @@ export function bindIncludes(
 function includeEdge(site: Site, files: ReadonlySet<string>): IncludeEdge | undefined {
   const attempted = site.name === 'include' ? 'imports' : 'consumes';
   const parts = partsOf(site.args.children);
+  if (parts === 'build-output') {
+    return {
+      kind: 'build-output',
+      from: site.packageId,
+      subject: `${site.name}!`,
+      file: site.file,
+      span: site.span,
+    };
+  }
   const value = parts === undefined ? undefined : joinPathParts(parts);
   if (value === undefined || value.kind === 'unknown') {
     return observation(site, attempted, 'dynamic-include-path', `${site.name}! names a path that is not a literal`);
@@ -192,7 +218,7 @@ function observation(
  * The path parts of a macro's first argument, or undefined when it is not a literal or a
  * supported `concat!`. A plain string is relative to the file, so it starts with the file anchor.
  */
-function partsOf(trees: readonly TokenTree[]): PathPart[] | undefined {
+function partsOf(trees: readonly TokenTree[]): PathPart[] | 'build-output' | undefined {
   const [first = []] = splitAtCommas(trees);
   if (first.length === 1) {
     const literal = literalOf(first[0]);
@@ -213,7 +239,7 @@ function partsOf(trees: readonly TokenTree[]): PathPart[] | undefined {
   return undefined;
 }
 
-function concatParts(trees: readonly TokenTree[]): PathPart[] | undefined {
+function concatParts(trees: readonly TokenTree[]): PathPart[] | 'build-output' | undefined {
   const parts: PathPart[] = [];
   for (const piece of splitAtCommas(trees)) {
     if (piece.length === 0) continue;
@@ -223,6 +249,7 @@ function concatParts(trees: readonly TokenTree[]): PathPart[] | undefined {
       continue;
     }
     const anchor = envAnchor(piece);
+    if (anchor === 'out-dir') return 'build-output';
     if (anchor === undefined) return undefined;
     parts.push({ kind: 'anchor', anchor });
   }
@@ -250,8 +277,11 @@ function normalizeParts(parts: readonly PathPart[]): PathPart[] {
   return out;
 }
 
-/** `env!("CARGO_MANIFEST_DIR")` is the package anchor. Any other environment variable is unknown. */
-function envAnchor(piece: readonly TokenTree[]): 'package-dir' | undefined {
+/**
+ * `env!("CARGO_MANIFEST_DIR")` is the package anchor, and `env!("OUT_DIR")` is the build output
+ * directory (10.5). Any other environment variable is unknown.
+ */
+function envAnchor(piece: readonly TokenTree[]): 'package-dir' | 'out-dir' | undefined {
   const [head, bang, group] = piece;
   if (
     piece.length !== 3 ||
@@ -263,11 +293,13 @@ function envAnchor(piece: readonly TokenTree[]): 'package-dir' | undefined {
   ) {
     return undefined;
   }
-  return literalOf(group.children[0]) === 'CARGO_MANIFEST_DIR' ? 'package-dir' : undefined;
+  const name = literalOf(group.children[0]);
+  if (name === 'CARGO_MANIFEST_DIR') return 'package-dir';
+  return name === 'OUT_DIR' ? 'out-dir' : undefined;
 }
 
 /** The value of a plain string literal without escapes or a prefix, or undefined. */
-function literalOf(tree: TokenTree | undefined): string | undefined {
+export function literalOf(tree: TokenTree | undefined): string | undefined {
   if (tree === undefined || isTokenGroup(tree) || tree.kind !== 'str') return undefined;
   const raw = /^r(#*)"([\s\S]*)"\1$/.exec(tree.text);
   if (raw !== null) return raw[2];
@@ -277,7 +309,7 @@ function literalOf(tree: TokenTree | undefined): string | undefined {
 }
 
 /** Splits token trees at top-level commas. Brackets are groups, so their commas stay inside. */
-function splitAtCommas(trees: readonly TokenTree[]): TokenTree[][] {
+export function splitAtCommas(trees: readonly TokenTree[]): TokenTree[][] {
   const out: TokenTree[][] = [[]];
   for (const tree of trees) {
     if (isPunct(tree, ',')) out.push([]);
@@ -286,11 +318,11 @@ function splitAtCommas(trees: readonly TokenTree[]): TokenTree[][] {
   return out;
 }
 
-function isWord(tree: TokenTree | undefined, word: string): boolean {
+export function isWord(tree: TokenTree | undefined, word: string): boolean {
   return tree !== undefined && !isTokenGroup(tree) && tree.kind === 'ident' && tree.value === word;
 }
 
-function isPunct(tree: TokenTree | undefined, text: string): boolean {
+export function isPunct(tree: TokenTree | undefined, text: string): boolean {
   return tree !== undefined && !isTokenGroup(tree) && tree.kind === 'punct' && tree.text === text;
 }
 

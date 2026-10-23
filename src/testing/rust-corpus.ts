@@ -172,6 +172,42 @@ export const RUST_CORPUS: readonly CorpusScenario[] = [
   },
 
   {
+    name: 'build script rerun-if-changed reads the file it names',
+    family: 'macros',
+    renditions: {
+      rust: {
+        files: {
+          'Cargo.toml': CARGO,
+          'build.rs':
+            'fn main() {\n    println!("cargo:rerun-if-changed=data/schema.json");\n}\n',
+          'src/lib.rs': 'pub fn run() {}\n',
+          'data/schema.json': '{}\n',
+        },
+        expect: {
+          relationships: ['reads build.rs:main -> data/schema.json'],
+        },
+      },
+    },
+  },
+
+  {
+    name: 'include of OUT_DIR depends on the build script of its package',
+    family: 'macros',
+    renditions: {
+      rust: {
+        files: {
+          'Cargo.toml': CARGO,
+          'build.rs': 'fn main() {}\n',
+          'src/lib.rs': 'include!(concat!(env!("OUT_DIR"), "/generated.rs"));\n',
+        },
+        expect: {
+          relationships: ['dependsOn package:cargo:.#lib:demo -> package:cargo:.#build-script:build'],
+        },
+      },
+    },
+  },
+
+  {
     name: 'mod inside a raw string is not a declaration (negative)',
     family: 'lexing',
     renditions: {

@@ -19,6 +19,7 @@ import type { SyntaxErrorNote } from '../repository-program.js';
 import type { Span } from './items.js';
 import { parseRustFile } from './items.js';
 import { bindCalls } from './names/calls.js';
+import { bindBuildScripts } from './names/build-scripts.js';
 import { bindIncludes } from './names/includes.js';
 import { bindProcMacros } from './names/proc-macros.js';
 import { bindReferences } from './names/references.js';
@@ -157,9 +158,53 @@ export class RustFrontEnd implements LanguageFrontEnd {
         spans: [location],
       });
     }
+    // Build scripts (10.5): the package of each build script, by manifest, for OUT_DIR includes.
+    const manifestById = new Map((input.packages?.packages ?? []).map((node) => [node.id, node.manifest]));
+    const buildScriptByManifest = new Map<string, string>();
+    for (const node of input.packages?.packages ?? []) {
+      if (node.ecosystem === 'cargo' && node.target === 'build-script') {
+        buildScriptByManifest.set(node.manifest, node.id);
+      }
+    }
+    const buildScriptOf = new Map<string, string>();
+    for (const crate of crates) {
+      const manifest = manifestById.get(crate.id);
+      const script = manifest === undefined ? undefined : buildScriptByManifest.get(manifest);
+      if (script !== undefined) buildScriptOf.set(crate.id, script);
+    }
+
+    // Build scripts (10.5): cargo:rerun-if-changed lines name the files a build script reads.
+    const buildScriptEdges = bindBuildScripts(
+      crates.map((c) => ({ index: c.index, packageDir: c.packageDir, buildScript: c.buildScript })),
+      new Set(input.files.map(normalizePath)),
+    );
+    for (const edge of buildScriptEdges) {
+      if (edge.kind === 'reads') {
+        if (!graph.hasArtifact(edge.artifactPath)) graph.addArtifact(edge.artifactPath, edge.format);
+        graph.addRelationship('reads', edge.from, edge.artifactPath, 'high', {
+          evidence: 'ast',
+          spans: [toSourceSpan(edge.span, edge.file)],
+          metadata: { mechanism: 'build-script' },
+        });
+      } else {
+        const location = toSourceSpan(edge.span, edge.file);
+        const unresolved = graph.addUnresolved({
+          reason: edge.reason,
+          attempted: 'reads',
+          subject: edge.subject,
+          location,
+          detail: edge.detail,
+        });
+        graph.addRelationship('reads', edge.from, unresolved.id, 'low', {
+          evidence: 'ast',
+          spans: [location],
+        });
+      }
+    }
+
     // Compile-time includes (10.4): include!, include_str! and include_bytes! link the files they name.
     const includes = bindIncludes(
-      crates.map((c) => ({ index: c.index, packageDir: c.packageDir })),
+      crates.map((c) => ({ index: c.index, packageDir: c.packageDir, packageId: c.id })),
       new Set(input.files.map(normalizePath)),
     );
     for (const edge of includes) {
@@ -183,6 +228,29 @@ export class RustFrontEnd implements LanguageFrontEnd {
           spans: [toSourceSpan(edge.span, edge.file)],
           metadata: { embed: true },
         });
+      } else if (edge.kind === 'build-output') {
+        // An OUT_DIR file is written by the package's build script (10.5), when it has one.
+        const buildScript = buildScriptOf.get(edge.from);
+        if (buildScript !== undefined) {
+          graph.addRelationship('dependsOn', edge.from, buildScript, 'medium', {
+            evidence: 'ast',
+            spans: [toSourceSpan(edge.span, edge.file)],
+            metadata: { kind: 'build-output' },
+          });
+        } else {
+          const location = toSourceSpan(edge.span, edge.file);
+          const unresolved = graph.addUnresolved({
+            reason: 'dynamic-include-path',
+            attempted: 'imports',
+            subject: edge.subject,
+            location,
+            detail: 'OUT_DIR names a build output, and the package has no build script',
+          });
+          graph.addRelationship('imports', edge.file, unresolved.id, 'low', {
+            evidence: 'ast',
+            spans: [location],
+          });
+        }
       } else {
         const location = toSourceSpan(edge.span, edge.file);
         const unresolved = graph.addUnresolved({
@@ -247,6 +315,8 @@ interface CrateEntry {
   readonly procMacro: boolean;
   /** Repository-relative directory of the package, for `CARGO_MANIFEST_DIR` (10.4). */
   readonly packageDir: string | undefined;
+  /** True for a build script target (10.5). */
+  readonly buildScript: boolean;
 }
 
 /**
@@ -291,6 +361,7 @@ function buildCrates(
       id: root.packageId,
       procMacro: target === 'proc-macro',
       packageDir: packageDirOf(packageById.get(root.packageId)?.manifest),
+      buildScript: target === 'build-script',
     });
     indexByPackage.set(root.packageId, index);
   }
