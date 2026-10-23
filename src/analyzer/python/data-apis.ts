@@ -258,7 +258,7 @@ function methodFacts(
   const method = func.attr;
 
   if (type === 'pathlib.Path') {
-    const source = pathSourceOf(positionals(producer.args)[0], info, infoOf);
+    const source = pathSourceOf(positionals(producer.args)[0], info, infoOf, scope);
     if (method === 'open') {
       const mode = pathOpenMode(call.args);
       const direction = mode !== undefined && WRITE_MODE.test(mode) ? 'generates' : 'consumes';
@@ -286,7 +286,9 @@ function methodFacts(
         name: entry.name,
         direction: entry.direction,
       };
-      found.push(...factAt(info, pathSourceOf(value, info, infoOf), match, `${frame}.${method}`));
+      found.push(
+        ...factAt(info, pathSourceOf(value, info, infoOf, scope), match, `${frame}.${method}`),
+      );
     });
     return found;
   }
@@ -368,16 +370,31 @@ function flowedConstant(
   return text === undefined ? undefined : { text, declaringFile: link.target.path };
 }
 
-/** The path an argument holds: a string literal, or a module-level constant. */
+/**
+ * The path an argument holds: a string literal, a name bound once to a string literal in the
+ * function it is used in, or a module-level constant (Phase 11.5). A name bound in the function
+ * more than once holds no single path, and does not fall through to a module constant of the same
+ * name.
+ */
 function pathSourceOf(
   value: Expr | undefined,
   info: FileInfo,
   infoOf: (filePath: string) => FileInfo | undefined,
+  scope: readonly Stmt[],
 ): PathSource | undefined {
   if (value === undefined) return undefined;
   const literal = stringValue(value);
   if (literal !== undefined) return literal;
   if (value.kind !== 'name') return undefined;
+  if (scope !== info.body) {
+    const local = bindingsOf(value.id, scope);
+    if (local.count > 0) {
+      const text = local.count === 1 ? stringValue(local.value) : undefined;
+      return text === undefined
+        ? undefined
+        : { text: text.text, span: value.span, declaringFile: info.filePath };
+    }
+  }
   const flow = flowedConstant(value, info, infoOf);
   return flow === undefined
     ? undefined
@@ -408,7 +425,7 @@ function factsOfCall(
     const mode = openMode(call.args);
     const direction = mode !== undefined && WRITE_MODE.test(mode) ? 'generates' : 'consumes';
     const match: DataApiMatch = { module: 'builtins', name, direction };
-    return factAt(info, pathSourceOf(positionals(call.args)[0], info, infoOf), match, api);
+    return factAt(info, pathSourceOf(positionals(call.args)[0], info, infoOf, scope), match, api);
   }
 
   const found: DataReferenceFact[] = [];
@@ -420,7 +437,9 @@ function factsOfCall(
       name: entry.name,
       direction: entry.direction,
     };
-    found.push(...factAt(info, pathSourceOf(value, info, infoOf), match, `${module}.${name}`));
+    found.push(
+      ...factAt(info, pathSourceOf(value, info, infoOf, scope), match, `${module}.${name}`),
+    );
   });
   return found;
 }

@@ -377,9 +377,9 @@ This local run sets the provisional budget. The contract records the budget from
 
 - A `const` whose initializer is a string literal is a path value. When it is passed as an argument to a catalog call (11.1), the call gives a data edge at high confidence, with the direction the catalog gives. This works for a constant in the same file and for one imported from another repository file (`src/facts/data-catalog.ts`, `flowedDataUse` in `src/analyzer/data-api.ts`).
 - The edge starts in the file that makes the call. The bare path is placed from the file that declares the constant, through the rule in 11.4.
-- `let` and `var` bindings never flow, because they can be reassigned. A constant passed to a call outside the catalog gives no catalog edge. Its direction would be a guess.
+- A `let` or `var` whose initializer is a string literal flows only when nothing in its enclosing function assigns it again (plain assignment, destructuring assignment, `++`/`--`, `+=`-style compound assignment, a `for…in`/`for…of` target, or a second `var` declaration). The check is conservative: a reassignment anywhere in the function stops the flow. A constant passed to a call outside the catalog gives no catalog edge. Its direction would be a guess.
 - The declaration itself keeps the keyword edge it already had.
-- Not in 11.5: `Final` and `static` items (Python and Rust front ends, 11.2 and 11.3), and a path built by concatenating constants.
+- Not in 11.5: a path built by concatenating constants.
 
 ## Phase 11.2 change to the JS/TS catalog (argument position)
 
@@ -418,3 +418,10 @@ A `use` of a constant is followed through the crate's module tree. `crate::`, `s
 ## Phase 11.4 output change (`data.pathBase`)
 
 `data.pathBase` in `.balk2.json` sets the order a bare relative data path is placed in. A list gives the order for every language, and an object gives it per language (`javascript`, `python`, `rust`); a language it does not name keeps the default. Bases are `file`, `package`, `repository` and `public`. The repository root always comes last, whatever the list says. Unknown bases and languages are reported and ignored. A served URL path, such as `fetch`, keeps its own order, since it is a URL rather than a file path.
+
+## Phase 11.5 output change (let bindings in Python, JS/TS and Rust)
+
+- Python: a name bound exactly once inside a function, to a plain string literal, is a path value at catalog calls in that function. A name bound more than once in the function holds no single path, and it does not fall back to a module constant of the same name. A parameter or any other binding also shadows a module constant.
+- JS/TS: see the `let`/`var` rule above.
+- Rust: a non-`mut` `let NAME = "literal";` is a constant for the rest of its block, when the block binds NAME once. A `mut` binding, a second binding of the same name in the block, or a non-literal binding is not a constant, and it hides an outer constant of the same name. The scope is the block that holds the `let`. A `let` that appears after a use in the same block is still counted for that use (the rule is block-wide, not sequential), which is a known limit.
+- In all three, the edge starts in the file that makes the call and the path is placed under the 11.4 rule from that file.

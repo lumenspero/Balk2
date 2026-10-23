@@ -90,6 +90,8 @@ These come from the manifests in `pyproject.toml` projects. Each is new output. 
 
 A module-level constant whose name is upper-case and bound exactly once to a plain string literal now carries its value to catalog calls in the same file or to calls that import it by name (`from .cfg import DB`). `sqlite3.connect(DB)` therefore yields a `reads` edge at high confidence from the calling file to the artifact. The artifact is placed from the file that declares the constant, under the 11.4 rule. Constants with a `Final` annotation are accepted. A name bound twice, a lower-case name, or a non-literal value is not treated as a constant.
 
+Inside a function, a name bound exactly once to a plain string literal is a path value at catalog calls in that function. A name bound more than once there, or bound to anything else, holds no single path and hides a module constant of the same name. A parameter shadows a module constant the same way.
+
 The line-based keyword pass places its bare literals by the same 11.4 rule, from the file's directory, then the repository root. A literal such as `'cfg.json'` on a line with no catalog call now gives its low-confidence edge to `lib/cfg.json` when that file exists beside the caller, where it used to go to the root. This is a baseline change for Python: a bare literal next to an existing file of the same name is now placed beside its caller.
 
 Handle flows (`json.load(f)`, `pickle.load`, and similar) add no edges of their own. The artifact path is set at the `open` call, which the catalog already matches.

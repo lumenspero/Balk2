@@ -348,3 +348,64 @@ describe('Rust data catalog: module paths (Phase 11.6)', () => {
     expect(highEdgesTo(map, 'x/n.json')).toEqual([]);
   });
 });
+
+describe('Rust data catalog: let bindings (Phase 11.5)', () => {
+  it('a non-mut let bound once to a string literal is a constant in its block', () => {
+    const map = analyze({
+      'Cargo.toml': CARGO,
+      'src/main.rs': [
+        'fn load() -> String {',
+        '    let path = "x/l1.json";',
+        '    std::fs::read_to_string(path).unwrap()',
+        '}',
+        'fn main() {}',
+      ].join('\n'),
+    });
+    expect(highEdgesTo(map, 'x/l1.json')).toEqual(['consumes/high src/main.rs']);
+  });
+
+  it('a mut let is not a constant, so its value is not followed', () => {
+    const map = analyze({
+      'Cargo.toml': CARGO,
+      'src/main.rs': [
+        'fn load() -> String {',
+        '    let mut path = "x/l2.json";',
+        '    std::fs::read_to_string(path).unwrap()',
+        '}',
+        'fn main() {}',
+      ].join('\n'),
+    });
+    expect(highEdgesTo(map, 'x/l2.json')).toEqual([]);
+  });
+
+  it('a name bound twice in a block holds no single path', () => {
+    const map = analyze({
+      'Cargo.toml': CARGO,
+      'src/main.rs': [
+        'fn load() -> String {',
+        '    let path = "x/l3.json";',
+        '    let path = "x/l4.json";',
+        '    std::fs::read_to_string(path).unwrap()',
+        '}',
+        'fn main() {}',
+      ].join('\n'),
+    });
+    expect(highEdgesTo(map, 'x/l3.json')).toEqual([]);
+    expect(highEdgesTo(map, 'x/l4.json')).toEqual([]);
+  });
+
+  it('a let shadows a module constant of the same name', () => {
+    const map = analyze({
+      'Cargo.toml': CARGO,
+      'src/main.rs': [
+        'const PATH: &str = "x/m5.json";',
+        'fn load() -> String {',
+        '    let PATH = String::from("x/l5.json");',
+        '    std::fs::read_to_string(PATH).unwrap()',
+        '}',
+        'fn main() {}',
+      ].join('\n'),
+    });
+    expect(highEdgesTo(map, 'x/m5.json')).toEqual([]);
+  });
+});

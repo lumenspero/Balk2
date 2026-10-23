@@ -200,10 +200,83 @@ export interface FlowedDataUse {
 }
 
 /**
- * The catalog call an identifier is passed to, when the identifier names a `const` whose
- * initializer is a string literal (Phase 11.5). The constant may be local or imported; the checker
- * follows the import to its declaration. `let` and `var` bindings can be reassigned, so they never
- * flow. `repoPathOf` gives the repository path of a source file.
+ * Whether no code in the scope that holds a variable assigns to it after its declaration (Phase
+ * 11.5). The scope is the nearest function or source file, which is conservative for `let` and `var`:
+ * a reassignment anywhere in the function counts, so a binding that might change never flows.
+ */
+function isNeverReassigned(
+  declaration: ts.VariableDeclaration,
+  symbol: ts.Symbol,
+  checker: ts.TypeChecker,
+): boolean {
+  let scope: ts.Node = declaration;
+  while (!ts.isSourceFile(scope) && !ts.isFunctionLike(scope)) scope = scope.parent;
+
+  const isVariable = (node: ts.Node | undefined): boolean =>
+    node !== undefined && ts.isIdentifier(node) && checker.getSymbolAtLocation(node) === symbol;
+  // An assignment target may be the variable itself or a destructuring pattern that holds it.
+  const targetsVariable = (target: ts.Node): boolean => {
+    if (isVariable(target)) return true;
+    if (!ts.isArrayLiteralExpression(target) && !ts.isObjectLiteralExpression(target)) return false;
+    let found = false;
+    ts.forEachChild(target, (child) => {
+      if (targetsVariable(child)) found = true;
+    });
+    return found;
+  };
+
+  let reassigned = false;
+  const visit = (node: ts.Node): void => {
+    if (reassigned) return;
+    if (
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+      node.operatorToken.kind <= ts.SyntaxKind.LastAssignment &&
+      targetsVariable(node.left)
+    ) {
+      reassigned = true;
+      return;
+    }
+    if (
+      (ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) &&
+      (node.operator === ts.SyntaxKind.PlusPlusToken ||
+        node.operator === ts.SyntaxKind.MinusMinusToken) &&
+      isVariable(node.operand)
+    ) {
+      reassigned = true;
+      return;
+    }
+    if (
+      (ts.isForInStatement(node) || ts.isForOfStatement(node)) &&
+      !ts.isVariableDeclarationList(node.initializer) &&
+      targetsVariable(node.initializer)
+    ) {
+      reassigned = true;
+      return;
+    }
+    // A second `var` declaration with an initializer assigns the variable again.
+    if (
+      node !== declaration &&
+      ts.isVariableDeclaration(node) &&
+      node.initializer !== undefined &&
+      ts.isIdentifier(node.name) &&
+      checker.getSymbolAtLocation(node.name) === symbol
+    ) {
+      reassigned = true;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(scope);
+  return !reassigned;
+}
+
+/**
+ * The catalog call an identifier is passed to, when the identifier names a variable whose
+ * initializer is a string literal (Phase 11.5). A `const` always holds that literal; a `let` or
+ * `var` holds it only when nothing in its function assigns it again. The constant may be local or
+ * imported; the checker follows the import to its declaration. `repoPathOf` gives the repository
+ * path of a source file.
  */
 export function flowedDataUse(
   identifier: ts.Identifier,
@@ -226,8 +299,9 @@ export function flowedDataUse(
   if (symbol && symbol.flags & ts.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
   const declaration = symbol?.valueDeclaration ?? symbol?.declarations?.[0];
   if (!declaration || !ts.isVariableDeclaration(declaration)) return undefined;
-  if (!ts.isVariableDeclarationList(declaration.parent)) return undefined;
-  if (!(declaration.parent.flags & ts.NodeFlags.Const)) return undefined;
+  if (!symbol || !ts.isVariableDeclarationList(declaration.parent)) return undefined;
+  const isConst = (declaration.parent.flags & ts.NodeFlags.Const) !== 0;
+  if (!isConst && !isNeverReassigned(declaration, symbol, checker)) return undefined;
   const initializer = declaration.initializer;
   if (!initializer || !ts.isStringLiteral(initializer)) return undefined;
 

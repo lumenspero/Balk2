@@ -295,15 +295,48 @@ describe('const bindings carry paths to catalog calls (Phase 11.5)', () => {
     expect(edgesTo(map, 'data.json')).toEqual([]);
   });
 
-  it('a let binding is not a flow, because it can be reassigned', () => {
+  it('a let binding reassigned after its declaration is not a flow', () => {
     const map = buildWith({
       'a.ts': [
         "import * as fs from 'fs';",
         "let P = 'x.json';",
+        "P = 'y.json';",
         "export function load(): string { return fs.readFileSync(P, 'utf8'); }",
       ].join('\n'),
     });
     expect(edgesTo(map, 'x.json').filter((e) => e.startsWith('consumes/high'))).toEqual([]);
+  });
+
+  it('a let reassigned by destructuring or increment is not a flow', () => {
+    const map = buildWith({
+      'a.ts': [
+        "import * as fs from 'fs';",
+        'export function load(): string {',
+        "  let P = 'x.json';",
+        "  [P] = ['y.json'];",
+        "  let Q = 'z.json';",
+        "  Q += 'z';",
+        "  return fs.readFileSync(P, 'utf8') + fs.readFileSync(Q, 'utf8');",
+        '}',
+      ].join('\n'),
+    });
+    expect(edgesTo(map, 'x.json').filter((e) => e.startsWith('consumes/high'))).toEqual([]);
+    expect(edgesTo(map, 'z.json').filter((e) => e.startsWith('consumes/high'))).toEqual([]);
+  });
+
+  it('a let or var never reassigned in its function flows like a const', () => {
+    const map = buildWith({
+      'a.ts': [
+        "import * as fs from 'fs';",
+        'export function load(): string {',
+        "  let P = 'x.json';",
+        "  var Q = 'z.json';",
+        "  return fs.readFileSync(P, 'utf8') + fs.readFileSync(Q, 'utf8');",
+        '}',
+      ].join('\n'),
+    });
+    expect(edgesTo(map, 'x.json')).toContain('consumes/high a.ts');
+    expect(edgesTo(map, 'z.json')).toContain('consumes/high a.ts');
   });
 
   it('a const passed to a call outside the catalog gives no catalog edge', () => {

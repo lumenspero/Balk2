@@ -160,7 +160,8 @@ function untilSemicolon(trees: readonly TokenTree[], start: number): TokenTree[]
 
 /**
  * The scope a block's token trees open: the `use` items and the plain-string `const`/`static` items
- * it declares, on top of the names it inherits. A `static mut` is not a constant.
+ * it declares, and the `let` bindings that give a name a plain string (Phase 11.5), on top of the
+ * names it inherits. A `static mut` is not a constant, and a `mut` binding is not one either.
  */
 function scopeOf(trees: readonly TokenTree[], inherited: Scope): Scope {
   // The module path is carried through; the names are gathered from this block's own items.
@@ -187,6 +188,39 @@ function scopeOf(trees: readonly TokenTree[], inherited: Scope): Scope {
           if (literal !== undefined) consts.set(name.value, literal.value);
         }
       }
+    }
+  }
+  // A `let` binds its name for the rest of the block. A name bound once, to a plain string that is
+  // not `mut`, is a constant here. Any other binding of the name hides an outer constant.
+  const lets = new Map<string, { count: number; literal: string | undefined; mutable: boolean }>();
+  for (let i = 0; i < trees.length; i++) {
+    if (!isWord(trees[i], 'let')) continue;
+    const mutable = isWord(trees[i + 1], 'mut');
+    const nameIndex = mutable ? i + 2 : i + 1;
+    const name = trees[nameIndex];
+    if (!isIdent(name)) continue;
+    let k = nameIndex + 1;
+    while (k < trees.length && !isPunct(trees[k], '=') && !isPunct(trees[k], ';')) k++;
+    const value = trees[k + 1];
+    const literal =
+      isPunct(trees[k], '=') &&
+      value !== undefined &&
+      !isTokenGroup(value) &&
+      isPunct(trees[k + 2], ';')
+        ? plainString(value)?.value
+        : undefined;
+    const seen = lets.get(name.value) ?? { count: 0, literal: undefined, mutable: false };
+    lets.set(name.value, {
+      count: seen.count + 1,
+      literal,
+      mutable: seen.mutable || mutable,
+    });
+  }
+  for (const [name, binding] of lets) {
+    if (binding.count === 1 && !binding.mutable && binding.literal !== undefined) {
+      consts.set(name, binding.literal);
+    } else {
+      consts.delete(name);
     }
   }
   return { uses, consts, module: inherited.module };

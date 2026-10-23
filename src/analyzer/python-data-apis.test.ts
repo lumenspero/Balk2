@@ -344,3 +344,57 @@ describe('Python data catalog: rebinding through imports (Phase 11.6)', () => {
     expect(highEdgesTo(map, 'x/three.json')).toEqual(['consumes/high app.py']);
   });
 });
+
+describe('Python data catalog: function-local constants (Phase 11.5)', () => {
+  it('a name bound once in a function to a string is a constant there', () => {
+    const map = analyze({
+      'app.py': [
+        'import pandas as pd',
+        'def load():',
+        "    path = 'data/local.csv'",
+        '    return pd.read_csv(path)',
+      ].join('\n'),
+    });
+    expect(highEdgesTo(map, 'data/local.csv')).toEqual(['consumes/high app.py']);
+  });
+
+  it('a name bound twice in a function holds no single path', () => {
+    const map = analyze({
+      'app.py': [
+        'import pandas as pd',
+        'def load():',
+        "    path = 'data/first.csv'",
+        "    path = 'data/second.csv'",
+        '    return pd.read_csv(path)',
+      ].join('\n'),
+    });
+    expect(highEdgesTo(map, 'data/first.csv')).toEqual([]);
+    expect(highEdgesTo(map, 'data/second.csv')).toEqual([]);
+  });
+
+  it('a function binding shadows a module constant of the same name', () => {
+    const map = analyze({
+      'app.py': [
+        'import pandas as pd',
+        "PATH = 'data/module.csv'",
+        'def load():',
+        "    PATH = 'data/local.csv'",
+        '    return pd.read_csv(PATH)',
+      ].join('\n'),
+    });
+    expect(highEdgesTo(map, 'data/local.csv')).toEqual(['consumes/high app.py']);
+    expect(highEdgesTo(map, 'data/module.csv')).toEqual([]);
+  });
+
+  it('a function binding that is not a string gives no path', () => {
+    const map = analyze({
+      'app.py': [
+        'import pandas as pd',
+        'def load():',
+        '    path = make_path()',
+        '    return pd.read_csv(path)',
+      ].join('\n'),
+    });
+    expect(highEdgesTo(map, 'data/none.csv')).toEqual([]);
+  });
+});
