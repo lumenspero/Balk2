@@ -332,7 +332,7 @@ export interface DataReferenceFact extends FactBase {
 export interface DataApiMatch {
   readonly module: string;
   readonly name: string;
-  readonly direction: 'generates' | 'consumes';
+  readonly direction: 'generates' | 'consumes' | 'reads';
 }
 
 /** A `# balk2:` or `// balk2:` source annotation, before it is applied. */

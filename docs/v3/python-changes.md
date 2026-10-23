@@ -75,3 +75,13 @@ These come from the manifests in `pyproject.toml` projects. Each is new output. 
 - **uv workspace membership.** A `workspace = true` source to a project outside the enclosing workspace's `members`, or inside its `exclude`, draws no edge and reports a `manifest` problem. Removed edge: uv rejects such a source, so the edge described a dependency uv does not accept. A project with no enclosing uv workspace is unchanged.
 - **`registers`.** An entry point in a `[project.entry-points."group"]` table points from its `registry:entry-points:<group>#<name>` key to its target symbol or file.
 - **Baseline.** `python-baseline` has no manifest, so `python-baseline.txt` is unchanged.
+
+## Phase 11.2 output change (Python data lineage)
+
+- A call whose callee resolves to a library API in the Python data catalog (`src/facts/data-catalog.ts`, `PYTHON_DATA_APIS`), with a plain string literal in the artifact's argument position, now sets the direction of the artifact at `high` confidence. The resolver is in `src/analyzer/python/data-apis.ts`.
+- Covered: `open` (its mode decides the direction), `pandas` and `polars` readers, `duckdb` readers, `pyarrow.parquet` `read_table`/`write_table`, `numpy` `load`/`save` families, `shutil.copy`/`copy2`/`copyfile` (source read, destination write), and `sqlite3.connect` (`reads`).
+- The callee is resolved through the scope tracker and the module's imports. A repository function, a local variable, or an unimported module with the same name is not matched.
+- A literal the catalog claims is skipped by the line-based pass, so it gets one edge, from the catalog. The keyword rule still covers every other literal.
+- Direction changes in Python output are expected where the keyword rule guessed. Examples: `np.savetxt('out.csv', ...)` gives `generates` (was a low-confidence `reads`), and `sqlite3.connect('x.sqlite')` gives `reads` at high confidence (was a low-confidence guess). Each is covered by `src/analyzer/python-data-apis.test.ts`.
+- Bare paths are placed by the 11.4 rule, from the script's directory and then the repository root.
+- Not in 11.2: receivers. Methods on a `pandas.DataFrame`, `pathlib.Path` variables, `csv`, `json`, `pickle`, `yaml` and `tomllib` loads and dumps on file handles, and `Final` constants (Phase 11.5 for Python). Those keep the keyword rule until typed receivers and handle flows land.

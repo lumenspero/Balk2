@@ -122,12 +122,13 @@ export function dataApiOfLiteral(
 
   const call = argument.parent;
   if (!call || !ts.isCallExpression(call)) return undefined;
-  if (!call.arguments.some((arg) => arg === argument)) return undefined;
+  const index = call.arguments.findIndex((arg) => arg === argument);
+  if (index < 0) return undefined;
 
   const resolved = resolveCallee(call.expression, checker);
   if (!resolved) return undefined;
 
-  const entry = lookupDataApi(language, resolved.module, resolved.name);
+  const entry = lookupDataApi(language, resolved.module, resolved.name, index);
   return entry ? { module: entry.module, name: entry.name, direction: entry.direction } : undefined;
 }
 
@@ -156,10 +157,13 @@ export function flowedDataUse(
 ): FlowedDataUse | undefined {
   const call = identifier.parent;
   if (!call || !ts.isCallExpression(call)) return undefined;
-  if (!call.arguments.some((arg) => arg === identifier)) return undefined;
+  const index = call.arguments.findIndex((arg) => arg === identifier);
+  if (index < 0) return undefined;
 
   const resolved = resolveCallee(call.expression, checker);
-  const entry = resolved ? lookupDataApi(language, resolved.module, resolved.name) : undefined;
+  const entry = resolved
+    ? lookupDataApi(language, resolved.module, resolved.name, index)
+    : undefined;
   if (!entry) return undefined;
 
   let symbol = checker.getSymbolAtLocation(identifier);

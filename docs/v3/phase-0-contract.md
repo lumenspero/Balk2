@@ -380,3 +380,7 @@ This local run sets the provisional budget. The contract records the budget from
 - `let` and `var` bindings never flow, because they can be reassigned. A constant passed to a call outside the catalog gives no catalog edge. Its direction would be a guess.
 - The declaration itself keeps the keyword edge it already had.
 - Not in 11.5: `Final` and `static` items (Python and Rust front ends, 11.2 and 11.3), and a path built by concatenating constants.
+
+## Phase 11.2 change to the JS/TS catalog (argument position)
+
+- A JS/TS catalog call now matches only when the artifact is its first argument. Before, a string literal in any argument position matched, so `fs.writeFileSync(out, 'x.json')` treated the content as the target. The fix is in `src/analyzer/data-api.ts` (`dataApiOfLiteral`, `flowedDataUse`) and the catalog's `argument` field.

@@ -17,6 +17,10 @@ import type {
   LanguageFrontEnd,
 } from './front-end.js';
 import { addPythonMechanisms } from './python-mechanisms.js';
+import { applyDataEdges } from '../data/data-analyzer.js';
+import { runDataEngine } from '../facts/data-engine.js';
+import { defaultBareBases } from '../facts/path-value.js';
+import { analyzePythonDataApis } from './python/data-apis.js';
 import { collectPythonSourceAnnotations } from './python-source-apply.js';
 import { analyzePythonCalls } from './python/calls.js';
 import { parseModuleRecovering } from './python/statement-parser.js';
@@ -133,6 +137,21 @@ export function analyzePythonSources(
     });
   }
 
+  // Data lineage (Phase 11.2): catalog calls whose artifact is a literal. A bare path is placed
+  // from the script's directory, then the repository root (11.4).
+  const dataFacts = analyzePythonDataApis(sources, ctx);
+  applyDataEdges(
+    graph,
+    runDataEngine({
+      facts: dataFacts,
+      paths: {
+        exists: (repoPath) => knownFiles.has(repoPath),
+        bases: (fact) => defaultBareBases('python', { file: dirOf(fact.filePath) }),
+      },
+    }),
+  );
+  const claimed = new Set(dataFacts.map((f) => `${f.filePath}:${f.span.startLine}:${f.path}`));
+
   // Entry points: script roots, `packageRoot` edges, and `registers` edges for plugin groups.
   const manifestProblems: ManifestProblem[] = [];
   if (options.entryPoints !== undefined) {
@@ -166,7 +185,9 @@ export function analyzePythonSources(
 
   // Non-fact mechanisms, until Phases 11 and 12.
   for (const { filePath, source } of sources) {
-    addPythonMechanisms(filePath, source, graph, knownFiles);
+    addPythonMechanisms(filePath, source, graph, knownFiles, (line, value) =>
+      claimed.has(`${filePath}:${line}:${value}`),
+    );
   }
   return manifestProblems;
 }
@@ -223,4 +244,10 @@ export class PythonFrontEnd implements LanguageFrontEnd {
       manifestProblems,
     };
   }
+}
+
+/** The directory of a repository path, or '' for a file at the root. */
+function dirOf(filePath: string): string {
+  const slash = filePath.lastIndexOf('/');
+  return slash < 0 ? '' : filePath.slice(0, slash);
 }

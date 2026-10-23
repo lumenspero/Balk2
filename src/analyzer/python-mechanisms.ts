@@ -19,6 +19,7 @@ export function addDataLiteralsOnLine(
   filePath: string,
   selfDirs: SelfDirs,
   graph: ConnectionGraph,
+  claimed: (value: string) => boolean = () => false,
 ): void {
   const selfJoins = selfJoinSpans(trimmed, selfDirs);
   const literals = [
@@ -28,6 +29,8 @@ export function addDataLiteralsOnLine(
     ),
   ];
   for (const { value, index } of literals) {
+    // A literal the AST catalog has already resolved takes its edge from there (Phase 11.2).
+    if (claimed(value)) continue;
     if (isDataPathLiteral(value) && !isNonAccessBefore(trimmed.slice(0, index))) {
       const direction = inferDataDirection(trimmed);
       addDataRelationship(
@@ -223,6 +226,7 @@ export function addPythonMechanisms(
   content: string,
   graph: ConnectionGraph,
   knownFiles: ReadonlySet<string>,
+  claimed: (line: number, value: string) => boolean = () => false,
 ): void {
   const lines = content.replace(/\r\n/g, '\n').split('\n');
   const selfDirs = selfDirectories(lines);
@@ -241,10 +245,10 @@ export function addPythonMechanisms(
     }
   }
 
-  for (const line of lines) {
+  for (const [index, line] of lines.entries()) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#')) continue;
-    addDataLiteralsOnLine(trimmed, filePath, selfDirs, graph);
+    addDataLiteralsOnLine(trimmed, filePath, selfDirs, graph, (value) => claimed(index + 1, value));
   }
 
   const owners = ownersByLine(content, filePath);
