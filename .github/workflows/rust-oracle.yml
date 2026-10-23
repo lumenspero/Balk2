@@ -33,12 +33,12 @@ jobs:
 
       # The oracle tests are skipped unless BALK2_RUST_ORACLE is set. A skip must not pass
       # this required check, so every oracle test has to pass: 3 workspace checks, the
-      # modules-cfg check, and 2 predicate tests.
+      # modules-cfg check, 2 predicate tests, and 2 include and build-script checks.
       - name: Fail if any oracle test did not run
         run: |
           node -e "
           const r = JSON.parse(require('fs').readFileSync('rust-oracle.json', 'utf8'));
-          const expected = 6;
+          const expected = 8;
           if (r.numPassedTests !== expected || r.numPendingTests > 0 || r.numFailedTests > 0) {
             console.error('oracle ran ' + r.numPassedTests + ' passed, ' + r.numPendingTests + ' skipped, ' + r.numFailedTests + ' failed; expected ' + expected + ' passed');
             process.exit(1);
