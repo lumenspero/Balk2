@@ -4,6 +4,10 @@
  * crate and writes the `imports` edges they give (9.3). Calls and references come in later
  * sub-phases (9.6, 9.7).
  */
+import { applyDataEdges } from '../../data/data-analyzer.js';
+import { runDataEngine } from '../../facts/data-engine.js';
+import { defaultBareBases } from '../../facts/path-value.js';
+import { analyzeRustDataApis } from './data-apis.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { ConnectionGraph } from '../../graph.js';
@@ -45,6 +49,7 @@ export class RustFrontEnd implements LanguageFrontEnd {
   analyze(input: FrontEndInput, graph: ConnectionGraph): FrontEndResult {
     const syntaxErrors: SyntaxErrorNote[] = [];
     const rustFiles = new Set<string>();
+    const sources = new Map<string, string>();
     for (const relFile of input.files) {
       const filePath = normalizePath(relFile);
       if (!this.canHandle(filePath)) continue;
@@ -56,6 +61,7 @@ export class RustFrontEnd implements LanguageFrontEnd {
         continue;
       }
       rustFiles.add(filePath);
+      sources.set(filePath, source);
       // The parser recovers past each error, so every file is still analyzed.
       const file = parseRustFile(source);
       for (const e of file.errors) {
@@ -307,7 +313,45 @@ export class RustFrontEnd implements LanguageFrontEnd {
         spans: [location],
       });
     }
+    // Data lineage (Phase 11.3): catalog calls with a literal path. A bare path is placed from the
+    // package directory, then the repository root (11.4).
+    const knownFiles = new Set(input.files.map(normalizePath));
+    const dataFacts = [...sources].flatMap(([filePath, source]) =>
+      analyzeRustDataApis(filePath, source),
+    );
+    applyDataEdges(
+      graph,
+      runDataEngine({
+        facts: dataFacts,
+        paths: {
+          exists: (repoPath) => knownFiles.has(repoPath),
+          bases: (fact) =>
+            defaultBareBases('rust', {
+              file: dirOf(fact.filePath),
+              ...(nearestPackageDir(fact.filePath, knownFiles) === undefined
+                ? {}
+                : { package: nearestPackageDir(fact.filePath, knownFiles) }),
+            }),
+        },
+      }),
+    );
     return { problems: [], syntaxErrors };
+  }
+}
+
+/** The directory of a repository path, or '' for a file at the root. */
+function dirOf(filePath: string): string {
+  const slash = filePath.lastIndexOf('/');
+  return slash < 0 ? '' : filePath.slice(0, slash);
+}
+
+/** The nearest directory at or above a file that holds a `Cargo.toml`, or undefined if none. */
+function nearestPackageDir(filePath: string, knownFiles: ReadonlySet<string>): string | undefined {
+  let dir = dirOf(filePath);
+  for (;;) {
+    if (knownFiles.has(dir === '' ? 'Cargo.toml' : `${dir}/Cargo.toml`)) return dir;
+    if (dir === '') return undefined;
+    dir = dirOf(dir);
   }
 }
 

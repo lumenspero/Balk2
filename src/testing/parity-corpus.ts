@@ -257,7 +257,6 @@ export const PARITY_CORPUS: readonly CorpusScenario[] = [
             'consumes|reads src/read.rs -> data/out.json',
           ],
         },
-        pending: '11.3',
       },
     },
   },

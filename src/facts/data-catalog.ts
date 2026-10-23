@@ -23,6 +23,7 @@ export interface DataApiEntry {
 
 const JS_TS: readonly FactLanguage[] = ['javascript', 'typescript'];
 const PYTHON: readonly FactLanguage[] = ['python'];
+const RUST: readonly FactLanguage[] = ['rust'];
 
 function entriesFor(
   module: string,
@@ -80,6 +81,25 @@ export const PYTHON_DATA_APIS: readonly DataApiEntry[] = [
 ];
 
 /**
+ * Catalog entries for Rust (Phase 11.3). Modules are full Rust paths joined with `::`, so
+ * `std::fs::File::open` is module `std::fs::File` with name `open`. Method chains such as
+ * `OpenOptions::new().write(true).open(p)` are not matched: the call's receiver is a chain.
+ */
+export const RUST_DATA_APIS: readonly DataApiEntry[] = [
+  ...entriesFor('std::fs', ['read', 'read_to_string'], 'consumes', RUST),
+  ...entriesFor('std::fs', ['write'], 'generates', RUST),
+  ...entriesFor('std::fs', ['copy'], 'consumes', RUST, 0),
+  ...entriesFor('std::fs', ['copy'], 'generates', RUST, 1),
+  ...entriesFor('std::fs::File', ['open'], 'consumes', RUST),
+  ...entriesFor('std::fs::File', ['create'], 'generates', RUST),
+  ...entriesFor('csv::Reader', ['from_path'], 'consumes', RUST),
+  ...entriesFor('csv::Writer', ['from_path'], 'generates', RUST),
+  ...entriesFor('rusqlite::Connection', ['open'], 'reads', RUST),
+  ...entriesFor('polars::prelude', ['scan_csv', 'scan_parquet'], 'consumes', RUST),
+  ...entriesFor('polars::prelude::CsvReader', ['from_path'], 'consumes', RUST),
+];
+
+/**
  * The entry for an API the front end resolved, in one language, when the artifact is passed as
  * the given positional argument. Returns undefined when no entry names that argument.
  */
@@ -89,7 +109,7 @@ export function lookupDataApi(
   name: string,
   argument = 0,
 ): DataApiEntry | undefined {
-  return [...JS_TS_DATA_APIS, ...PYTHON_DATA_APIS].find(
+  return [...JS_TS_DATA_APIS, ...PYTHON_DATA_APIS, ...RUST_DATA_APIS].find(
     (entry) =>
       entry.module === module &&
       entry.name === name &&

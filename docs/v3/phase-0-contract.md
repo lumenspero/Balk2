@@ -384,3 +384,13 @@ This local run sets the provisional budget. The contract records the budget from
 ## Phase 11.2 change to the JS/TS catalog (argument position)
 
 - A JS/TS catalog call now matches only when the artifact is its first argument. Before, a string literal in any argument position matched, so `fs.writeFileSync(out, 'x.json')` treated the content as the target. The fix is in `src/analyzer/data-api.ts` (`dataApiOfLiteral`, `flowedDataUse`) and the catalog's `argument` field.
+
+## Phase 11.3 output change (Rust data lineage)
+
+- Rust had no data lineage before this phase. A call whose full path resolves to a catalog API (`RUST_DATA_APIS` in `src/facts/data-catalog.ts`), with a plain string literal in the artifact's argument position, now gives a `high` data edge. The pass is `src/analyzer/rust/data-apis.ts`, which reads the token trees and resolves the first segment through the file's top-level `use` items.
+- Covered: `std::fs` `read`, `read_to_string`, `write`, `copy` (source read, destination written); `std::fs::File` `open` and `create`; `csv::Reader::from_path` and `csv::Writer::from_path`; `rusqlite::Connection::open` (`reads`); `polars::prelude` `scan_csv` and `scan_parquet`, and `CsvReader::from_path`.
+- A `Path::new("x")` or `PathBuf::from("x")` argument, and `&"x"`, are read as the string. A raw string or an escaped string is not.
+- A method call on a value (`h.open(...)`) and a bare name with no `use` are not matched. An argument that holds contents rather than a path (the second argument of `fs::write`) is not matched.
+- A bare path is placed from the package directory (the nearest `Cargo.toml`), then the repository root (11.4).
+- The write-then-read parity scenario (`src/testing/parity-corpus.ts`) now passes in Rust. Its `pending: '11.3'` marker is removed.
+- Not in 11.3: method chains such as `OpenOptions::new().write(true).open(p)`, handle flows (`serde_json::from_reader(File::open(p)?)` is matched at the `File::open` call, but the reader and writer calls are not), `use` items inside inline modules and function bodies, glob imports, and `const`/`static` flows (Phase 11.5 for Rust).
