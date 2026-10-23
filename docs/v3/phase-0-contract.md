@@ -449,3 +449,8 @@ A `use` of a constant is followed through the crate's module tree. `crate::`, `s
 - A constant a `pub use` re-exports is followed to the module that declares it, including an aliased `pub use … as` and a re-export through inline modules (`super::`, `self::`). The edge is placed from the file that makes the call, under the 11.4 rule.
 - Only `pub` and `pub(…)` uses are followed. A private `use` is not a re-export, so a constant reached through it is not followed.
 - Re-exports are followed up to eight links, which also stops cycles. Glob re-exports (`pub use …::*`) are not followed.
+
+## Phase 11.2 output change (Python DuckDB SQL)
+
+- The Python front end reads DuckDB SQL the same way as JS/TS: `read_*` functions in a SQL string are reads, and `COPY … TO` is a write. It applies to a plain string passed to a DuckDB connection's `execute`, `sql` or `query`, or to the `duckdb` module's `sql`, `execute` or `query`.
+- The shared scanner is `src/facts/duckdb-sql.ts`. The JS front end imports it, so both languages read SQL with the same rules.

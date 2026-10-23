@@ -493,3 +493,44 @@ describe('Python data catalog: more readers, writers and handles (Phase 11.2)', 
     expect(highEdgesTo(map, 'x/c6.json')).toEqual(['consumes/high app.py']);
   });
 });
+
+describe('Python DuckDB SQL (Phase 11.2)', () => {
+  it('a COPY TO that a DuckDB connection executes generates its target', () => {
+    const map = analyze({
+      'app.py': [
+        'import duckdb',
+        'con = duckdb.connect()',
+        'con.execute("COPY (SELECT 1) TO \'x/d1.parquet\'")',
+      ].join('\n'),
+    });
+    expect(highEdgesTo(map, 'x/d1.parquet')).toEqual(['generates/high app.py']);
+  });
+
+  it('a read in SQL run by the duckdb module reads its file, once', () => {
+    const map = analyze({
+      'app.py': ['import duckdb', 'duckdb.sql("SELECT * FROM read_csv(\'x/d2.csv\')")'].join('\n'),
+    });
+    expect(edgesTo(map, 'x/d2.csv')).toEqual(['consumes/high app.py']);
+  });
+
+  it('a connection made and used in one expression is a handle too', () => {
+    const map = analyze({
+      'app.py': [
+        'import duckdb',
+        'duckdb.connect().execute("COPY (SELECT 1) TO \'x/d3.csv\'")',
+      ].join('\n'),
+    });
+    expect(highEdgesTo(map, 'x/d3.csv')).toEqual(['generates/high app.py']);
+  });
+
+  it('a SQL method on an object that is not a DuckDB connection is not matched', () => {
+    const map = analyze({
+      'app.py': [
+        'import sqlite3',
+        'cur = sqlite3.connect(":memory:").cursor()',
+        'cur.execute("COPY (SELECT 1) TO \'x/d4.parquet\'")',
+      ].join('\n'),
+    });
+    expect(highEdgesTo(map, 'x/d4.parquet')).toEqual([]);
+  });
+});

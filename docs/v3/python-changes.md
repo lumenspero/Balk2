@@ -118,3 +118,10 @@ A receiver name is not typed when an `import` in the same scope rebinds it: `imp
 - Added: `pyarrow.csv` `read_csv` and `write_csv`, `pyarrow.feather` `read_table` and `write_feather`, `polars.read_ipc`, `pandas.read_pickle`, and `DataFrame.to_pickle`.
 - Decision, handle loads: `json`, `pickle`, `csv`, `yaml` and `tomllib` load and dump take a file handle, not a path. They have no catalog entries. The path is the `open` call that made the handle, which the catalog already matches, so `json.load(open('x.json'))` gives its edge at `open`.
 - Not in 11.2: a pickle destination (`.pkl`) gives no edge, because `.pkl` is not a data format in `src/data/formats.ts`. Anchored paths from a module constant imported from another file are not followed. Anchors inside an f-string are not followed.
+
+## Phase 11.2 output change (Python DuckDB SQL)
+
+- A plain string literal passed to a DuckDB connection's `execute`, `sql` or `query` is read as SQL, and so is one passed to the `duckdb` module's `sql`, `execute` or `query`. A connection is a name bound once to `duckdb.connect(…)`, or a `duckdb.connect(…)` call used directly. An object of another kind with an `execute` method is not matched.
+- A file a SQL function reads (`read_csv`, `read_parquet`, `read_json` and their `_auto` forms) is a read. The target of `COPY … TO '…'` is a write. Both use the same scanner as the JavaScript front end, in `src/facts/duckdb-sql.ts`.
+- SQL is read only from a plain literal, single-quoted, double-quoted or triple-quoted. A formatted or concatenated statement gives nothing.
+- Decision: `duckdb.connect(path)` does not give an edge for the database file. The JavaScript front end does not do so for `new duckdb.Database(path)` either.

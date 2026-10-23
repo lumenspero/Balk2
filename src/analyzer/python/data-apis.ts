@@ -1,4 +1,11 @@
-import { lookupDataApi } from '../../facts/data-catalog.js';
+import {
+  DUCKDB_PYTHON_CONNECT,
+  DUCKDB_PYTHON_SQL_FUNCTIONS,
+  DUCKDB_PYTHON_SQL_METHODS,
+  DUCKDB_MODULE,
+  lookupDataApi,
+} from '../../facts/data-catalog.js';
+import { duckDbSqlTargets } from '../../facts/duckdb-sql.js';
 import type { DataApiMatch, DataReferenceFact } from '../../facts/types.js';
 import { isDataPathLiteral } from '../../facts/path-value.js';
 import type { CallArg, Expr, Stmt } from './ast.js';
@@ -264,6 +271,10 @@ function methodFacts(
   const type = qualifiedName(producer.func, info);
   if (type === undefined) return undefined;
   const method = func.attr;
+
+  if (type === DUCKDB_PYTHON_CONNECT) {
+    return DUCKDB_PYTHON_SQL_METHODS.includes(method) ? sqlFacts(call.args, info) : undefined;
+  }
 
   if (type === 'pathlib.Path') {
     const source = pathSourceOf(positionals(producer.args)[0], info, infoOf, scope);
@@ -558,6 +569,7 @@ function factsOfCall(
   }
   const api = qualifiedName(call.func, info);
   if (api === undefined) return [];
+  if (DUCKDB_PYTHON_SQL_FUNCTIONS.includes(api)) return sqlFacts(call.args, info);
 
   const dot = api.lastIndexOf('.');
   if (dot < 0) return [];
@@ -586,6 +598,39 @@ function factsOfCall(
     );
   });
   return found;
+}
+
+/**
+ * The files a DuckDB SQL statement passed to a connection or to the `duckdb` module reads or writes
+ * (Phase 11.2). Only a plain string literal is read as SQL, so a formatted statement gives nothing.
+ */
+function sqlFacts(args: readonly CallArg[], info: FileInfo): DataReferenceFact[] {
+  const literal = sqlTextOf(positionals(args)[0]);
+  if (literal === undefined) return [];
+  const found: DataReferenceFact[] = [];
+  for (const target of duckDbSqlTargets(literal.text)) {
+    const match: DataApiMatch = {
+      module: DUCKDB_MODULE,
+      name: target.name,
+      direction: target.direction,
+    };
+    found.push(
+      ...factAt(info, { text: target.path, span: literal.span }, match, `duckdb.${target.name}`),
+    );
+  }
+  return found;
+}
+
+/**
+ * The text of a plain string literal used as SQL, with its quotes removed. SQL quotes its file names,
+ * so unlike a path, the text may contain quotes of the other kind.
+ */
+function sqlTextOf(e: Expr | undefined): { text: string; span: Expr['span'] } | undefined {
+  if (e === undefined || e.kind !== 'constant' || e.type !== 'str') return undefined;
+  const match = /^(?:"""([\s\S]*)"""|'''([\s\S]*)'''|"([^\\\n]*)"|'([^\\\n]*)')$/.exec(e.raw);
+  if (match === null) return undefined;
+  const text = match[1] ?? match[2] ?? match[3] ?? match[4];
+  return text === undefined ? undefined : { text, span: e.span };
 }
 
 /** A fact for a path source, when its text names a data file. */

@@ -190,6 +190,19 @@ export const DUCKDB_MODULE = 'duckdb';
 /** Methods of a DuckDB database or connection whose first argument is SQL. */
 export const DUCKDB_SQL_METHODS: readonly string[] = ['all', 'run', 'exec', 'each', 'prepare'];
 
+/** Methods of a DuckDB connection in Python whose first argument is SQL (Phase 11.2). */
+export const DUCKDB_PYTHON_SQL_METHODS: readonly string[] = ['execute', 'sql', 'query'];
+
+/** Module functions of `duckdb` in Python whose first argument is SQL (Phase 11.2). */
+export const DUCKDB_PYTHON_SQL_FUNCTIONS: readonly string[] = [
+  'duckdb.sql',
+  'duckdb.execute',
+  'duckdb.query',
+];
+
+/** The Python call that makes a DuckDB connection, whose methods are SQL (Phase 11.2). */
+export const DUCKDB_PYTHON_CONNECT = 'duckdb.connect';
+
 /** SQL functions that read the file named by their first string argument. */
 export const DUCKDB_SQL_READERS: readonly string[] = [
   'read_csv',

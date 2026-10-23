@@ -1,5 +1,6 @@
 import * as ts from 'typescript';
-import { DUCKDB_MODULE, DUCKDB_SQL_METHODS, DUCKDB_SQL_READERS } from '../facts/data-catalog.js';
+import { DUCKDB_MODULE, DUCKDB_SQL_METHODS } from '../facts/data-catalog.js';
+import { duckDbSqlTargets } from '../facts/duckdb-sql.js';
 import { isDataPathLiteral } from '../facts/path-value.js';
 import type { DataReferenceFact } from '../facts/types.js';
 import { resolveCallee } from './data-api.js';
@@ -14,10 +15,6 @@ import { spanOf } from './spans.js';
  * `connect()` on one, so an unrelated object with an `all` method is never matched. Only a plain
  * string or template with no substitutions is read as SQL.
  */
-
-const READ_CALL = new RegExp(`\\b(${DUCKDB_SQL_READERS.join('|')})\\s*\\(\\s*'([^']+)'`, 'gi');
-/** `COPY <anything> TO '<path>'`, with the target as the path. */
-const COPY_TO = /\bCOPY\b[\s\S]*?\bTO\s*'([^']+)'/gi;
 
 /** The data facts a SQL literal names, when the literal is the first argument of a handle's method. */
 export function duckDbFacts(
@@ -45,12 +42,8 @@ export function duckDbFacts(
       api: { module: DUCKDB_MODULE, name, direction },
     });
   };
-  const sql = literal.text;
-  for (const match of sql.matchAll(READ_CALL)) {
-    add(match[2] ?? '', (match[1] ?? '').toLowerCase(), 'consumes');
-  }
-  for (const match of sql.matchAll(COPY_TO)) {
-    add(match[1] ?? '', 'copy', 'generates');
+  for (const target of duckDbSqlTargets(literal.text)) {
+    add(target.path, target.name, target.direction);
   }
   return facts;
 }
