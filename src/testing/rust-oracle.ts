@@ -125,17 +125,32 @@ export function rustcInputs(
       env: { ...process.env, ...env },
     },
   );
-  // The dependency file is `<output>: <input> <input> ...`, with long lines continued by `\`.
-  const text = readFileSync(depFile, 'utf8').replace(/\\\n/g, ' ');
-  const inputs = text
-    .slice(text.indexOf(':') + 1)
-    .trim()
-    .split(/\s+/);
-  return inputs
+  return parseDepInfo(readFileSync(depFile, 'utf8'))
     .map((input) =>
       path.isAbsolute(input) ? input : path.posix.normalize(input.split(path.sep).join('/')),
     )
     .sort();
+}
+
+/**
+ * The input paths in a rustc dependency file (V3 Phase 10). The target line is
+ * `<output>: <input> <input> ...`, with long lines continued by `\`. rustc also writes an empty
+ * `<input>:` target for each input, and `# env-dep:NAME=VALUE` comments for `env!` and `OUT_DIR`
+ * reads. Those are not inputs and are skipped.
+ */
+export function parseDepInfo(text: string): string[] {
+  const lines = text
+    .replace(/\\\n/g, ' ')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '' && !line.startsWith('#'));
+  const target = lines.find((line) => !line.endsWith(':'));
+  if (target === undefined) return [];
+  return target
+    .slice(target.indexOf(':') + 1)
+    .trim()
+    .split(/\s+/)
+    .filter((input) => input !== '');
 }
 
 /** The `.rs` files rustc reads for one crate root, workspace-relative and sorted. */

@@ -2,7 +2,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { buildConnectionGraphDetailed, type BuiltGraph } from '../../../cli/build-graph.js';
-import { balk2Reads } from '../../../testing/rust-oracle.js';
+import { balk2Reads, parseDepInfo } from '../../../testing/rust-oracle.js';
 import type { CrateModules } from './tree.js';
 
 /**
@@ -50,5 +50,28 @@ describe('include and build-script fixtures (V3 Phase 10)', () => {
         (rel) => rel.type === 'dependsOn' && rel.metadata?.kind === 'build-output',
       ),
     ).toBe(true);
+  });
+});
+
+describe('rustc dependency file parsing (V3 Phase 10)', () => {
+  it('reads the inputs of the target line and skips phony targets and env-dep comments', () => {
+    const text = [
+      '/tmp/out/lib.rlib: src/lib.rs src/data.rs ../assets/page.html \\',
+      '  /tmp/out/out/generated.rs',
+      '',
+      'src/lib.rs:',
+      'src/data.rs:',
+      '../assets/page.html:',
+      '/tmp/out/out/generated.rs:',
+      '# env-dep:BUILD_TAG=oracle',
+      '# env-dep:OUT_DIR=/tmp/out/out',
+      '',
+    ].join('\n');
+    expect(parseDepInfo(text)).toEqual([
+      'src/lib.rs',
+      'src/data.rs',
+      '../assets/page.html',
+      '/tmp/out/out/generated.rs',
+    ]);
   });
 });
