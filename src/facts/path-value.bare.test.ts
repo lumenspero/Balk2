@@ -21,9 +21,9 @@ describe('resolveBarePath (Phase 11.4)', () => {
     expect(resolveBarePath('data.json', bases, () => true)).toBe('scripts/data.json');
   });
 
-  it('uses the first candidate, the file directory, when none exists', () => {
+  it('uses the repository root when none exists, as a path with no known file always has', () => {
     const bases = defaultBareBases('python', { file: 'scripts' });
-    expect(resolveBarePath('data.json', bases, none)).toBe('scripts/data.json');
+    expect(resolveBarePath('data.json', bases, none)).toBe('data.json');
   });
 
   it('checks the file directory of a root file as the root itself', () => {

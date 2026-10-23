@@ -367,8 +367,16 @@ This local run sets the provisional budget. The contract records the budget from
 
 ## Phase 11.4 output change (bare relative data paths)
 
-- A bare relative data path in a JavaScript or TypeScript file is now placed by the shared rule in `resolveBarePath` (`src/facts/path-value.ts`). It is checked in the file's directory first, then at the repository root. A single existing candidate is used. Otherwise the first candidate, the file's directory, is used.
-- This changes output where a file in a subdirectory names a data file by a bare path. For example, `src/app/load.ts` reading `'data.json'` now gives `src/app/data.json` when no file exists at either place. Before, it gave `data.json`. It also gives `data.json` when only the root file exists.
+- A bare relative data path in a JavaScript or TypeScript file is now placed by the shared rule in `resolveBarePath` (`src/facts/path-value.ts`). It is checked in the file's directory first, then at the repository root. A single existing candidate is used. When both exist, the file's directory is used. When neither exists, the path is taken at the repository root, as before.
+- The output changes only where the file's directory holds the data file. For example, `src/app/load.ts` reading `'data.json'` gives `src/app/data.json` when that file exists and the root file does not. The same call gives `data.json` when only the root file exists, or when neither file exists.
 - The placement uses the set of every scanned path (`dataPaths`, set by the JS/TS front end). A caller that does not pass the set keeps the path as written, as single-file analysis does.
 - `data.pathBase` (Phase 15.3) overrides the default order for every language. The order is a parameter of `defaultBareBases` now, and the config key is not read yet.
 - Not in 11.4: Python and Rust use the same rule through the Python and Rust front ends (11.2 and 11.3). Rust bases use the package directory first, then the root.
+
+## Phase 11.5 output change (const bindings in JS/TS)
+
+- A `const` whose initializer is a string literal is a path value. When it is passed as an argument to a catalog call (11.1), the call gives a data edge at high confidence, with the direction the catalog gives. This works for a constant in the same file and for one imported from another repository file (`src/facts/data-catalog.ts`, `flowedDataUse` in `src/analyzer/data-api.ts`).
+- The edge starts in the file that makes the call. The bare path is placed from the file that declares the constant, through the rule in 11.4.
+- `let` and `var` bindings never flow, because they can be reassigned. A constant passed to a call outside the catalog gives no catalog edge. Its direction would be a guess.
+- The declaration itself keeps the keyword edge it already had.
+- Not in 11.5: `Final` and `static` items (Python and Rust front ends, 11.2 and 11.3), and a path built by concatenating constants.

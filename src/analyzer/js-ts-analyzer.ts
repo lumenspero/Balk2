@@ -31,7 +31,7 @@ import { applyDataEdges } from '../data/data-analyzer.js';
 import { runDataEngine, type DataPathContext } from '../facts/data-engine.js';
 import { defaultBareBases } from '../facts/path-value.js';
 import type { DataReferenceFact, FactLanguage } from '../facts/types.js';
-import { dataReferenceFact } from './data-facts.js';
+import { dataFlowFact, dataReferenceFact } from './data-facts.js';
 
 export interface RepositoryAnalysisOptions {
   /** Every scanned repository path, used to place bare relative data paths (Phase 11.4). */
@@ -162,7 +162,11 @@ export class JsTsAnalyzer implements Analyzer {
     // Pass 1: Discover imports, symbols, exports, extends/implements
     const dataFacts: DataReferenceFact[] = [];
     const dataResolution = options?.repository
-      ? { checker: options.repository.checker, language }
+      ? {
+          checker: options.repository.checker,
+          language,
+          repoPathOf: repositoryPathOf(options.repository),
+        }
       : undefined;
     const visitFirstPass = (node: ts.Node): void => {
       // ── Imports & Re-exports ────────────────────────────────────────
@@ -270,6 +274,10 @@ export class JsTsAnalyzer implements Analyzer {
       if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
         const fact = dataReferenceFact(node, sourceFile, normalizedPath, dataResolution);
         if (fact) dataFacts.push(fact);
+      } else if (ts.isIdentifier(node) && dataResolution) {
+        // A `const` string passed to a catalog call (Phase 11.5).
+        const fact = dataFlowFact(node, sourceFile, normalizedPath, dataResolution);
+        if (fact) dataFacts.push(fact);
       }
 
       ts.forEachChild(node, visitFirstPass);
@@ -280,7 +288,7 @@ export class JsTsAnalyzer implements Analyzer {
       graph,
       runDataEngine({
         facts: dataFacts,
-        paths: dataPathContext(normalizedPath, language, options?.dataPaths),
+        paths: dataPathContext(language, options?.dataPaths),
       }),
     );
 
@@ -593,15 +601,35 @@ function handleCall(
  * facts keep their paths as written, as a single-file analysis does.
  */
 function dataPathContext(
-  filePath: string,
   language: FactLanguage,
   dataPaths: ReadonlySet<string> | undefined,
 ): DataPathContext | undefined {
   if (dataPaths === undefined) return undefined;
-  const slash = filePath.lastIndexOf('/');
-  const fileDir = slash < 0 ? '' : filePath.slice(0, slash);
   return {
     exists: (repoPath) => dataPaths.has(repoPath),
-    bases: () => defaultBareBases(language, { file: fileDir }),
+    // A flowed constant is placed from the file that declares it (Phase 11.5).
+    bases: (fact) =>
+      defaultBareBases(language, { file: dirOf(fact.pathFilePath ?? fact.filePath) }),
   };
+}
+
+/** The directory of a repository path, or '' for a file at the root. */
+function dirOf(filePath: string): string {
+  const slash = filePath.lastIndexOf('/');
+  return slash < 0 ? '' : filePath.slice(0, slash);
+}
+
+const repositoryPathsByRepository = new WeakMap<RepositoryProgram, Map<ts.SourceFile, string>>();
+
+/** Maps a source file of the repository to its repository path, built once per repository. */
+function repositoryPathOf(
+  repository: RepositoryProgram,
+): (sf: ts.SourceFile) => string | undefined {
+  let byFile = repositoryPathsByRepository.get(repository);
+  if (!byFile) {
+    byFile = new Map([...repository.sourceFiles].map(([filePath, sf]) => [sf, filePath]));
+    repositoryPathsByRepository.set(repository, byFile);
+  }
+  const paths = byFile;
+  return (sf) => paths.get(sf);
 }

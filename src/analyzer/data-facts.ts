@@ -1,7 +1,7 @@
 import type * as ts from 'typescript';
 import { isDataPathLiteral } from '../facts/path-value.js';
 import type { DataReferenceFact, FactLanguage } from '../facts/types.js';
-import { dataApiOfLiteral } from './data-api.js';
+import { dataApiOfLiteral, flowedDataUse } from './data-api.js';
 import { accessContext, isNonAccessLiteral, joinedPathOf } from './data-literals.js';
 import { spanOf } from './spans.js';
 
@@ -12,6 +12,37 @@ import { spanOf } from './spans.js';
 export interface DataResolution {
   readonly checker: ts.TypeChecker;
   readonly language: FactLanguage;
+  /** Maps a source file to its repository path (Phase 11.5). */
+  readonly repoPathOf: (sourceFile: ts.SourceFile) => string | undefined;
+}
+
+/**
+ * A data-reference fact for a `const` string passed to a catalog call (Phase 11.5). The fact sits at
+ * the use, so the edge starts in the file that makes the call. The path is placed from the file that
+ * declares the constant.
+ */
+export function dataFlowFact(
+  identifier: ts.Identifier,
+  sourceFile: ts.SourceFile,
+  filePath: string,
+  resolution: DataResolution,
+): DataReferenceFact | undefined {
+  const flow = flowedDataUse(
+    identifier,
+    resolution.checker,
+    resolution.language,
+    resolution.repoPathOf,
+  );
+  if (!flow || !isDataPathLiteral(flow.path)) return undefined;
+  return {
+    kind: 'data-reference',
+    filePath,
+    span: spanOf(identifier, filePath),
+    path: flow.path,
+    context: accessContext(identifier, sourceFile),
+    api: flow.api,
+    pathFilePath: flow.declaringFile,
+  };
 }
 
 /**

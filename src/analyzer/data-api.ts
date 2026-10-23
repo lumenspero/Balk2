@@ -130,3 +130,53 @@ export function dataApiOfLiteral(
   const entry = lookupDataApi(language, resolved.module, resolved.name);
   return entry ? { module: entry.module, name: entry.name, direction: entry.direction } : undefined;
 }
+
+/** A catalog call that receives a `const` string binding (Phase 11.5). */
+export interface FlowedDataUse {
+  readonly api: DataApiMatch;
+  /** The string the constant holds. */
+  readonly path: string;
+  /** The call the constant is passed to. */
+  readonly call: ts.CallExpression;
+  /** The declaring file, as a repository path, when the checker can place it. */
+  readonly declaringFile: string;
+}
+
+/**
+ * The catalog call an identifier is passed to, when the identifier names a `const` whose
+ * initializer is a string literal (Phase 11.5). The constant may be local or imported; the checker
+ * follows the import to its declaration. `let` and `var` bindings can be reassigned, so they never
+ * flow. `repoPathOf` gives the repository path of a source file.
+ */
+export function flowedDataUse(
+  identifier: ts.Identifier,
+  checker: ts.TypeChecker,
+  language: FactLanguage,
+  repoPathOf: (sourceFile: ts.SourceFile) => string | undefined,
+): FlowedDataUse | undefined {
+  const call = identifier.parent;
+  if (!call || !ts.isCallExpression(call)) return undefined;
+  if (!call.arguments.some((arg) => arg === identifier)) return undefined;
+
+  const resolved = resolveCallee(call.expression, checker);
+  const entry = resolved ? lookupDataApi(language, resolved.module, resolved.name) : undefined;
+  if (!entry) return undefined;
+
+  let symbol = checker.getSymbolAtLocation(identifier);
+  if (symbol && symbol.flags & ts.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
+  const declaration = symbol?.valueDeclaration ?? symbol?.declarations?.[0];
+  if (!declaration || !ts.isVariableDeclaration(declaration)) return undefined;
+  if (!ts.isVariableDeclarationList(declaration.parent)) return undefined;
+  if (!(declaration.parent.flags & ts.NodeFlags.Const)) return undefined;
+  const initializer = declaration.initializer;
+  if (!initializer || !ts.isStringLiteral(initializer)) return undefined;
+
+  const declaringFile = repoPathOf(declaration.getSourceFile());
+  if (declaringFile === undefined) return undefined;
+  return {
+    api: { module: entry.module, name: entry.name, direction: entry.direction },
+    path: initializer.text,
+    call,
+    declaringFile,
+  };
+}

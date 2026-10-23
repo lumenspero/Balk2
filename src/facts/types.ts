@@ -321,6 +321,11 @@ export interface DataReferenceFact extends FactBase {
    * entry (Phase 11.1). When present, the direction comes from the catalog, not from the text.
    */
   readonly api?: DataApiMatch;
+  /**
+   * The file the path value is written in, when a binding carries it to another file (Phase 11.5).
+   * Bare relative paths are placed from this file. Without it, the fact's own file is used.
+   */
+  readonly pathFilePath?: string;
 }
 
 /** A resolved library call that the data catalog recognizes. */

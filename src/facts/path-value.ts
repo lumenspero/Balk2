@@ -118,9 +118,10 @@ export function defaultBareBases(
 
 /**
  * The repository-relative path a bare relative path names (Phase 11.4). Each base gives one
- * candidate, in order, with duplicates removed. A single existing candidate is used. Otherwise the
- * first candidate is used, which is the most specific base.
- * Returns undefined when no candidate stays inside the repository.
+ * candidate, in order, with duplicates removed. A single existing candidate is used. When several
+ * exist, the first one (the most specific base) is used. When none exists, the path is taken at
+ * the repository root, as a path with no known file has always been. Returns undefined when no
+ * candidate stays inside the repository.
  */
 export function resolveBarePath(
   path: string,
@@ -141,5 +142,8 @@ export function resolveBarePath(
 
   if (candidates.length === 0) return undefined;
   const existing = candidates.filter((candidate) => exists(candidate));
-  return existing.length === 1 ? existing[0] : candidates[0];
+  if (existing.length === 1) return existing[0];
+  if (existing.length > 1) return candidates[0];
+  const atRoot = nodePath.posix.normalize(path);
+  return atRoot === '..' || atRoot.startsWith('../') ? undefined : atRoot;
 }

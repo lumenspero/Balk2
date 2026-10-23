@@ -231,9 +231,90 @@ describe('bare data path placement (Phase 11.4)', () => {
     ]);
   });
 
-  it('places the path next to the file when neither candidate exists', () => {
+  it('places the path at the root when neither candidate exists', () => {
     expect(artifactOf(LOADER, ['src/app/load.ts'])).toEqual([
-      'consumes src/app/load.ts -> src/app/data.json',
+      'consumes src/app/load.ts -> data.json',
     ]);
+  });
+});
+
+describe('const bindings carry paths to catalog calls (Phase 11.5)', () => {
+  /** Edges that point at one artifact, as `type/confidence from`, sorted. */
+  function edgesTo(map: ConnectionMap, artifact: string): string[] {
+    return map.relationships
+      .filter((r) => r.to === artifact && DATA_TYPES.has(r.type))
+      .map((r) => `${r.type}/${r.confidence} ${r.from}`)
+      .sort();
+  }
+
+  function buildWith(files: Record<string, string>, dataPaths?: string[]): ConnectionMap {
+    return withFixture(files, (fixture) => {
+      const graph = new ConnectionGraph();
+      const options = dataPaths ? { dataPaths: new Set(dataPaths) } : {};
+      new JsTsAnalyzer().analyzeRepository(fixture.repository, graph, options);
+      return graph.build(META);
+    });
+  }
+
+  it('a local const passed to readFileSync is consumed at high confidence', () => {
+    const map = buildWith({
+      'a.ts': [
+        "import * as fs from 'fs';",
+        "const SRC = 'in/raw.json';",
+        "export function load(): string { return fs.readFileSync(SRC, 'utf8'); }",
+      ].join('\n'),
+    });
+    expect(edgesTo(map, 'in/raw.json')).toContain('consumes/high a.ts');
+  });
+
+  it('an imported const passed to writeFileSync generates in the calling file', () => {
+    const map = buildWith({
+      'config.ts': "export const OUT = 'out/report.json';",
+      'save.ts': [
+        "import * as fs from 'fs';",
+        "import { OUT } from './config.js';",
+        "export function save(): void { fs.writeFileSync(OUT, '{}'); }",
+      ].join('\n'),
+    });
+    expect(edgesTo(map, 'out/report.json')).toContain('generates/high save.ts');
+  });
+
+  it('a path flowed from another file is placed from the declaring file', () => {
+    const map = buildWith(
+      {
+        'lib/config.ts': "export const DATA = 'data.json';",
+        'app/save.ts': [
+          "import * as fs from 'fs';",
+          "import { DATA } from '../lib/config.js';",
+          "export function save(): void { fs.writeFileSync(DATA, '{}'); }",
+        ].join('\n'),
+      },
+      ['lib/config.ts', 'lib/data.json', 'app/save.ts'],
+    );
+    expect(edgesTo(map, 'lib/data.json')).toContain('generates/high app/save.ts');
+    expect(edgesTo(map, 'data.json')).toEqual([]);
+  });
+
+  it('a let binding is not a flow, because it can be reassigned', () => {
+    const map = buildWith({
+      'a.ts': [
+        "import * as fs from 'fs';",
+        "let P = 'x.json';",
+        "export function load(): string { return fs.readFileSync(P, 'utf8'); }",
+      ].join('\n'),
+    });
+    expect(edgesTo(map, 'x.json').filter((e) => e.startsWith('consumes/high'))).toEqual([]);
+  });
+
+  it('a const passed to a call outside the catalog gives no catalog edge', () => {
+    const map = buildWith({
+      'a.ts': [
+        "const OUT = 'out.json';",
+        'export function show(): void { console.log(OUT); }',
+      ].join('\n'),
+    });
+    expect(
+      edgesTo(map, 'out.json').filter((e) => e.includes('consumes') || e.includes('generates')),
+    ).toEqual([]);
   });
 });
