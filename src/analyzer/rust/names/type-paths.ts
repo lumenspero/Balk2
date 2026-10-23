@@ -12,6 +12,15 @@ const SKIPPED_WORDS: ReadonlySet<string> = new Set(['dyn', 'impl', 'mut', 'const
 
 /** The path a token list names, or null when it names none. */
 export function pathOfTokens(trees: readonly TokenTree[]): RustPath | null {
+  return readPath(trees).path;
+}
+
+/**
+ * The path at the start of a token list, and the index of the first token after it. The path is
+ * null when the list does not start with one. Used where the token after a path matters, as in
+ * `Path { .. }` or `Path(..)`.
+ */
+export function readPath(trees: readonly TokenTree[]): { path: RustPath | null; end: number } {
   let global = false;
   let start = 0;
   const [first] = trees;
@@ -25,17 +34,23 @@ export function pathOfTokens(trees: readonly TokenTree[]): RustPath | null {
     start = 1;
   }
   const segments: string[] = [];
-  for (const tree of trees.slice(start)) {
-    if (isTokenGroup(tree)) break;
+  let end = start;
+  for (let k = start; k < trees.length; k++) {
+    const tree = trees[k];
+    if (tree === undefined || isTokenGroup(tree)) break;
     if (tree.kind === 'ident') {
       if (tree.value === 'for' || tree.value === 'where') break;
       if (!SKIPPED_WORDS.has(tree.value)) segments.push(tree.value);
+      end = k + 1;
       continue;
     }
-    if (tree.kind === 'punct' && tree.text === '::') continue;
+    if (tree.kind === 'punct' && tree.text === '::') {
+      end = k + 1;
+      continue;
+    }
     break;
   }
-  return segments.length === 0 ? null : { global, segments };
+  return { path: segments.length === 0 ? null : { global, segments }, end };
 }
 
 /** Splits a bound list such as `Base + Send + 'static` at its top-level `+`. */

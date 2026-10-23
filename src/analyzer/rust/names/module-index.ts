@@ -79,6 +79,8 @@ export interface PendingUse {
 /** An `impl` block, with the module it is written in. Bound by bindTypeRelations. */
 export interface PendingImpl {
   readonly owner: RustModuleNode;
+  /** The `impl` item itself, so the functions written inside it can be matched to it. */
+  readonly item: Extract<Item, { kind: 'impl' }>;
   readonly span: Span;
   readonly selfTy: Fragment;
   /** The trait of `impl Trait for Type`, or null for an inherent impl. */
@@ -93,6 +95,16 @@ export interface PendingTrait {
   readonly name: string;
   readonly span: Span;
   readonly supertraits: Fragment | null;
+}
+
+/** A function declared in the crate: a free function, or a method of an `impl` or `trait` (V3 Phase 9.6). */
+export interface PendingFunction {
+  readonly owner: RustModuleNode;
+  /** The symbol id the function is declared under. */
+  readonly id: string;
+  readonly item: Extract<Item, { kind: 'fn' }>;
+  /** The `impl` or `trait` item the function is written in, or null for a free function. */
+  readonly container: Extract<Item, { kind: 'impl' | 'trait' }> | null;
 }
 
 export interface RustCrateIndex {
@@ -110,6 +122,8 @@ export interface RustCrateIndex {
   readonly impls: readonly PendingImpl[];
   /** Every `trait` declaration in the crate, in source order. */
   readonly traits: readonly PendingTrait[];
+  /** Every function in the crate, in source order. */
+  readonly functions: readonly PendingFunction[];
 }
 
 export interface CrateIndexInput {
@@ -128,6 +142,8 @@ interface Build {
   readonly uses: PendingUse[];
   readonly impls: PendingImpl[];
   readonly traits: PendingTrait[];
+  readonly functions: PendingFunction[];
+  readonly fnIds: Map<Extract<Item, { kind: 'fn' }>, string>;
   readonly loaded: Set<string>;
 }
 
@@ -140,6 +156,8 @@ export function buildCrateIndex(input: CrateIndexInput): RustCrateIndex {
     uses: [],
     impls: [],
     traits: [],
+    functions: [],
+    fnIds: new Map(),
     loaded: new Set([input.root]),
   };
   const rootFile = loadFile(build, input.root);
@@ -166,6 +184,7 @@ export function buildCrateIndex(input: CrateIndexInput): RustCrateIndex {
     uses: build.uses,
     impls: build.impls,
     traits: build.traits,
+    functions: build.functions,
   };
 }
 
@@ -176,6 +195,7 @@ function loadFile(build: Build, file: string): RustFile {
   for (const declaration of analysis.declarations) {
     build.visibility.set(declaration.id, declaration.visibility);
   }
+  for (const fn of analysis.functions) build.fnIds.set(fn.item, fn.id);
   return parsed;
 }
 
@@ -201,6 +221,16 @@ function newNode(
   };
 }
 
+function addFunction(
+  build: Build,
+  owner: RustModuleNode,
+  item: PendingFunction['item'],
+  container: PendingFunction['container'],
+): void {
+  const id = build.fnIds.get(item);
+  if (id !== undefined) build.functions.push({ owner, id, item, container });
+}
+
 function visitItems(
   build: Build,
   node: RustModuleNode,
@@ -216,9 +246,17 @@ function visitItems(
       }
       continue;
     }
+    if (item.kind === 'fn') {
+      addFunction(build, node, item, null);
+      continue;
+    }
     if (item.kind === 'impl') {
+      for (const child of item.items) {
+        if (child.kind === 'fn') addFunction(build, node, child, item);
+      }
       build.impls.push({
         owner: node,
+        item,
         span: item.span,
         selfTy: item.selfTy,
         trait: item.trait,
@@ -227,6 +265,9 @@ function visitItems(
       continue;
     }
     if (item.kind === 'trait') {
+      for (const child of item.items) {
+        if (child.kind === 'fn') addFunction(build, node, child, item);
+      }
       build.traits.push({
         owner: node,
         name: item.name,

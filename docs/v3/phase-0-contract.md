@@ -218,3 +218,15 @@ This local run sets the provisional budget. The contract records the budget from
 - An inherent impl gives no edge. A blanket impl over its own type parameter (`impl<T> Trait for T`) gives none. A trait or type from outside the repository (`Display` after `use std::fmt::Display`) gives none and no observation.
 - A path that looks internal and does not resolve is reported as `unresolved-module-path`, linked from its file by an `implements` or `extends` edge at low confidence.
 - Not in 9.5: method owners are still named by the file of the impl (the naming rule of 9.1), and the `implements` edge is the record that links them to the type. `impl Trait for dyn Other` is read as an impl on `Other`, which is a known gap. Trait-method dispatch is 9.6.
+
+## Phase 9.6 output change (Rust calls)
+
+- Each call site in a function body that names a function in the repository gives a `calls` edge from the enclosing function's symbol to the callee's symbol (`src/analyzer/rust/names/calls.ts`). One edge per (caller, callee, confidence, dispatch), with one span per call site, and evidence `ast`.
+- Path calls resolve as values through scopes and paths. `Type::name()` takes the inherent method at high confidence. Failing that, it takes the single trait impl in the repository that gives `Type` the name, at medium. Two trait impls that both give the name give no edge.
+- `Self::name()` and `self.m()` resolve within the enclosing impl. Inside a trait body they resolve to the trait's method.
+- A method call resolves when the receiver's type is known from local type rules (2.4). An annotated parameter or `let` is high. A `let` initialized by a resolved function, or by `Type::f()` returning `Self`, is medium. `&`, `&mut`, `Box`, `Rc` and `Arc` are peeled. A name bound more than once loses its type.
+- A receiver typed `dyn Trait`, `impl Trait`, or a generic with exactly one trait bound resolves to the trait's method, with `metadata.dispatch: 'trait'`. The trait method is the target, not each implementation.
+- A name bound by a `let`, parameter, `for`, closure or match arm is never resolved to an item. A call whose receiver has no known type gives no edge.
+- An unresolved module path in a call gets an `unresolved-module-path` node, linked from the calling file by a `calls` edge at low confidence.
+- `body.ts` now records the receiver name on `method-call` facts and the initializer and pattern shape on `let` facts. `symbols.ts` and `module-index.ts` record each function with its impl or trait.
+- Not in 9.6: calls inside macro arguments, calls inside nested functions (credited to the outer function), tuple-struct constructors, generic inference beyond bounds, and receivers that are fields or call results. References and `extern` declarations are 9.7.

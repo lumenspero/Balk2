@@ -18,6 +18,7 @@ import type {
 import type { SyntaxErrorNote } from '../repository-program.js';
 import type { Span } from './items.js';
 import { parseRustFile } from './items.js';
+import { bindCalls } from './names/calls.js';
 import { computeExports } from './names/exports.js';
 import { bindImports } from './names/imports.js';
 import { bindTypeRelations } from './names/type-relations.js';
@@ -114,6 +115,33 @@ export class RustFrontEnd implements LanguageFrontEnd {
           spans: [location],
         });
       }
+    }
+
+    // Calls bind after every crate is indexed, so an impl in one crate can serve a call in another.
+    const calls = bindCalls(
+      crates.map((c) => c.index),
+      env,
+    );
+    for (const edge of calls.edges) {
+      graph.addRelationship('calls', edge.from, edge.to, edge.confidence, {
+        evidence: 'ast',
+        spans: edge.spans.map((span) => toSourceSpan(span, edge.file)),
+        ...(edge.dispatch ? { metadata: { dispatch: 'trait' } } : {}),
+      });
+    }
+    for (const call of calls.unresolved) {
+      const location = toSourceSpan(call.span, call.file);
+      const unresolved = graph.addUnresolved({
+        reason: call.reason,
+        attempted: 'calls',
+        subject: call.subject,
+        location,
+        detail: call.detail,
+      });
+      graph.addRelationship('calls', call.file, unresolved.id, 'low', {
+        evidence: 'ast',
+        spans: [location],
+      });
     }
     return { problems: [], syntaxErrors };
   }

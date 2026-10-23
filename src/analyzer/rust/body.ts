@@ -39,6 +39,8 @@ export type BodyFact =
   | {
       readonly kind: 'method-call';
       readonly method: string;
+      /** The receiver when it is a plain name or `self`, as in `x` in `x.m()`. Null otherwise. */
+      readonly receiver: string | null;
       readonly args: TokenGroup;
       readonly span: Span;
     }
@@ -56,6 +58,10 @@ export type BodyFact =
       readonly bindings: readonly Binding[];
       readonly type: Fragment | null;
       readonly hasInit: boolean;
+      /** True when the pattern is one plain name, as in `let x` or `let mut x`. */
+      readonly simple: boolean;
+      /** The initializer tokens, when there is one. They are scanned as their own facts too. */
+      readonly init: readonly TokenTree[] | null;
       readonly span: Span;
     }
   | { readonly kind: 'for'; readonly bindings: readonly Binding[]; readonly span: Span }
@@ -272,7 +278,17 @@ function scanAfterDot(trees: readonly TokenTree[], dotIndex: number, facts: Body
   if (isPunct(trees[j], '::') && isPunct(trees[j + 1], '<')) j = skipAngle(trees, j + 1);
   const args = groupOf(trees[j], '(');
   if (args === undefined) return dotIndex + 2; // a field, or a tuple index such as `.0`
-  facts.push({ kind: 'method-call', method: name.value, args, span: spanBetween(dot, args) });
+  const before = trees[dotIndex - 1];
+  const beforeBefore = trees[dotIndex - 2];
+  const plain =
+    !isPunct(beforeBefore, '.') && !isPunct(beforeBefore, '::') ? identToken(before) : undefined;
+  facts.push({
+    kind: 'method-call',
+    method: name.value,
+    receiver: plain?.value ?? null,
+    args,
+    span: spanBetween(dot, args),
+  });
   return j;
 }
 
@@ -316,6 +332,21 @@ function patternBindings(trees: readonly TokenTree[]): Binding[] {
 
 // ── Statements that bind ────────────────────────────────────
 
+/** A pattern's tokens without `mut` and `ref`, which do not change what it binds. */
+function patternTokens(trees: readonly TokenTree[]): TokenTree[] {
+  return trees.filter((t) => !isWordTree(t, 'mut') && !isWordTree(t, 'ref'));
+}
+
+function isWordTree(tree: TokenTree | undefined, word: string): boolean {
+  return tree !== undefined && !isTokenGroup(tree) && tree.kind === 'ident' && tree.value === word;
+}
+
+/** The index where a `let` initializer ends: its top-level `;`, or the end of the list. */
+function initEnd(trees: readonly TokenTree[], from: number): number {
+  const end = indexWhereTopLevel(trees, from, trees.length, (t) => isPunct(t, ';'));
+  return end < 0 ? trees.length : end;
+}
+
 /** `let PAT (: TYPE)? (= INIT)?`. The pattern and type are not scanned as expressions. */
 function scanLet(trees: readonly TokenTree[], i: number, facts: BodyFact[]): number {
   const end = indexWhereTopLevel(
@@ -345,6 +376,10 @@ function scanLet(trees: readonly TokenTree[], i: number, facts: BodyFact[]): num
     bindings,
     type,
     hasInit: isPunct(trees[k], '='),
+    simple:
+      patternTokens(trees.slice(i + 1, patternEnd)).length === 1 &&
+      identToken(patternTokens(trees.slice(i + 1, patternEnd))[0]) !== undefined,
+    init: isPunct(trees[k], '=') ? trees.slice(k + 1, initEnd(trees, k + 1)) : null,
     span: spanOfRange(trees, i, k),
   });
   return k;

@@ -42,11 +42,24 @@ import {
   type RustNamespaceTables,
 } from './names/namespaces.js';
 
+type FnItem = Extract<Item, { kind: 'fn' }>;
+
+/** A function declared in the file, with the impl or trait it sits in, if any (V3 Phase 9.6). */
+export interface RustFunction {
+  readonly item: FnItem;
+  /** The symbol id the function is declared under. */
+  readonly id: string;
+  /** The `impl` or `trait` item that contains the function, or null for a free function. */
+  readonly container: Item | null;
+}
+
 export interface RustSymbolAnalysis {
   /** One per definition site. Twins share an id, as `groupSymbols` merges them. */
   readonly declarations: readonly Declaration[];
   /** The namespace tables of every scope in the file. */
   readonly namespaces: RustNamespaceTables;
+  /** Every function declared in the file, in source order. */
+  readonly functions: readonly RustFunction[];
 }
 
 /** Where the items being walked sit. */
@@ -63,6 +76,7 @@ interface Scope {
 interface Walk {
   readonly filePath: string;
   readonly declarations: Declaration[];
+  readonly functions: RustFunction[];
   readonly namespaces: RustNamespaceTables;
   /** Names already used in this file, by base name, with the namespaces and condition of each. */
   readonly seen: Map<
@@ -88,13 +102,25 @@ interface DeclInput {
   /** Whether the name is recorded in this scope's namespace tables (module-level items only). */
   readonly register: boolean;
   readonly scope: Scope;
+  /** The function being declared, and the impl or trait it sits in, for the call pass (9.6). */
+  readonly fn?: { readonly item: FnItem; readonly container: Item | null };
 }
 
 /** Declares the items of one Rust file. Never throws; syntax problems are reported by the parser. */
 export function analyzeRustSymbols(file: RustFile, filePath: string): RustSymbolAnalysis {
-  const walk: Walk = { filePath, declarations: [], namespaces: new Map(), seen: new Map() };
+  const walk: Walk = {
+    filePath,
+    declarations: [],
+    functions: [],
+    namespaces: new Map(),
+    seen: new Map(),
+  };
   walkModule(walk, file.items, { modulePath: '', key: filePath, conditions: [] });
-  return { declarations: walk.declarations, namespaces: walk.namespaces };
+  return {
+    declarations: walk.declarations,
+    namespaces: walk.namespaces,
+    functions: walk.functions,
+  };
 }
 
 function walkModule(walk: Walk, items: readonly Item[], scope: Scope): void {
@@ -127,7 +153,19 @@ function walkModuleItem(walk: Walk, item: Item, scope: Scope): void {
 
   switch (item.kind) {
     case 'fn':
-      declareModuleItem(item.name, 'function', ['value']);
+      declare(walk, {
+        bare: item.name,
+        base: base(item.name),
+        symbolType: 'function',
+        visibility,
+        owner: null,
+        namespaces: ['value'],
+        span: item.span,
+        condition,
+        register: true,
+        scope,
+        fn: { item, container: null },
+      });
       return;
     case 'struct':
       declareModuleItem(item.name, 'struct', namespacesOf(item));
@@ -165,6 +203,7 @@ function walkModuleItem(walk: Walk, item: Item, scope: Scope): void {
       declareModuleItem(item.name, 'trait', ['type']);
       const traitBase = base(item.name);
       walkContainer(walk, item.items, {
+        container: item,
         base: traitBase,
         owner: `${walk.filePath}:${traitBase}`,
         visibility,
@@ -201,6 +240,8 @@ function walkContainer(
   walk: Walk,
   items: readonly Item[],
   container: {
+    /** The impl or trait item whose functions these are. */
+    readonly container: Item;
     readonly base: string;
     readonly owner: string;
     /** The visibility of every method, or null to use each method's own. */
@@ -221,6 +262,7 @@ function walkContainer(
       condition: conditionText([...container.scope.conditions, ...cfgTexts(item.attrs)]),
       register: false,
       scope: container.scope,
+      fn: { item, container: container.container },
     });
   }
 }
@@ -239,6 +281,7 @@ function walkImpl(
   const typeBase = `${scope.modulePath}${typeName}`;
   const base = traitName === null ? typeBase : `${typeBase}[${traitName}]`;
   walkContainer(walk, item.items, {
+    container: item,
     base,
     owner: `${walk.filePath}:${typeBase}`,
     // A trait impl's methods are public whenever the trait is used, so the impl does not narrow them.
@@ -271,6 +314,9 @@ function declare(walk: Walk, input: DeclInput): void {
   ]);
 
   const id = `${walk.filePath}:${name}`;
+  if (input.fn !== undefined) {
+    walk.functions.push({ item: input.fn.item, id, container: input.fn.container });
+  }
   walk.declarations.push({
     kind: 'declaration',
     filePath: walk.filePath,
