@@ -50,6 +50,76 @@ export const RUST_CORPUS: readonly CorpusScenario[] = [
   },
 
   {
+    name: 'derive from a proc-macro dependency references the derive function',
+    family: 'macros',
+    renditions: {
+      rust: {
+        files: {
+          'Cargo.toml': '[workspace]\nmembers = ["crates/*"]\n',
+          'crates/derive/Cargo.toml':
+            '[package]\nname = "my-derive"\nversion = "0.1.0"\nedition = "2021"\n\n[lib]\nproc-macro = true\n',
+          'crates/derive/src/lib.rs':
+            '#[proc_macro_derive(Describe)]\npub fn describe(input: TokenStream) -> TokenStream {\n    input\n}\n',
+          'crates/app/Cargo.toml':
+            '[package]\nname = "app"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\nmy-derive = { path = "../derive" }\n',
+          'crates/app/src/lib.rs': '#[derive(Describe)]\npub struct Point;\n',
+        },
+        expect: {
+          relationships: [
+            'references crates/app/src/lib.rs:Point -> crates/derive/src/lib.rs:describe',
+          ],
+        },
+      },
+    },
+  },
+
+  {
+    name: 'attribute from a proc-macro dependency references the attribute function',
+    family: 'macros',
+    renditions: {
+      rust: {
+        files: {
+          'Cargo.toml': '[workspace]\nmembers = ["crates/*"]\n',
+          'crates/derive/Cargo.toml':
+            '[package]\nname = "my-derive"\nversion = "0.1.0"\nedition = "2021"\n\n[lib]\nproc-macro = true\n',
+          'crates/derive/src/lib.rs':
+            '#[proc_macro_attribute]\npub fn route(attr: TokenStream, item: TokenStream) -> TokenStream {\n    item\n}\n',
+          'crates/app/Cargo.toml':
+            '[package]\nname = "app"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\nmy-derive = { path = "../derive" }\n',
+          'crates/app/src/lib.rs': '#[route(get)]\npub fn handler() {}\n',
+        },
+        expect: {
+          relationships: [
+            'references crates/app/src/lib.rs:handler -> crates/derive/src/lib.rs:route',
+          ],
+        },
+      },
+    },
+  },
+
+  {
+    name: 'derive without a proc-macro dependency is not linked (negative)',
+    family: 'macros',
+    renditions: {
+      rust: {
+        files: {
+          'Cargo.toml': '[workspace]\nmembers = ["crates/*"]\n',
+          'crates/derive/Cargo.toml':
+            '[package]\nname = "my-derive"\nversion = "0.1.0"\nedition = "2021"\n\n[lib]\nproc-macro = true\n',
+          'crates/derive/src/lib.rs':
+            '#[proc_macro_derive(Describe)]\npub fn describe(input: TokenStream) -> TokenStream {\n    input\n}\n',
+          'crates/app/Cargo.toml':
+            '[package]\nname = "app"\nversion = "0.1.0"\nedition = "2021"\n',
+          'crates/app/src/lib.rs': '#[derive(Describe)]\npub struct Point;\n',
+        },
+        expect: {
+          absent: ['references crates/app/src/lib.rs:Point -> crates/derive/src/lib.rs:describe'],
+        },
+      },
+    },
+  },
+
+  {
     name: 'mod inside a raw string is not a declaration (negative)',
     family: 'lexing',
     renditions: {

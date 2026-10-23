@@ -19,6 +19,7 @@ import type { SyntaxErrorNote } from '../repository-program.js';
 import type { Span } from './items.js';
 import { parseRustFile } from './items.js';
 import { bindCalls } from './names/calls.js';
+import { bindProcMacros } from './names/proc-macros.js';
 import { bindReferences } from './names/references.js';
 import { computeExports } from './names/exports.js';
 import { bindImports } from './names/imports.js';
@@ -155,6 +156,18 @@ export class RustFrontEnd implements LanguageFrontEnd {
         spans: [location],
       });
     }
+    // Proc macros (10.3): a derive or attribute links its item to the proc macro that provides it.
+    const procMacros = bindProcMacros(
+      crates.map((c) => ({ id: c.id, index: c.index, procMacro: c.procMacro })),
+      (input.packages?.dependencies ?? []).map((d) => ({ from: d.from, to: d.to })),
+    );
+    for (const edge of procMacros) {
+      graph.addRelationship('references', edge.from, edge.to, 'high', {
+        evidence: 'ast',
+        spans: [toSourceSpan(edge.span, edge.file)],
+        metadata: { mechanism: edge.mechanism },
+      });
+    }
     const references = bindReferences(
       crates.map((c) => c.index),
       env,
@@ -183,6 +196,14 @@ export class RustFrontEnd implements LanguageFrontEnd {
   }
 }
 
+/** A crate of the repository: its index, its target id and whether it is a proc-macro crate. */
+interface CrateEntry {
+  readonly index: RustCrateIndex;
+  readonly exporting: boolean;
+  readonly id: string;
+  readonly procMacro: boolean;
+}
+
 /**
  * One crate index per Cargo crate root, and the names of the crates a path can reach: the Phase 7
  * extern table, and the library targets of the repository's packages by their code name.
@@ -190,7 +211,7 @@ export class RustFrontEnd implements LanguageFrontEnd {
 function buildCrates(
   input: FrontEndInput,
   rustFiles: ReadonlySet<string>,
-): { crates: { index: RustCrateIndex; exporting: boolean }[]; env: RustNameEnvironment } {
+): { crates: CrateEntry[]; env: RustNameEnvironment } {
   const externs = new Set<string>();
   const repoCrates = new Map<string, RustCrateIndex>();
   const env: RustNameEnvironment = { externs, repoCrates };
@@ -207,7 +228,7 @@ function buildCrates(
   };
   const packageById = new Map(packages.packages.map((node) => [node.id, node]));
   const indexByPackage = new Map<string, RustCrateIndex>();
-  const crates: { index: RustCrateIndex; exporting: boolean }[] = [];
+  const crates: CrateEntry[] = [];
   for (const root of packages.packageRoots) {
     if (!root.packageId.startsWith('package:cargo:')) continue;
     const file = normalizePath(root.file);
@@ -219,7 +240,12 @@ function buildCrates(
       edition: packageById.get(root.packageId)?.edition ?? '2021',
     });
     const target = packageById.get(root.packageId)?.target;
-    crates.push({ index, exporting: target === 'lib' || target === 'proc-macro' });
+    crates.push({
+      index,
+      exporting: target === 'lib' || target === 'proc-macro',
+      id: root.packageId,
+      procMacro: target === 'proc-macro',
+    });
     indexByPackage.set(root.packageId, index);
   }
   for (const node of packages.packages) {

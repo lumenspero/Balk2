@@ -327,3 +327,12 @@ This local run sets the provisional budget. The contract records the budget from
 - Every other macro's tokens are still not scanned. Its syntax is unknown, so a call inside it produces no edge.
 - A call inside an expression-style macro now gives `calls` and `references` edges from the enclosing function, with the same confidence as the same call written in the body.
 - Not in 10.2: `rust.macros.expressionLike`. The configuration loader has no `rust` section yet, so user-listed macros wait for Phase 15.3. Format-string inline arguments such as `{name}` are not read as paths.
+
+## Phase 10.3 output change (Rust proc macros)
+
+- A `#[proc_macro_derive(Name)]` function in a proc-macro crate provides `#[derive(Name)]`, and a `#[proc_macro_attribute]` function provides `#[name]`. Both are ordinary function symbols. A `#[proc_macro]` function-like macro is recorded as a target only, with no edge in this phase (`src/analyzer/rust/names/proc-macros.ts`).
+- A derive on a struct, enum or union, or an attribute on any module-level item or free function, in a crate that depends directly on the proc-macro crate, gives a `references` edge from the item to the providing function. The edge has `high` confidence and `metadata.mechanism` set to `derive` or `attribute`, and one span at the attribute.
+- The dependency must be a direct `dependsOn` edge from the consumer's target to the proc-macro target. A proc macro that a consumer reaches only through another crate gets no edge.
+- A derive or attribute name provided by two different proc-macro dependencies links to neither, because the name is ambiguous.
+- A derive path such as `my_derive::Describe` matches by its last segment. A std derive such as `Debug` matches no provider and gets no edge.
+- Not in 10.3: function-like `#[proc_macro]` invocations (`make!(...)`), derives and attributes on items inside a function body, methods, and helper attributes named in `attributes(...)`.
