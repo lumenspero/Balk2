@@ -302,3 +302,10 @@ This local run sets the provisional budget. The contract records the budget from
   - `12.3`: module-level shared state, in all three languages. No `writesState` edges are produced.
   - `11.3`: Rust data lineage. No `generates` or `consumes` edges are produced.
 - Phase 8.4 diagnostics are reported. The parity harness now reads `moduleProblems` from the build, so a `"<kind> <path>"` expectation is met by a reported `unreachable-module` or `module-conflict`. Both `8.4` renditions (the unreachable file and the `foo.rs`/`foo/mod.rs` conflict) pass, and their markers are removed.
+
+### 9 closeout (final)
+
+- Added a parity scenario for a call through a generic receiver with one trait bound (`fn show<T: Render>(item: &T)`), which reaches `Render.render`. It passes in the probe.
+- `docs/v3/language-parity.md` now records Row 6 for Rust field and call-result receivers as a scope decision, not Deferred. The stale JS/TS and Python notes are corrected: Python inherited calls are recorded (5.3), and the JS/TS typed-receiver gap closes in 2.5.
+- Phase 9 exit: the Rust parity scenarios for modules, calls, methods, traits and shadowing pass, along with every Rust negative from 0.6 that belongs to Phases 6–9. The macro negative (10.1) waits for Phase 10.
+

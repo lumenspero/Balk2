@@ -188,6 +188,23 @@ export const RUST_CORPUS: readonly CorpusScenario[] = [
       },
     },
   },
+  // A call through a generic receiver with one trait bound reaches the trait's method.
+  {
+    name: 'a call through a generic receiver with one trait bound reaches the trait method',
+    family: 'traits',
+    renditions: {
+      rust: {
+        files: {
+          'Cargo.toml': CARGO,
+          'src/lib.rs':
+            'pub trait Render {\n    fn render(&self) -> i32;\n}\n\npub fn show<T: Render>(item: &T) -> i32 {\n    item.render()\n}\n',
+        },
+        expect: {
+          relationships: ['calls src/lib.rs:show -> src/lib.rs:Render.render'],
+        },
+      },
+    },
+  },
 ];
 
 assertUniqueNames(RUST_CORPUS);
