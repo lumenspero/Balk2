@@ -1,3 +1,4 @@
+import { pathBaseOrder } from '../config/path-base-config.js';
 import { normalizePath, type ConnectionGraph } from '../graph.js';
 import type {
   FrontEndInput,
@@ -33,6 +34,7 @@ export class JsTsFrontEnd implements LanguageFrontEnd {
     const repository = createRepositoryProgram({ rootDir: input.rootDir, filePaths: files });
     const analysis = this.analyzer.analyzeRepository(repository, graph, {
       dataPaths: new Set(input.files.map(normalizePath)),
+      pathBase: pathBaseOrder(config, 'javascript'),
       globals: config?.globals,
       events: config?.protocols?.events,
       registries: config?.protocols?.registries,

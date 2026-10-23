@@ -1,3 +1,4 @@
+import type { PathBase } from '../facts/path-value.js';
 import type { ConnectionGraph } from '../graph.js';
 import type { RepositoryProgram } from './repository-program.js';
 
@@ -21,6 +22,8 @@ export interface AnalyzerOptions {
    * placed by checking these, so an artifact that exists in the file's directory is found there.
    */
   readonly dataPaths?: ReadonlySet<string>;
+  /** The base order from `data.pathBase` for this language (Phase 11.4), when configured. */
+  readonly pathBase?: readonly PathBase[];
 }
 
 /**

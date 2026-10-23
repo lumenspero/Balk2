@@ -1,3 +1,8 @@
+import {
+  normalizePathBaseConfig,
+  validatePathBaseConfig,
+  type PathBaseConfig,
+} from './path-base-config.js';
 import { normalizePythonConfig, type PythonConfig } from './python-config.js';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -21,6 +26,8 @@ export interface DataLineageEntry {
 export interface DataConfig {
   /** Explicit data lineage rules */
   readonly lineage?: readonly DataLineageEntry[];
+  /** The order bare relative data paths are placed in (Phase 11.4). */
+  readonly pathBase?: PathBaseConfig;
 }
 
 export interface GlobalsConfig {
@@ -154,6 +161,11 @@ export function loadBalk2ConfigDetailed(
 
   if ('data' in raw) {
     problems.push(...validateDataConfig(raw.data));
+    const data = raw.data;
+    if (typeof data === 'object' && data !== null && !Array.isArray(data) && 'pathBase' in data) {
+      problems.push(...validatePathBaseConfig(data.pathBase));
+      config.data = { ...data, pathBase: normalizePathBaseConfig(data.pathBase) };
+    }
   }
 
   return { config: config as Balk2Config, problems };
@@ -168,7 +180,7 @@ export function validateDataConfig(value: unknown): ConfigProblem[] {
     return [{ path: 'data', message: 'must be an object' }];
   }
   return Object.keys(value)
-    .filter((key) => key !== 'lineage')
+    .filter((key) => key !== 'lineage' && key !== 'pathBase')
     .map((key) => ({ path: `data.${key}`, message: 'unknown key ignored' }));
 }
 

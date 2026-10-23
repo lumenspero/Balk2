@@ -7,6 +7,7 @@
 import { applyDataEdges } from '../../data/data-analyzer.js';
 import { runDataEngine } from '../../facts/data-engine.js';
 import { defaultBareBases } from '../../facts/path-value.js';
+import { pathBaseOrder } from '../../config/path-base-config.js';
 import { analyzeRustDataApis, type RustConstantLookup } from './data-apis.js';
 import { RustModuleTree } from './module-tree.js';
 import * as fs from 'fs';
@@ -344,10 +345,14 @@ export class RustFrontEnd implements LanguageFrontEnd {
           bases: (fact) => {
             const placedFrom = fact.pathFilePath ?? fact.filePath;
             const packageDir = nearestPackageDir(placedFrom, knownFiles);
-            return defaultBareBases('rust', {
-              file: dirOf(placedFrom),
-              ...(packageDir === undefined ? {} : { package: packageDir }),
-            });
+            return defaultBareBases(
+              'rust',
+              {
+                file: dirOf(placedFrom),
+                ...(packageDir === undefined ? {} : { package: packageDir }),
+              },
+              pathBaseOrder(input.config, 'rust'),
+            );
           },
         },
       }),

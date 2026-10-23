@@ -29,7 +29,12 @@ import { normalizePath } from '../graph.js';
 import type { SymbolType } from '../types.js';
 import { applyDataEdges } from '../data/data-analyzer.js';
 import { runDataEngine, type DataPathContext } from '../facts/data-engine.js';
-import { defaultBareBases, servedBareBases, type BareBases } from '../facts/path-value.js';
+import {
+  defaultBareBases,
+  servedBareBases,
+  type BareBases,
+  type PathBase,
+} from '../facts/path-value.js';
 import type { DataReferenceFact, FactLanguage } from '../facts/types.js';
 import { duckDbFacts } from './duckdb-sql.js';
 import { dataFlowFact, dataReferenceFact } from './data-facts.js';
@@ -37,6 +42,8 @@ import { dataFlowFact, dataReferenceFact } from './data-facts.js';
 export interface RepositoryAnalysisOptions {
   /** Every scanned repository path, used to place bare relative data paths (Phase 11.4). */
   readonly dataPaths?: ReadonlySet<string>;
+  /** The base order from `data.pathBase` for JavaScript and TypeScript (Phase 11.4). */
+  readonly pathBase?: readonly PathBase[];
   /** Global-symbol behavior from `.balk2.json`. */
   readonly globals?: GlobalSymbolOptions;
   /** Event protocol customization from `protocols.events` in `.balk2.json`. */
@@ -108,6 +115,7 @@ export class JsTsAnalyzer implements Analyzer {
         knownFiles,
         repository,
         dataPaths: options.dataPaths,
+        pathBase: options.pathBase,
       });
     }
 
@@ -293,7 +301,7 @@ export class JsTsAnalyzer implements Analyzer {
       graph,
       runDataEngine({
         facts: dataFacts,
-        paths: dataPathContext(language, options?.dataPaths),
+        paths: dataPathContext(language, options?.dataPaths, options?.pathBase),
       }),
     );
 
@@ -608,6 +616,7 @@ function handleCall(
 function dataPathContext(
   language: FactLanguage,
   dataPaths: ReadonlySet<string> | undefined,
+  pathBase: readonly PathBase[] | undefined,
 ): DataPathContext | undefined {
   if (dataPaths === undefined) return undefined;
   return {
@@ -619,7 +628,7 @@ function dataPathContext(
       if (fact.api?.served) {
         return servedBareBases({ package: nearestPackageDir(placedFrom, dataPaths) ?? '' });
       }
-      return defaultBareBases(language, { file: dirOf(placedFrom) });
+      return defaultBareBases(language, { file: dirOf(placedFrom) }, pathBase);
     },
   };
 }

@@ -105,14 +105,20 @@ export interface BareBases {
 /**
  * The default base order by language (Phase 11.4). Python and JavaScript/TypeScript check the
  * directory of the script or module first; Cargo checks the package directory first. Each then
- * checks the repository root. `data.pathBase` (Phase 15.3) overrides this order for every language.
+ * checks the repository root. An `override` (from `data.pathBase`) replaces the order for the
+ * language, and the repository root always comes last.
  */
 export function defaultBareBases(
   language: 'javascript' | 'typescript' | 'python' | 'rust',
   dirs: { readonly file: string; readonly package?: string },
+  override?: readonly PathBase[],
 ): BareBases {
-  const order: readonly PathBase[] =
-    language === 'rust' ? ['package', 'repository'] : ['file', 'repository'];
+  const chosen: readonly PathBase[] =
+    override ?? (language === 'rust' ? ['package', 'repository'] : ['file', 'repository']);
+  const order: readonly PathBase[] = [
+    ...chosen.filter((base) => base !== 'repository'),
+    'repository',
+  ];
   return { order, dirs: { file: dirs.file, package: dirs.package } };
 }
 

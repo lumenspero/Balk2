@@ -414,3 +414,7 @@ A string or template with no substitutions, passed as the first argument of `all
 ## Phase 11.6 output change (Rust module paths)
 
 A `use` of a constant is followed through the crate's module tree. `crate::`, `self::` and `super::` are resolved from the module the `use` is written in, and an inline `mod` is a module of its own. An inline module starts with no `use` or constant names of its parent, as Rust requires, so a parent's `use` is not visible inside it. A file module's parent is the module that declares it. A constant is placed from the file that declares it.
+
+## Phase 11.4 output change (`data.pathBase`)
+
+`data.pathBase` in `.balk2.json` sets the order a bare relative data path is placed in. A list gives the order for every language, and an object gives it per language (`javascript`, `python`, `rust`); a language it does not name keeps the default. Bases are `file`, `package`, `repository` and `public`. The repository root always comes last, whatever the list says. Unknown bases and languages are reported and ignored. A served URL path, such as `fetch`, keeps its own order, since it is a URL rather than a file path.

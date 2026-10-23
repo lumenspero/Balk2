@@ -1,3 +1,5 @@
+import { pathBaseOrder } from '../config/path-base-config.js';
+import type { PathBase } from '../facts/path-value.js';
 /**
  * The Python front end (V3 Phase 5.7b and 5.7c). It runs the fact passes over a set of Python files
  * and writes their graph entries: files, symbols, exports, imports, `extends`, `implements`,
@@ -49,6 +51,8 @@ function isPythonPath(filePath: string): boolean {
  */
 /** Options for one pass over Python sources. */
 export interface PythonSourceOptions {
+  /** The base order from `data.pathBase` for Python (Phase 11.4), when configured. */
+  readonly pathBase?: readonly PathBase[];
   /** Import roots, repository-relative, in precedence order. Defaults to the repository root. */
   readonly roots?: readonly string[];
   /** Decorators that return their argument unchanged, from `python.identityDecorators`. */
@@ -147,7 +151,11 @@ export function analyzePythonSources(
       paths: {
         exists: (repoPath) => knownFiles.has(repoPath),
         bases: (fact) =>
-          defaultBareBases('python', { file: dirOf(fact.pathFilePath ?? fact.filePath) }),
+          defaultBareBases(
+            'python',
+            { file: dirOf(fact.pathFilePath ?? fact.filePath) },
+            options.pathBase,
+          ),
       },
     }),
   );
@@ -187,7 +195,7 @@ export function analyzePythonSources(
   // Non-fact mechanisms, until Phases 11 and 12.
   for (const { filePath, source } of sources) {
     // A bare literal on a line with no catalog call is placed by the same 11.4 rule (Phase 11.6).
-    const bases = defaultBareBases('python', { file: dirOf(filePath) });
+    const bases = defaultBareBases('python', { file: dirOf(filePath) }, options.pathBase);
     const place = (value: string): string =>
       resolveBarePath(value, bases, (repoPath) => knownFiles.has(repoPath)) ?? value;
     addPythonMechanisms(
@@ -237,6 +245,7 @@ export class PythonFrontEnd implements LanguageFrontEnd {
       graph,
       {
         roots: input.config?.python?.roots,
+        pathBase: pathBaseOrder(input.config, 'python'),
         identityDecorators: input.config?.python?.identityDecorators,
         entryPoints: input.packages
           ? {

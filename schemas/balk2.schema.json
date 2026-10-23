@@ -106,6 +106,21 @@
           "items": {
             "$ref": "#/$defs/lineageEntry"
           }
+        },
+        "pathBase": {
+          "description": "The order in which bare relative data paths are placed (Phase 11.4). A list gives the order for every language; an object gives it per language.",
+          "oneOf": [
+            { "type": "array", "minItems": 1, "items": { "enum": ["file", "package", "repository", "public"] } },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "javascript": { "type": "array", "minItems": 1, "items": { "enum": ["file", "package", "repository", "public"] } },
+                "python": { "type": "array", "minItems": 1, "items": { "enum": ["file", "package", "repository", "public"] } },
+                "rust": { "type": "array", "minItems": 1, "items": { "enum": ["file", "package", "repository", "public"] } }
+              }
+            }
+          ]
         }
       }
     },
