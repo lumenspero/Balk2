@@ -185,7 +185,10 @@ export function bindReferences(
         if (item.value !== null) {
           const blocks = blocksOfTokens(item.value.tokens);
           const facts = factsOutside(scanTokens(item.value.tokens), blocks);
-          factMentions(walk, src, facts, new Map(), decl.scopes);
+          const locals = localsOf({ params: [] }, facts, ctx, (span) =>
+            scopeCtx(ctx, decl.scopes, span),
+          );
+          factMentions(walk, src, facts, locals, decl.scopes);
         }
       }
     }

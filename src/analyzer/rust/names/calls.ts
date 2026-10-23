@@ -214,14 +214,17 @@ export function bindCalls(
     bindBody(entry.fn.id, entry.fn.owner.file, facts, ctx, locals, entry.fn.scopes);
   }
 
-  // Calls inside a const or static value (9.8). Its own `let`s are not tracked, as in references.
+  // Calls inside a const or static value (9.8). Its `let`s are tracked like a body's.
   for (const crate of crates) {
     for (const decl of crate.decls) {
       const item = decl.item;
       if ((item.kind !== 'const' && item.kind !== 'static') || item.value === null) continue;
       const facts = factsOutside(scanTokens(item.value.tokens), blocksOfTokens(item.value.tokens));
       const ctx: Ctx = { repo, crate, owner: decl.owner, self: null, bounds: new Map() };
-      bindBody(decl.id, decl.owner.file, facts, ctx, new Map(), decl.scopes);
+      const locals = localsOf({ params: [] }, facts, ctx, (span) =>
+        scopeCtx(ctx, decl.scopes, span),
+      );
+      bindBody(decl.id, decl.owner.file, facts, ctx, locals, decl.scopes);
     }
   }
 
@@ -414,7 +417,7 @@ function resolveCallPath(path: RustPath, ctx: Ctx, locals: Locals): CallResoluti
 
 /** The type of each local name in a function. A name bound twice, or by a pattern, has none. */
 export function localsOf(
-  fn: PendingFunction['item'],
+  fn: { readonly params: PendingFunction['item']['params'] },
   facts: readonly BodyFact[],
   ctx: Ctx,
   scoped: (span: Span) => Ctx = () => ctx,

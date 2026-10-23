@@ -265,4 +265,4 @@ This local run sets the provisional budget. The contract records the budget from
 - A `const` or `static` value's own mentions and calls resolve in its innermost block scope, the same way a function body's do.
 - An `extern` block inside a function body is read, and its functions are declared under the function (`file:outer::puts`). A call from the body resolves to them.
 - `extern` items are read only at statement start, so `extern` as part of an expression is not an item.
-- Still not read: `mod` items inside a body (by design), and macro arguments (Phase 10). Calls in a const or static value, including calls inside its blocks, resolve to the const or static as their owner. A `let` inside a const value's block is not tracked, so a call to a name it binds may resolve to an item of that name.
+- Still not read: `mod` items inside a body (by design), and macro arguments (Phase 10). Calls in a const or static value, including calls inside its blocks, resolve to the const or static as their owner. A `let` in a const or static value is tracked the same way as a `let` in a function body: a call or mention of a name it binds never resolves to an item.

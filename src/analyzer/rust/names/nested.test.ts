@@ -154,4 +154,11 @@ describe('calls inside const and static values', () => {
     });
     expect(pairs).toEqual([['src/lib.rs:S', 'src/lib.rs:S::helper']]);
   });
+
+  it('keeps a call to a name bound by a let in a const value out of the crate items', () => {
+    const pairs = callPairs({
+      'src/lib.rs': 'fn f() -> i32 { 1 } const C: i32 = { let f = || 2; f() };',
+    });
+    expect(pairs).toEqual([]);
+  });
 });
