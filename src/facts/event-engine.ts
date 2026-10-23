@@ -158,7 +158,8 @@ function metadataOf(call: EventCallFact): Record<string, string | number | boole
 /** `heuristic` when usage evidence was needed, else `config` for configured rules, else the compiler. */
 function evidenceOf(heuristic: boolean, call: EventCallFact): Evidence {
   if (heuristic) return 'heuristic';
-  return call.protocolSource === 'config' || call.receiver.qualificationEvidence === 'config'
-    ? 'config'
-    : 'ts-program';
+  if (call.protocolSource === 'config' || call.receiver.qualificationEvidence === 'config') {
+    return 'config';
+  }
+  return call.evidence ?? 'ts-program';
 }

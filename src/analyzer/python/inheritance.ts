@@ -24,7 +24,7 @@ import { ownerIdOf, type OwnerScope } from '../../facts/owner-rule.js';
 import type { FactTarget } from '../../facts/types.js';
 import type { SourceSpan } from '../../types.js';
 import type { Expr, Span, Stmt } from './ast.js';
-import { formatExpr } from './expression-format.js';
+import { dottedName, formatExpr } from './expression-format.js';
 import type { ImportResolver, ResolvedImport } from './modules/import-resolution.js';
 import type { SymbolResolver } from './modules/module-exports.js';
 import { analyzeScopes, type NameUse, type ScopeAnalysis } from './scopes.js';
@@ -52,6 +52,8 @@ export interface BaseRef {
   readonly text: string;
   readonly span: SourceSpan;
   readonly target: FactTarget | undefined;
+  /** The dotted name the base was imported as, such as `pyee.EventEmitter`, when this file imports it. */
+  readonly importedAs?: string;
 }
 
 export interface ClassInheritance {
@@ -221,6 +223,28 @@ function markerOf(e: Expr, info: FileInfo): string | undefined {
   return undefined;
 }
 
+/**
+ * The dotted name an expression was imported as, read from the file's own imports: `pyee.EventEmitter`
+ * for `from pyee import EventEmitter`, and for `import pyee` followed by `pyee.EventEmitter`.
+ * Undefined when the root is not an import, is a local binding, or is a relative import (Phase 12.1).
+ */
+export function importedNameOf(e: Expr, info: FileInfo): string | undefined {
+  const dotted = dottedName(e);
+  if (dotted === undefined) return undefined;
+  const parts = dotted.split('.');
+  const root = parts[0];
+  if (root === undefined) return undefined;
+  const imp = info.imported.get(root);
+  if (imp === undefined || imp.module.startsWith('.')) return undefined;
+  let rootExpr: Expr = e;
+  while (rootExpr.kind === 'attribute') rootExpr = rootExpr.value;
+  if (rootExpr.kind !== 'name') return undefined;
+  const resolution = info.uses.get(spanKey(rootExpr.span))?.resolution;
+  if (resolution?.kind === 'scope' && resolution.scopeKind !== 'module') return undefined;
+  const base = imp.name === null ? imp.module : `${imp.module}.${imp.name}`;
+  return [base, ...parts.slice(1)].join('.');
+}
+
 /** The repository file a module-level name refers to, when it is a module and not a member. */
 function moduleFileOf(info: FileInfo, name: string): string | undefined {
   const found = info.resolvedImports.find(
@@ -332,10 +356,12 @@ export function analyzeInheritance(
       let directAbstract = false;
       for (const arg of st.bases) {
         if (arg.kind === 'positional') {
+          const importedAs = importedNameOf(arg.value, info);
           bases.push({
             text: formatExpr(arg.value),
             span: toSourceSpan(arg.value.span, info.filePath),
             target: resolveBase(arg.value, info, ctx, declared),
+            ...(importedAs === undefined ? {} : { importedAs }),
           });
           if (ABSTRACT_MARKERS.has(markerOf(arg.value, info) ?? '')) directAbstract = true;
         } else if (arg.kind === 'keyword' && arg.name === 'metaclass') {

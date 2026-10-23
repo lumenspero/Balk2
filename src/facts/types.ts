@@ -304,6 +304,8 @@ export interface EventCallFact extends FactBase {
   readonly listener?: string;
   /** The listener options, for a subscribe or unsubscribe that passes them. */
   readonly options?: EventListenerFlags;
+  /** How the front end established the call. Unset means the TypeScript checker; Python sets `ast`. */
+  readonly evidence?: Evidence;
 }
 
 /**

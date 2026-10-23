@@ -45,6 +45,8 @@ export interface LocalType {
   readonly name: TypeName;
   readonly confidence: Confidence;
   readonly source: LocalTypeSource;
+  /** A literal a library constructor was given that names the instance, such as a signal's name (Phase 12.1). */
+  readonly payload?: string;
 }
 
 /** A callable symbol, with what the rules need to know about it. */
@@ -113,7 +115,9 @@ export function afterRebinding(
   next: LocalType | undefined,
 ): LocalType | undefined {
   if (previous === undefined || next === undefined) return undefined;
-  return sameTypeName(previous.name, next.name) ? previous : undefined;
+  return sameTypeName(previous.name, next.name) && previous.payload === next.payload
+    ? previous
+    : undefined;
 }
 
 /** True when two type names refer to the same type. */

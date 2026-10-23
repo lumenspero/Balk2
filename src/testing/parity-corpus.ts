@@ -8,8 +8,8 @@ import { assertUniqueNames, type CorpusScenario } from './corpus-types.js';
  * Pending renditions are targets, not failing tests. Each phase removes its own `pending` marker.
  *
  * Open items for later phases:
- * - Event channels: exact expectations need the verified `event:<scope>#<name>` scope rules. Add
- *   the events scenario in Phase 12.1 once those rules are confirmed.
+ * - Event channels are `event:<scope>#<name>`, where the scope is the receiver's binding identity.
+ *   Confirmed in Phase 12.1 for JS/TS and Python.
  * - Data direction: readers are expected as `consumes|reads` until Phase 11 decides a single
  *   vocabulary for reader edges across languages.
  */
@@ -137,6 +137,82 @@ export const PARITY_CORPUS: readonly CorpusScenario[] = [
           absent: ['calls src/lib.rs:run -> src/b.rs:parse'],
         },
       },
+    },
+  },
+
+  {
+    name: 'event published and subscribed on one emitter',
+    family: 'events',
+    renditions: {
+      javascript: {
+        files: {
+          'main.ts':
+            "export class Bus {\n  on(name: string, listener: () => void): void {}\n  emit(name: string): void {}\n}\n\nexport const bus = new Bus();\n\nexport function onReady(): void {}\n\nexport function start(): void {\n  bus.on('ready', onReady);\n}\n\nexport function publish(): void {\n  bus.emit('ready');\n}\n",
+        },
+        expect: {
+          relationships: [
+            'subscribes main.ts:onReady -> event:main.ts:bus#ready',
+            'emits main.ts:publish -> event:main.ts:bus#ready',
+          ],
+        },
+      },
+      python: {
+        files: {
+          'main.py':
+            "from pyee import EventEmitter\n\nbus = EventEmitter()\n\n\ndef on_ready():\n    return 1\n\n\ndef start():\n    bus.on('ready', on_ready)\n\n\ndef publish():\n    bus.emit('ready')\n",
+        },
+        expect: {
+          relationships: [
+            'subscribes main.py:on_ready -> event:main.py:bus#ready',
+            'emits main.py:publish -> event:main.py:bus#ready',
+          ],
+        },
+      },
+    },
+    notApplicable: {
+      rust: 'Rust channels connect by passing values, not by name, so a name-keyed channel does not exist.',
+    },
+  },
+
+  {
+    name: 'same event name on two emitters does not connect',
+    family: 'events',
+    renditions: {
+      javascript: {
+        files: {
+          'main.ts':
+            "export class Bus {\n  on(name: string, listener: () => void): void {}\n  emit(name: string): void {}\n}\n\nexport const a = new Bus();\nexport const b = new Bus();\n\nexport function onReady(): void {}\n\nexport function start(): void {\n  b.on('ready', onReady);\n}\n\nexport function publish(): void {\n  a.emit('ready');\n}\n",
+        },
+        expect: {
+          relationships: [
+            'subscribes main.ts:onReady -> event:main.ts:b#ready',
+            'emits main.ts:publish -> event:main.ts:a#ready',
+          ],
+          absent: [
+            'emits main.ts:publish -> event:main.ts:b#ready',
+            'subscribes main.ts:onReady -> event:main.ts:a#ready',
+          ],
+        },
+      },
+      python: {
+        files: {
+          'main.py':
+            "from pyee import EventEmitter\n\na = EventEmitter()\nb = EventEmitter()\n\n\ndef on_ready():\n    return 1\n\n\ndef start():\n    b.on('ready', on_ready)\n\n\ndef publish():\n    a.emit('ready')\n",
+        },
+        expect: {
+          relationships: [
+            'subscribes main.py:on_ready -> event:main.py:b#ready',
+            'emits main.py:publish -> event:main.py:a#ready',
+          ],
+          absent: [
+            'emits main.py:publish -> event:main.py:b#ready',
+            'subscribes main.py:on_ready -> event:main.py:a#ready',
+          ],
+        },
+      },
+    },
+    notApplicable: {
+      rust: 'Rust channels connect by passing values, not by name, so a name-keyed channel does not exist.',
     },
   },
 

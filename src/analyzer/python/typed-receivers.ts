@@ -33,7 +33,13 @@ import type { Confidence, SymbolType } from '../../types.js';
 import type { Expr, Stmt } from './ast.js';
 import { exprChildren, stmtBlocks, stmtOwnExprs } from './ast-walk.js';
 import { dottedName } from './expression-format.js';
-import { resolveBase, spanKey, type FileInfo, type InheritanceContext } from './inheritance.js';
+import {
+  importedNameOf,
+  resolveBase,
+  spanKey,
+  type FileInfo,
+  type InheritanceContext,
+} from './inheritance.js';
 import type { Scope } from './scopes.js';
 
 /** Local types by scope, and the return types of repository callables. */
@@ -100,7 +106,8 @@ export function typeExprOf(
         return { kind: 'named', name: { kind: 'symbol', id: target.id } };
       }
       if (target?.kind === 'external') {
-        return { kind: 'named', name: { kind: 'external', name: target.name } };
+        const name = importedNameOf(e, info) ?? target.name;
+        return { kind: 'named', name: { kind: 'external', name } };
       }
       return { kind: 'unknown' };
     }
@@ -126,6 +133,14 @@ export function typeExprOf(
   }
 }
 
+/** The value of a plain, single-line string literal with no escapes or joins, or undefined. */
+export function plainStringValue(e: Expr): string | undefined {
+  if (e.kind !== 'constant' || e.type !== 'str') return undefined;
+  const match = /^[rRuU]?(?:'([^'\\\n]*)'|"([^"\\\n]*)")$/.exec(e.raw);
+  if (match === null) return undefined;
+  return match[1] ?? match[2];
+}
+
 /** The type of a value, when it is a call the rules type: a constructor or a typed function. */
 export function typeOfValue(
   e: Expr,
@@ -137,6 +152,20 @@ export function typeOfValue(
 ): LocalType | undefined {
   if (e.kind !== 'call') return undefined;
   const target = resolveBase(e.func, info, ctx, declared);
+  if (target?.kind === 'external') {
+    // An imported name may be a class or a function, so its result is medium. The name is the one
+    // the import gives, so library types can be matched (Phase 12.1).
+    const name = importedNameOf(e.func, info);
+    if (name === undefined) return undefined;
+    const first = e.args[0];
+    const payload = first?.kind === 'positional' ? plainStringValue(first.value) : undefined;
+    return {
+      name: { kind: 'external', name },
+      confidence: 'medium',
+      source: 'constructor',
+      ...(payload === undefined ? {} : { payload }),
+    };
+  }
   if (target?.kind !== 'symbol') return undefined;
   const symbolType = types.get(target.id);
   if (symbolType === undefined) return undefined;

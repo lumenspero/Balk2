@@ -57,7 +57,7 @@ import {
   type InheritanceFile,
 } from './inheritance.js';
 
-type CallExpr = Extract<Expr, { kind: 'call' }>;
+export type CallExpr = Extract<Expr, { kind: 'call' }>;
 type NameExpr = Extract<Expr, { kind: 'name' }>;
 
 /** Decorators that return their argument unchanged, by the qualified name they resolve to. */
@@ -91,6 +91,35 @@ export interface PythonCall {
 
 export interface CallAnalysis {
   readonly calls: readonly PythonCall[];
+}
+
+/** The typing the call pass computed, which an observer may read alongside each call (Phase 12.1). */
+export interface CallContext {
+  readonly info: FileInfo;
+  readonly ctx: InheritanceContext;
+  readonly declared: ReadonlySet<string>;
+  readonly types: ReadonlyMap<string, SymbolType>;
+  readonly mro: ReadonlyMap<string, readonly string[] | null>;
+  readonly index: TypeIndex;
+}
+
+/** A call expression, with the function or method that contains it (null at module level). */
+export interface ObservedCall extends CallContext {
+  readonly call: CallExpr;
+  readonly owner: string | null;
+}
+
+/** A decorator, with the symbol it decorates and the scope it is applied in. */
+export interface ObservedDecorator extends CallContext {
+  readonly decorator: Expr;
+  readonly decoratedId: string;
+  readonly enclosing: string | null;
+}
+
+/** Reads the calls a pass walks, without changing what it emits. */
+export interface CallObserver {
+  readonly onCall?: (call: ObservedCall) => void;
+  readonly onDecorator?: (decorator: ObservedDecorator) => void;
 }
 
 /** The method a statement is inside, when that method's receiver is known. */
@@ -373,6 +402,7 @@ export function analyzePythonCalls(
   files: readonly InheritanceFile[],
   ctx: InheritanceContext,
   options: CallOptions = {},
+  observer: CallObserver = {},
 ): CallAnalysis {
   const infos = files.map((f) => buildFileInfo(f, ctx));
   const declared = new Set<string>();
@@ -401,6 +431,7 @@ export function analyzePythonCalls(
     const visitor: Visitor = {
       onCall: (call, frame) => {
         const owner = ownerOf(frame);
+        observer.onCall?.({ info, ctx, declared, types, mro, index, call, owner });
         for (const c of calleesOf(call.func, frame, info, ctx, declared, types, mro, index)) {
           calls.push({
             filePath: info.filePath,
@@ -414,6 +445,17 @@ export function analyzePythonCalls(
       },
       onDecorator: (decorator, decoratedId, frame) => {
         if (!isIdentityDecorator(decorator, info, configured)) nonIdentity.add(decoratedId);
+        observer.onDecorator?.({
+          info,
+          ctx,
+          declared,
+          types,
+          mro,
+          index,
+          decorator,
+          decoratedId,
+          enclosing: ownerOf(frame),
+        });
         // The decorator call belongs to the decorated symbol: it is what the decorator wraps.
         const owner = decoratedId;
         const target = decorator.kind === 'call' ? decorator.func : decorator;

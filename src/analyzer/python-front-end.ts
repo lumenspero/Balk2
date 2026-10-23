@@ -3,7 +3,7 @@ import type { PathBase } from '../facts/path-value.js';
 /**
  * The Python front end (V3 Phase 5.7b and 5.7c). It runs the fact passes over a set of Python files
  * and writes their graph entries: files, symbols, exports, imports, `extends`, `implements`,
- * `calls` and `references`. Every fact-derived edge carries `evidence: 'ast'` and its spans.
+ * `calls`, `references` and event channels. Every fact-derived edge carries `evidence: 'ast'` and its spans.
  *
  * The non-fact mechanisms still run through python-mechanisms.ts (data literals, importlib loads)
  * and python-source-apply.ts (source annotations). Phases 11 and 12 retire them.
@@ -25,6 +25,9 @@ import { defaultBareBases, resolveBarePath } from '../facts/path-value.js';
 import { analyzePythonDataApis } from './python/data-apis.js';
 import { collectPythonSourceAnnotations } from './python-source-apply.js';
 import { analyzePythonCalls } from './python/calls.js';
+import { createPythonEventCollector } from './python/event-facts.js';
+import { runEventEngine } from '../facts/event-engine.js';
+import { applyEventEdges } from './event-apply.js';
 import { parseModuleRecovering } from './python/statement-parser.js';
 import { createImportResolver } from './python/modules/import-resolution.js';
 import { ModuleIndex } from './python/modules/module-index.js';
@@ -120,10 +123,16 @@ export function analyzePythonSources(
     });
   }
 
+  // Events (Phase 12.1). The collector reads the calls the call pass types, as event-call facts.
+  const events = createPythonEventCollector(sources, ctx);
+
   // Calls. The owner is the enclosing function or method, or the file for module-level code.
-  for (const c of analyzePythonCalls(sources, ctx, {
-    identityDecorators: options.identityDecorators,
-  }).calls) {
+  for (const c of analyzePythonCalls(
+    sources,
+    ctx,
+    { identityDecorators: options.identityDecorators },
+    events.observer,
+  ).calls) {
     if (c.callee.kind !== 'symbol') continue;
     graph.addRelationship('calls', c.owner ?? c.filePath, c.callee.id, c.confidence, {
       evidence: 'ast',
@@ -131,6 +140,8 @@ export function analyzePythonSources(
       ...(c.mechanism === undefined ? {} : { metadata: { mechanism: c.mechanism } }),
     });
   }
+
+  applyEventEdges(graph, runEventEngine({ facts: events.facts() }));
 
   // References: annotations, bases, isinstance targets, except classes and match classes.
   for (const r of analyzePythonReferences(sources, ctx).references) {
