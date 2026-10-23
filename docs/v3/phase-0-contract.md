@@ -262,7 +262,7 @@ This local run sets the provisional budget. The contract records the budget from
 ### 9.8 addendum: const and static values, extern blocks
 
 - A `{ }` block inside a const or static value that declares items is a scope, keyed by the const's or static's id. Its items are named under the value (`file:C::helper`), and they follow the same visibility and ownership rules as items in a function body.
-- A `const` or `static` value's own mentions resolve in its innermost block scope, the same way a function body's do.
+- A `const` or `static` value's own mentions and calls resolve in its innermost block scope, the same way a function body's do.
 - An `extern` block inside a function body is read, and its functions are declared under the function (`file:outer::puts`). A call from the body resolves to them.
 - `extern` items are read only at statement start, so `extern` as part of an expression is not an item.
-- Still not read: `mod` items inside a body (by design), and macro arguments (Phase 10). Calls inside a const value are not bound yet; this addendum only adds declarations and mentions for const values.
+- Still not read: `mod` items inside a body (by design), and macro arguments (Phase 10). Calls in a const or static value, including calls inside its blocks, resolve to the const or static as their owner. A `let` inside a const value's block is not tracked, so a call to a name it binds may resolve to an item of that name.

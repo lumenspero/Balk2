@@ -139,3 +139,19 @@ describe('nested items: extern blocks in a body', () => {
     expect(pairs).toEqual([['src/lib.rs:outer', 'src/lib.rs:outer::puts']]);
   });
 });
+
+describe('calls inside const and static values', () => {
+  it('gives a call from a const value to a function of the crate', () => {
+    const pairs = callPairs({
+      'src/lib.rs': 'fn f() -> i32 { 1 } const C: i32 = f();',
+    });
+    expect(pairs).toEqual([['src/lib.rs:C', 'src/lib.rs:f']]);
+  });
+
+  it('gives a call from a block in a static value to the item declared in that block', () => {
+    const pairs = callPairs({
+      'src/lib.rs': 'static S: i32 = { fn helper() -> i32 { 1 } helper() };',
+    });
+    expect(pairs).toEqual([['src/lib.rs:S', 'src/lib.rs:S::helper']]);
+  });
+});

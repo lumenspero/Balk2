@@ -17,8 +17,8 @@
  * Known gaps: calls inside macro arguments, nested functions (their calls are credited to the
  * outer function), and tuple-struct constructors (they name no function).
  */
-import type { BodyFact } from '../body.js';
-import { ownBodyFacts, startsWithin } from '../nested.js';
+import { type BodyFact, scanTokens } from '../body.js';
+import { blocksOfTokens, factsOutside, ownBodyFacts, startsWithin } from '../nested.js';
 import type { GenericParam, Item, Span } from '../items.js';
 import { lexRust, type RustToken } from '../lexer.js';
 import { buildTokenTrees, isTokenGroup, type TokenTree } from '../token-tree.js';
@@ -142,17 +142,15 @@ export function bindCalls(
   const edges = new Map<string, MutableEdge>();
   const unresolved: CallUnresolved[] = [];
 
-  for (const entry of repo.entries) {
-    const body = entry.fn.item.body;
-    if (body === null) continue;
-    const facts = ownBodyFacts(body);
-    const ctx = contextOf(repo, entry);
-    const locals = localsOf(entry.fn.item, facts, ctx, (span) =>
-      scopeCtx(ctx, entry.fn.scopes, span),
-    );
-    const from = entry.fn.id;
-    const file = entry.fn.owner.file;
-
+  /** Binds the calls and method calls of one body, owned by `from`, whose blocks are `scopes`. */
+  const bindBody = (
+    from: string,
+    file: string,
+    facts: readonly BodyFact[],
+    ctx: Ctx,
+    locals: Locals,
+    scopes: readonly BodyScope[],
+  ): void => {
     const record = (callable: Callable | null, span: Span): void => {
       if (callable === null) return;
       const key = [from, callable.id, callable.confidence, callable.dispatch].join('\u0000');
@@ -177,7 +175,7 @@ export function bindCalls(
         if (segments.length === 1 && locals.has(segments[0] ?? '')) continue;
         const resolved = resolveCallPath(
           { global: false, segments },
-          scopeCtx(ctx, entry.fn.scopes, fact.span),
+          scopeCtx(ctx, scopes, fact.span),
           locals,
         );
         if (resolved.unresolved !== undefined) {
@@ -193,7 +191,7 @@ export function bindCalls(
         }
       } else if (fact.kind === 'method-call') {
         if (fact.receiver === null) continue;
-        const typed = receiverOf(fact.receiver, scopeCtx(ctx, entry.fn.scopes, fact.span), locals);
+        const typed = receiverOf(fact.receiver, scopeCtx(ctx, scopes, fact.span), locals);
         if (typed === null) continue;
         const callable = memberOf(repo, typed.ty, fact.method);
         if (callable === null) continue;
@@ -202,6 +200,28 @@ export function bindCalls(
           fact.span,
         );
       }
+    }
+  };
+
+  for (const entry of repo.entries) {
+    const body = entry.fn.item.body;
+    if (body === null) continue;
+    const facts = ownBodyFacts(body);
+    const ctx = contextOf(repo, entry);
+    const locals = localsOf(entry.fn.item, facts, ctx, (span) =>
+      scopeCtx(ctx, entry.fn.scopes, span),
+    );
+    bindBody(entry.fn.id, entry.fn.owner.file, facts, ctx, locals, entry.fn.scopes);
+  }
+
+  // Calls inside a const or static value (9.8). Its own `let`s are not tracked, as in references.
+  for (const crate of crates) {
+    for (const decl of crate.decls) {
+      const item = decl.item;
+      if ((item.kind !== 'const' && item.kind !== 'static') || item.value === null) continue;
+      const facts = factsOutside(scanTokens(item.value.tokens), blocksOfTokens(item.value.tokens));
+      const ctx: Ctx = { repo, crate, owner: decl.owner, self: null, bounds: new Map() };
+      bindBody(decl.id, decl.owner.file, facts, ctx, new Map(), decl.scopes);
     }
   }
 
