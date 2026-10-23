@@ -22,18 +22,16 @@
  * give no edge. Event names that the source does not state as a plain literal are observations.
  */
 import type { CallArg, Expr } from './ast.js';
-import { formatExpr } from './expression-format.js';
 import {
   analyzeInheritance,
   resolveBase,
-  spanKey,
   toSourceSpan,
-  type FileInfo,
   type InheritanceContext,
   type InheritanceFile,
 } from './inheritance.js';
 import type { CallContext, CallObserver } from './calls.js';
 import { localTypeOf, plainStringValue } from './typed-receivers.js';
+import { identityOf, subjectOf } from './receiver-scope.js';
 import type { TypeName } from '../../facts/local-types.js';
 import type { EventCallFact, EventDirectionFact, EventNameFact } from '../../facts/types.js';
 import { relationshipOf } from '../event-protocols.js';
@@ -106,8 +104,6 @@ export const PYTHON_EVENT_EMITTERS: readonly LibraryEmitter[] = [
     ],
   },
 ];
-
-const MAX_SUBJECT_LENGTH = 80;
 
 /** The collector: pass `observer` to `analyzePythonCalls`, then read `facts()`. */
 export interface PythonEventCollector {
@@ -242,20 +238,6 @@ function emitterNamed(name: string): LibraryEmitter | undefined {
   return PYTHON_EVENT_EMITTERS.find((emitter) => emitter.types.includes(name));
 }
 
-/**
- * The identity of a receiver name: `<file>:<name>` at module level, `<file>:<scope>.<name>`
- * elsewhere. A name the scope analysis cannot place has no identity.
- */
-function identityOf(name: Extract<Expr, { kind: 'name' }>, info: FileInfo): string | undefined {
-  const resolution = info.uses.get(spanKey(name.span))?.resolution;
-  if (resolution?.kind !== 'scope') return undefined;
-  const scope = info.scopes.scopes.find((s) => s.id === resolution.scope);
-  if (scope === undefined) return undefined;
-  return scope.span === null
-    ? `${info.filePath}:${name.id}`
-    : `${info.filePath}:${scope.label}.${name.id}`;
-}
-
 /** The listener named by an argument, when it is a function or method of the repository. */
 function listenerOf(site: CallContext, arg: Expr | undefined): string | undefined {
   if (arg === undefined) return undefined;
@@ -296,9 +278,4 @@ function nameOf(arg: Expr | undefined): EventNameFact {
     kind: 'dynamic',
     reason: arg.kind === 'fstring' ? 'formatted event name' : 'event name is not a string literal',
   };
-}
-
-function subjectOf(e: Expr): string {
-  const text = formatExpr(e).replace(/\s+/g, ' ');
-  return text.length > MAX_SUBJECT_LENGTH ? `${text.slice(0, MAX_SUBJECT_LENGTH - 1)}…` : text;
 }

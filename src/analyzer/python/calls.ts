@@ -116,10 +116,42 @@ export interface ObservedDecorator extends CallContext {
   readonly enclosing: string | null;
 }
 
-/** Reads the calls a pass walks, without changing what it emits. */
+/** A subscript read, such as `REGISTRY['user']`. */
+export interface ObservedSubscript extends CallContext {
+  readonly node: Extract<Expr, { kind: 'subscript' }>;
+  readonly owner: string | null;
+}
+
+/** A subscript store, such as `REGISTRY['user'] = User`, with the value stored. */
+export interface ObservedStore extends ObservedSubscript {
+  readonly value: Expr;
+}
+
+/** An assignment whose value is a dictionary display, such as `REGISTRY = {'user': User}`. */
+export interface ObservedDictAssign extends CallContext {
+  readonly targets: readonly Expr[];
+  readonly value: Extract<Expr, { kind: 'dict' }>;
+  readonly owner: string | null;
+}
+
+/** Reads the calls and subscripts a pass walks, without changing what it emits. */
 export interface CallObserver {
   readonly onCall?: (call: ObservedCall) => void;
   readonly onDecorator?: (decorator: ObservedDecorator) => void;
+  readonly onSubscript?: (subscript: ObservedSubscript) => void;
+  readonly onStore?: (store: ObservedStore) => void;
+  readonly onDictAssign?: (assign: ObservedDictAssign) => void;
+}
+
+/** Several observers over one walk, called in the order given. */
+export function combineObservers(...observers: readonly CallObserver[]): CallObserver {
+  return {
+    onCall: (call) => observers.forEach((o) => o.onCall?.(call)),
+    onDecorator: (decorator) => observers.forEach((o) => o.onDecorator?.(decorator)),
+    onSubscript: (subscript) => observers.forEach((o) => o.onSubscript?.(subscript)),
+    onStore: (store) => observers.forEach((o) => o.onStore?.(store)),
+    onDictAssign: (assign) => observers.forEach((o) => o.onDictAssign?.(assign)),
+  };
 }
 
 /** The method a statement is inside, when that method's receiver is known. */
@@ -139,10 +171,23 @@ interface Frame {
 type OnCall = (call: CallExpr, frame: Frame) => void;
 type OnDecorator = (decorator: Expr, decoratedId: string, frame: Frame) => void;
 
+type OnSubscript = (e: Extract<Expr, { kind: 'subscript' }>, frame: Frame) => void;
+type OnStore = (target: Extract<Expr, { kind: 'subscript' }>, value: Expr, frame: Frame) => void;
+type OnDictAssign = (
+  targets: readonly Expr[],
+  value: Extract<Expr, { kind: 'dict' }>,
+  frame: Frame,
+) => void;
+
 interface Visitor {
   readonly onCall: OnCall;
   readonly onDecorator: OnDecorator;
+  readonly onSubscript: OnSubscript;
+  readonly onStore: OnStore;
+  readonly onDictAssign: OnDictAssign;
 }
+
+const NO_STORES: ReadonlySet<Expr> = new Set();
 
 /** The scope chain of a `def` or `class` statement, including the statement itself. */
 function definedChain(st: Stmt, frame: Frame): readonly OwnerScope[] | undefined {
@@ -160,8 +205,9 @@ function visitStmts(stmts: readonly Stmt[], frame: Frame, filePath: string, v: V
     const decorators: readonly Expr[] =
       st.kind === 'funcdef' || st.kind === 'classdef' ? st.decorators : [];
     if (chain !== undefined) visitDecorators(decorators, ownerIdOf(filePath, chain), frame, v);
+    const stores = reportAssignment(st, frame, v);
     for (const e of stmtOwnExprs(st)) {
-      if (!decorators.includes(e)) visitExpr(e, frame, v.onCall);
+      if (!decorators.includes(e)) visitExpr(e, frame, v, stores);
     }
     if (chain !== undefined && st.kind === 'funcdef') {
       const inClass = frame.chain[frame.chain.length - 1]?.kind === 'class';
@@ -185,6 +231,23 @@ function visitStmts(stmts: readonly Stmt[], frame: Frame, filePath: string, v: V
   }
 }
 
+/**
+ * Reports what an assignment stores: each subscript target, and a dictionary display it assigns.
+ * Returns the subscript targets, which are stores rather than reads.
+ */
+function reportAssignment(st: Stmt, frame: Frame, v: Visitor): ReadonlySet<Expr> {
+  if (st.kind !== 'assign') return NO_STORES;
+  const stores = new Set<Expr>();
+  for (const target of st.targets) {
+    if (target.kind === 'subscript') {
+      stores.add(target);
+      v.onStore(target, st.value, frame);
+    }
+  }
+  if (st.value.kind === 'dict') v.onDictAssign(st.targets, st.value, frame);
+  return stores;
+}
+
 function visitDecorators(
   decorators: readonly Expr[],
   decoratedId: string,
@@ -194,13 +257,14 @@ function visitDecorators(
   for (const d of decorators) {
     v.onDecorator(d, decoratedId, frame);
     // The decorator's own call is reported by `onDecorator`; only its arguments are visited here.
-    for (const child of exprChildren(d)) visitExpr(child, frame, v.onCall);
+    for (const child of exprChildren(d)) visitExpr(child, frame, v, NO_STORES);
   }
 }
 
-function visitExpr(e: Expr, frame: Frame, onCall: OnCall): void {
-  if (e.kind === 'call') onCall(e, frame);
-  for (const child of exprChildren(e)) visitExpr(child, frame, onCall);
+function visitExpr(e: Expr, frame: Frame, v: Visitor, stores: ReadonlySet<Expr>): void {
+  if (e.kind === 'call') v.onCall(e, frame);
+  if (e.kind === 'subscript' && !stores.has(e)) v.onSubscript(e, frame);
+  for (const child of exprChildren(e)) visitExpr(child, frame, v, stores);
 }
 
 /** The first method named `attr` among `ids`, which are classes in MRO order. */
@@ -471,6 +535,41 @@ export function analyzePythonCalls(
           });
         }
       },
+      onSubscript: (node, frame) =>
+        observer.onSubscript?.({
+          info,
+          ctx,
+          declared,
+          types,
+          mro,
+          index,
+          node,
+          owner: ownerOf(frame),
+        }),
+      onStore: (node, value, frame) =>
+        observer.onStore?.({
+          info,
+          ctx,
+          declared,
+          types,
+          mro,
+          index,
+          node,
+          value,
+          owner: ownerOf(frame),
+        }),
+      onDictAssign: (targets, value, frame) =>
+        observer.onDictAssign?.({
+          info,
+          ctx,
+          declared,
+          types,
+          mro,
+          index,
+          targets,
+          value,
+          owner: ownerOf(frame),
+        }),
     };
     visitStmts(info.body, { chain: [], method: undefined }, info.filePath, visitor);
   }

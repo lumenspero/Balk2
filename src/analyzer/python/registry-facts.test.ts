@@ -1,0 +1,93 @@
+import { describe, expect, it } from 'vitest';
+import type { RegistryFact, RegistryKeyFact } from '../../facts/types.js';
+import { analyzePythonCalls } from './calls.js';
+import { createPythonRegistryCollector } from './registry-facts.js';
+import { createImportResolver } from './modules/import-resolution.js';
+import { createSymbolResolver } from './modules/module-exports.js';
+import { ModuleIndex } from './modules/module-index.js';
+
+function collect(files: Record<string, string>): RegistryFact[] {
+  const index = new ModuleIndex(Object.keys(files));
+  const readText = (p: string): string => files[p] ?? '';
+  const imports = createImportResolver(index, { roots: ['.'], readText });
+  const symbols = createSymbolResolver({ resolver: imports, readText });
+  const ctx = { symbols, imports };
+  const sources = Object.entries(files).map(([filePath, source]) => ({ filePath, source }));
+  const collector = createPythonRegistryCollector();
+  analyzePythonCalls(sources, ctx, {}, collector.observer);
+  return collector.facts();
+}
+
+function keyText(key: RegistryKeyFact): string {
+  if (key.kind === 'static') return key.name;
+  return key.kind === 'dynamic' ? `dynamic:${key.reason}` : 'not-a-name';
+}
+
+/** One line per fact: a declaration, or `owner relationship key registry [-> target] [internal]`. */
+function lines(files: Record<string, string>): string[] {
+  return collect(files).map((f) => {
+    if (f.kind === 'registry-declaration') {
+      return `declare ${f.registry} ${keyText(f.key)} -> ${f.target}`;
+    }
+    if (f.kind !== 'registry-call') return `other ${f.kind}`;
+    const scope = f.receiver.identity.kind === 'resolved' ? f.receiver.identity.scope : '?';
+    const target = f.target === undefined ? '' : ` -> ${f.target}`;
+    const internal = f.receiver.internal ? ' internal' : '';
+    return `${f.owner} ${f.relationship} ${keyText(f.key)} ${scope}${target}${internal}`;
+  });
+}
+
+const CLASSES = 'class User:\n    pass\n\n\nclass Admin:\n    pass\n\n\n';
+
+describe('python registry facts: dictionaries', () => {
+  it('reads a module-level dict display of symbols as declarations', () => {
+    expect(
+      lines({
+        'm.py': `${CLASSES}REGISTRY = {'user': User, 'admin': Admin}\n`,
+      }),
+    ).toEqual([
+      'declare m.py:REGISTRY user -> m.py:User',
+      'declare m.py:REGISTRY admin -> m.py:Admin',
+    ]);
+  });
+
+  it('reads a literal-key store as a registration, and a subscript and get as lookups', () => {
+    expect(
+      lines({
+        'm.py': `${CLASSES}REG = dict()\nREG['user'] = User\n\n\ndef find():\n    return REG['user'], REG.get('user')\n`,
+      }),
+    ).toEqual([
+      'm.py registers user m.py:REG -> m.py:User',
+      'm.py:find resolves user m.py:REG',
+      'm.py:find resolves user m.py:REG',
+    ]);
+  });
+
+  it('reads a non-literal key as a dynamic lookup', () => {
+    expect(
+      lines({
+        'm.py': `REG = {}\n\n\ndef find(name):\n    return REG[name]\n`,
+      }),
+    ).toEqual(['m.py:find resolves dynamic:key is not a literal m.py:REG']);
+  });
+
+  it('gives no registration for a store of a value that is not a repository symbol', () => {
+    expect(lines({ 'm.py': `REG = {}\nREG['x'] = 1\n` })).toEqual([]);
+  });
+
+  it('gives no fact for a receiver the call pass does not type as a dict', () => {
+    expect(
+      lines({
+        'm.py': `class Box:\n    def __getitem__(self, k):\n        return k\n\n\nb = Box()\nvalue = b['x']\n`,
+      }),
+    ).toEqual([]);
+  });
+
+  it('marks a dict built inside a function as internal, with a function-local identity', () => {
+    expect(
+      lines({
+        'm.py': `${CLASSES}def build():\n    local = {}\n    local['a'] = User\n`,
+      }),
+    ).toEqual(['m.py:build registers a m.py:build.local -> m.py:User internal']);
+  });
+});

@@ -150,8 +150,23 @@ export function typeOfValue(
   types: ReadonlyMap<string, SymbolType>,
   callables: ReadonlyMap<string, CallableSymbol>,
 ): LocalType | undefined {
+  if (e.kind === 'dict') {
+    return {
+      name: { kind: 'external', name: 'builtins.dict' },
+      confidence: 'high',
+      source: 'constructor',
+    };
+  }
   if (e.kind !== 'call') return undefined;
   const target = resolveBase(e.func, info, ctx, declared);
+  if (target?.kind === 'external' && target.name === 'builtins') {
+    if (dottedName(e.func) !== 'dict') return undefined;
+    return {
+      name: { kind: 'external', name: 'builtins.dict' },
+      confidence: 'high',
+      source: 'constructor',
+    };
+  }
   if (target?.kind === 'external') {
     // An imported name may be a class or a function, so its result is medium. The name is the one
     // the import gives, so library types can be matched (Phase 12.1).

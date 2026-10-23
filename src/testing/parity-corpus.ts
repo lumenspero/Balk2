@@ -217,6 +217,90 @@ export const PARITY_CORPUS: readonly CorpusScenario[] = [
   },
 
   {
+    name: 'value registered under a literal key and looked up',
+    family: 'registries',
+    renditions: {
+      javascript: {
+        files: {
+          'main.ts':
+            "export class User {}\n\nexport const registry = new Map<string, unknown>();\n\nexport function register(): void {\n  registry.set('user', User);\n}\n\nexport function load(): unknown {\n  return registry.get('user');\n}\n",
+        },
+        expect: {
+          relationships: [
+            'registers registry:main.ts:registry#user -> main.ts:User',
+            'resolves main.ts:load -> registry:main.ts:registry#user',
+          ],
+        },
+      },
+      python: {
+        files: {
+          'main.py':
+            "class User:\n    pass\n\n\nregistry = {}\nregistry['user'] = User\n\n\ndef load():\n    return registry['user']\n",
+        },
+        expect: {
+          relationships: [
+            'registers registry:main.py:registry#user -> main.py:User',
+            'resolves main.py:load -> registry:main.py:registry#user',
+          ],
+        },
+      },
+      rust: {
+        files: {
+          'Cargo.toml': '[package]\nname = "demo"\nversion = "0.1.0"\nedition = "2021"\n',
+          'src/lib.rs':
+            'use std::collections::HashMap;\n\npub struct User;\n\npub fn lookup() -> Option<&\'static User> {\n    let mut map: HashMap<&\'static str, User> = HashMap::new();\n    map.insert("user", User);\n    map.get("user")\n}\n',
+        },
+        expect: {
+          relationships: [
+            'registers registry:src/lib.rs:lookup.map#user -> src/lib.rs:User',
+            'resolves src/lib.rs:lookup -> registry:src/lib.rs:lookup.map#user',
+          ],
+        },
+        pending: '12.2',
+      },
+    },
+  },
+
+  {
+    name: 'same key in two registries does not connect',
+    family: 'registries',
+    renditions: {
+      javascript: {
+        files: {
+          'main.ts':
+            "export class User {}\n\nexport const a = new Map<string, unknown>();\nexport const b = new Map<string, unknown>();\n\nexport function register(): void {\n  a.set('user', User);\n}\n\nexport function find(): unknown {\n  return b.get('user');\n}\n",
+        },
+        expect: {
+          relationships: ['resolves main.ts:find -> registry:main.ts:b#user'],
+          absent: ['resolves main.ts:find -> registry:main.ts:a#user'],
+        },
+      },
+      python: {
+        files: {
+          'main.py':
+            "class User:\n    pass\n\n\na = {}\nb = {}\na['user'] = User\n\n\ndef find():\n    return b['user']\n",
+        },
+        expect: {
+          relationships: ['resolves main.py:find -> registry:main.py:b#user'],
+          absent: ['resolves main.py:find -> registry:main.py:a#user'],
+        },
+      },
+      rust: {
+        files: {
+          'Cargo.toml': '[package]\nname = "demo"\nversion = "0.1.0"\nedition = "2021"\n',
+          'src/lib.rs':
+            'use std::collections::HashMap;\n\npub struct User;\n\npub fn find() -> Option<&\'static User> {\n    let mut a: HashMap<&\'static str, User> = HashMap::new();\n    a.insert("user", User);\n    let b: HashMap<&\'static str, User> = HashMap::new();\n    b.get("user")\n}\n',
+        },
+        expect: {
+          relationships: ['resolves src/lib.rs:find -> registry:src/lib.rs:find.b#user'],
+          absent: ['resolves src/lib.rs:find -> registry:src/lib.rs:find.a#user'],
+        },
+        pending: '12.2',
+      },
+    },
+  },
+
+  {
     name: 'module-level variable reassigned in a function is shared state',
     family: 'module-level state (D8)',
     renditions: {
