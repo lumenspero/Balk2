@@ -140,8 +140,10 @@ export function resolveName(
     node = crate.root;
     index = 1;
   } else if (first === 'self') {
+    node = nearestModule(from);
     index = 1;
   } else if (first === 'super') {
+    node = nearestModule(from);
     while (segments[index] === 'super') {
       if (node.parent === null) return failure('`super` goes past the crate root');
       node = node.parent;
@@ -149,7 +151,7 @@ export function resolveName(
     }
   } else {
     // A uniform path: the first segment is a local name in the current module, or a crate.
-    const local = lookupIn(from, first, segments.length === 1 ? ns : 'type', from, new Set());
+    const local = lookupScoped(from, first, segments.length === 1 ? ns : 'type', from, new Set());
     const entry = crateEntry(first, crate, env);
     if (local !== undefined && local.kind !== 'extern' && entry !== undefined) {
       return failure(`\`${first}\` names both a local item and an extern crate`);
@@ -171,7 +173,10 @@ export function resolveName(
     const name = segments[k];
     if (name === undefined) break;
     const last = k === segments.length - 1;
-    const hit = lookupIn(node, name, last ? ns : 'type', from, new Set());
+    const hit =
+      k === 0 && node === from
+        ? lookupScoped(node, name, last ? ns : 'type', from, new Set())
+        : lookupIn(node, name, last ? ns : 'type', from, new Set());
     if (hit === undefined) return failure(`no \`${name}\` in ${describe(node)}`);
     switch (hit.kind) {
       case 'ambiguous':
@@ -223,6 +228,35 @@ function lookupIn(
   const explicit = node.imports.get(ns)?.get(name);
   if (explicit !== undefined) return fromBinding(explicit);
   return lookupGlobs(node, name, ns, importer, visited);
+}
+
+/**
+ * Searches a block and then the blocks and module around it (9.8). A block sees the names of the
+ * function it is in; a module does not see into its children.
+ */
+function lookupScoped(
+  node: RustModuleNode,
+  name: string,
+  ns: RustNamespace,
+  importer: RustModuleNode,
+  visited: Set<string>,
+): Hit | undefined {
+  for (
+    let scope: RustModuleNode | null = node;
+    scope !== null;
+    scope = scope.block ? scope.parent : null
+  ) {
+    const hit = lookupIn(scope, name, ns, importer, visited);
+    if (hit !== undefined) return hit;
+  }
+  return undefined;
+}
+
+/** The module a block belongs to. `self`, `super` and `crate` name modules, so they start here. */
+function nearestModule(node: RustModuleNode): RustModuleNode {
+  let current = node;
+  while (current.block && current.parent !== null) current = current.parent;
+  return current;
 }
 
 /** The names a module's glob imports bring in. Two different targets for one name are ambiguous. */

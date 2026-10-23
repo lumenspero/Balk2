@@ -24,6 +24,7 @@
  * source order. Two definitions in different `cfg` branches are the same symbol instead (twins),
  * so both declarations keep one id and their conditions.
  */
+import { blockKey, nestedItemsOf } from './nested.js';
 import type { Declaration, Visibility } from '../../facts/types.js';
 import type { SourceSpan, SymbolType } from '../../types.js';
 import type {
@@ -127,6 +128,17 @@ function walkModule(walk: Walk, items: readonly Item[], scope: Scope): void {
   for (const item of items) walkModuleItem(walk, item, scope);
 }
 
+/** Declares the items written inside a function body, under the function's name (9.8). */
+function walkFnBody(walk: Walk, item: FnItem, fnId: string, fnBase: string, scope: Scope): void {
+  const nested = nestedItemsOf(item.body);
+  if (nested.length === 0) return;
+  walkModule(walk, nested, {
+    modulePath: `${fnBase}::`,
+    key: blockKey(fnId),
+    conditions: scope.conditions,
+  });
+}
+
 function walkModuleItem(walk: Walk, item: Item, scope: Scope): void {
   const visibility = toVisibility(item.vis);
   const ownCfg = cfgTexts(item.attrs);
@@ -152,8 +164,8 @@ function walkModuleItem(walk: Walk, item: Item, scope: Scope): void {
   };
 
   switch (item.kind) {
-    case 'fn':
-      declare(walk, {
+    case 'fn': {
+      const fnId = declare(walk, {
         bare: item.name,
         base: base(item.name),
         symbolType: 'function',
@@ -166,7 +178,9 @@ function walkModuleItem(walk: Walk, item: Item, scope: Scope): void {
         scope,
         fn: { item, container: null },
       });
+      walkFnBody(walk, item, fnId, base(item.name), scope);
       return;
+    }
     case 'struct':
       declareModuleItem(item.name, 'struct', namespacesOf(item));
       return;
@@ -175,6 +189,21 @@ function walkModuleItem(walk: Walk, item: Item, scope: Scope): void {
       return;
     case 'enum':
       declareModuleItem(item.name, 'enum', ['type']);
+      // Variants are symbols named `Enum.Variant`, as associated items are named `Type.item` (9.7).
+      for (const variant of item.variants) {
+        declare(walk, {
+          bare: variant.name,
+          base: base(`${item.name}.${variant.name}`),
+          symbolType: 'variant',
+          visibility,
+          owner: null,
+          namespaces: [],
+          span: item.span,
+          condition,
+          register: false,
+          scope,
+        });
+      }
       return;
     case 'type':
       declareModuleItem(item.name, 'type', ['type']);
@@ -251,7 +280,7 @@ function walkContainer(
 ): void {
   for (const item of items) {
     if (item.kind !== 'fn') continue;
-    declare(walk, {
+    const fnId = declare(walk, {
       bare: item.name,
       base: `${container.base}.${item.name}`,
       symbolType: 'method',
@@ -264,6 +293,7 @@ function walkContainer(
       scope: container.scope,
       fn: { item, container: container.container },
     });
+    walkFnBody(walk, item, fnId, `${container.base}.${item.name}`, container.scope);
   }
 }
 
@@ -300,7 +330,7 @@ function childScope(scope: Scope, ownCfg: readonly string[]): Scope {
  * two share a namespace with the same condition, or they are in different namespaces. Two
  * definitions in one namespace under different conditions are twins, and keep one id.
  */
-function declare(walk: Walk, input: DeclInput): void {
+function declare(walk: Walk, input: DeclInput): string {
   const prior = walk.seen.get(input.base) ?? [];
   const clash = prior.some(
     (p) =>
@@ -333,6 +363,7 @@ function declare(walk: Walk, input: DeclInput): void {
   if (input.register) {
     recordName(walk.namespaces, input.scope.key, input.namespaces, input.bare, id);
   }
+  return id;
 }
 
 /**

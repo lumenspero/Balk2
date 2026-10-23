@@ -45,12 +45,19 @@ export type Visibility =
       readonly path: readonly string[];
     };
 
+/** `global` is true when the tree starts with `::`, directly or through an enclosing group (9.7). */
 export type UseTree =
-  | { readonly kind: 'name'; readonly path: readonly string[]; readonly alias: string | null }
-  | { readonly kind: 'glob'; readonly path: readonly string[] }
+  | {
+      readonly kind: 'name';
+      readonly path: readonly string[];
+      readonly alias: string | null;
+      readonly global: boolean;
+    }
+  | { readonly kind: 'glob'; readonly path: readonly string[]; readonly global: boolean }
   | {
       readonly kind: 'nested';
       readonly path: readonly string[];
+      readonly global: boolean;
       readonly items: readonly UseTree[];
     };
 
@@ -311,8 +318,11 @@ function parseUseTree(
   c: TreeCursor,
   prefix: readonly string[],
   errors: RustLexNote[],
+  inherited = false,
 ): UseTree | null {
-  if (isPunct(c.peek(), '::')) c.next();
+  const leading = isPunct(c.peek(), '::');
+  if (leading) c.next();
+  const global = inherited || leading;
   const path = [...prefix];
   for (;;) {
     const here = c.peek();
@@ -322,12 +332,13 @@ function parseUseTree(
       return {
         kind: 'nested',
         path,
-        items: parseUseList(new TreeCursor(list.children), path, errors),
+        global,
+        items: parseUseList(new TreeCursor(list.children), path, errors, global),
       };
     }
     if (isPunct(here, '*')) {
       c.next();
-      return { kind: 'glob', path };
+      return { kind: 'glob', path, global };
     }
     const segment = identName(here);
     if (segment === undefined) {
@@ -351,14 +362,19 @@ function parseUseTree(
       alias = name;
     }
   }
-  return { kind: 'name', path, alias };
+  return { kind: 'name', path, alias, global };
 }
 
-function parseUseList(c: TreeCursor, prefix: readonly string[], errors: RustLexNote[]): UseTree[] {
+function parseUseList(
+  c: TreeCursor,
+  prefix: readonly string[],
+  errors: RustLexNote[],
+  inherited = false,
+): UseTree[] {
   const items: UseTree[] = [];
   while (!c.eof) {
     const before = c.pos;
-    const tree = parseUseTree(c, prefix, errors);
+    const tree = parseUseTree(c, prefix, errors, inherited);
     if (tree) items.push(tree);
     if (tree === null && c.pos === before) c.next();
     if (isPunct(c.peek(), ',')) {

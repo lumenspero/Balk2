@@ -230,3 +230,24 @@ This local run sets the provisional budget. The contract records the budget from
 - An unresolved module path in a call gets an `unresolved-module-path` node, linked from the calling file by a `calls` edge at low confidence.
 - `body.ts` now records the receiver name on `method-call` facts and the initializer and pattern shape on `let` facts. `symbols.ts` and `module-index.ts` record each function with its impl or trait.
 - Not in 9.6: calls inside macro arguments, calls inside nested functions (credited to the outer function), tuple-struct constructors, generic inference beyond bounds, and receivers that are fields or call results. References and `extern` declarations are 9.7.
+
+## Phase 9.7 output change (Rust references and foreign functions)
+
+- Enum variants are symbols, `Enum.Variant`, with symbol type `variant` (`src/types.ts` gained the type). A variant's visibility is its enum's.
+- A `references` edge goes from a mentioning symbol to the symbol it names (`src/analyzer/rust/names/references.ts`), with evidence `ast`, confidence `high`, and one span per mention. Mentions are: types in function signatures and `let` annotations (owner: the function); struct, union and enum fields (owner: the type; for an enum, the variant); a type alias's type; a const's or static's type and value (owner: the const or static); generic bounds, which name their trait; struct literals; enum variant paths; and tuple-struct constructors, which name the struct.
+- Generic parameters are not references. A type named through `Self` is the impl's type. A path that looks internal and does not resolve gets an `unresolved-module-path` observation, linked by a `references` edge at low confidence.
+- Functions in `extern` blocks are declared and bind as callable functions, so `calls` edges reach their declarations (9.6 resolved them only when they had a body).
+- `#[no_mangle]` functions with an ABI carry `metadata.abi` on their `exports` edge, with the quotes removed. Symbol nodes have no metadata field, so a `#[no_mangle]` item that is not exported (a binary crate, or a private item) has no edge to carry it. That case is open.
+- `use ::name` keeps its leading `::` (`UseTree.global`, `UseEntry.global`). Edition 2015 resolves it from the crate root and later editions from the extern crate.
+- `impl Trait for dyn Other` gives no `implements` edge. It used to be read as an impl on `Other`.
+- Decision beyond the letter of 9.7: `let` annotations count as references, because a type named in a body is a real mention. Remove that clause if the reference model should stay to signatures and fields.
+- Not in 9.7: a nested function's mentions are credited to the enclosing function, since nested functions are not symbols; `impl` headers are not mentions; macro arguments are not scanned (Phase 10).
+
+## Phase 9.8 output change (Rust nested items)
+
+- Items written inside a function body (`fn`, `struct`, `enum`, `union`, `trait`, `impl`, `type`, `const`, `static`, `use`) are symbols named under the function: `file:outer::inner`, and for a method, `file:Type.method::inner` (`src/analyzer/rust/nested.ts`, `symbols.ts`).
+- Each function with nested items gets a block scope. A name written in the block resolves there first, then in the blocks and module around it. `self`, `super` and `crate` still name the enclosing module, not the block.
+- A nested function's calls and references belong to it. The enclosing function gets no edge for a call or mention that lies inside a nested item. The enclosing function does get edges for its own calls to its nested items.
+- `use` inside a function body now binds like a module-level `use`. The 9.3 note that deferred it to Phase 10 is superseded.
+- `mod` inside a function body is not read. Macro arguments are still not scanned (Phase 10).
+- Known limits: a const or static initializer with a block that contains an item is not scanned for that item; `extern "C"` blocks inside a body are not read.

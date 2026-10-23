@@ -62,7 +62,8 @@ export type SymbolType =
   | 'enum'
   | 'trait'
   | 'module'
-  | 'macro';
+  | 'macro'
+  | 'variant';
 
 /**
  * A data artifact node in the graph.

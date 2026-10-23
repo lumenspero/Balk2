@@ -34,6 +34,7 @@ macro_rules! my_macro { () => {} }
       ['Point', 'struct'],
       ['Config', 'struct'],
       ['Mode', 'enum'],
+      ['Mode.A', 'variant'],
       ['Bits', 'struct'],
       ['Render', 'trait'],
       ['Id', 'type'],

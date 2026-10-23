@@ -19,6 +19,7 @@ import { isModRsFile, moduleFileCandidates, type InlineModule } from '../modules
 import { pathAttrOf } from '../modules/tree.js';
 import type { RustNamespace, RustNamespaceTables } from './namespaces.js';
 import { analyzeRustSymbols } from '../symbols.js';
+import { blockKey, nestedItemsOf } from '../nested.js';
 import { flattenUse, type UseEntry } from './use-tree.js';
 
 /** What a `use` binds a name to. `isPub` is true for `pub use`, which other modules can reach. */
@@ -66,6 +67,8 @@ export interface RustModuleNode {
   readonly visibility: ReadonlyMap<string, Visibility>;
   /** Names bound by `use` in this module, per namespace. An item of the same name takes precedence. */
   readonly imports: Map<RustNamespace, Map<string, ImportBinding>>;
+  /** True for a block: the items declared in a function body. Its parent is the scope around it. */
+  readonly block: boolean;
   readonly globs: GlobBinding[];
 }
 
@@ -105,6 +108,22 @@ export interface PendingFunction {
   readonly item: Extract<Item, { kind: 'fn' }>;
   /** The `impl` or `trait` item the function is written in, or null for a free function. */
   readonly container: Extract<Item, { kind: 'impl' | 'trait' }> | null;
+  /** The ABI as written, from the function or the `extern` block it is in, or null. */
+  readonly abi: string | null;
+  /** True when the function carries `#[no_mangle]`. */
+  readonly noMangle: boolean;
+}
+
+/** A named item whose id other passes need: a type, a const or a static (V3 Phase 9.7). */
+export type PendingDeclItem = Extract<
+  Item,
+  { kind: 'struct' | 'union' | 'enum' | 'type' | 'const' | 'static' }
+>;
+
+export interface PendingDecl {
+  readonly owner: RustModuleNode;
+  readonly id: string;
+  readonly item: PendingDeclItem;
 }
 
 export interface RustCrateIndex {
@@ -124,6 +143,8 @@ export interface RustCrateIndex {
   readonly traits: readonly PendingTrait[];
   /** Every function in the crate, in source order. */
   readonly functions: readonly PendingFunction[];
+  /** Every struct, union, enum, type alias, const and static in the crate. */
+  readonly decls: readonly PendingDecl[];
 }
 
 export interface CrateIndexInput {
@@ -143,6 +164,7 @@ interface Build {
   readonly impls: PendingImpl[];
   readonly traits: PendingTrait[];
   readonly functions: PendingFunction[];
+  readonly decls: PendingDecl[];
   readonly fnIds: Map<Extract<Item, { kind: 'fn' }>, string>;
   readonly loaded: Set<string>;
 }
@@ -157,6 +179,7 @@ export function buildCrateIndex(input: CrateIndexInput): RustCrateIndex {
     impls: [],
     traits: [],
     functions: [],
+    decls: [],
     fnIds: new Map(),
     loaded: new Set([input.root]),
   };
@@ -185,6 +208,7 @@ export function buildCrateIndex(input: CrateIndexInput): RustCrateIndex {
     impls: build.impls,
     traits: build.traits,
     functions: build.functions,
+    decls: build.decls,
   };
 }
 
@@ -208,10 +232,12 @@ function newNode(
     scope: string;
     parent: RustModuleNode | null;
     public: boolean;
+    block?: boolean;
   },
 ): RustModuleNode {
   return {
     ...init,
+    block: init.block === true,
     children: new Map(),
     ambiguous: new Set(),
     tables: build.namespaces,
@@ -221,14 +247,59 @@ function newNode(
   };
 }
 
+/** The scope a function's body resolves in: a block of its nested items when it has any, else its module (9.8). */
+function bodyScope(
+  build: Build,
+  node: RustModuleNode,
+  item: PendingFunction['item'],
+  id: string,
+): RustModuleNode {
+  const nested = nestedItemsOf(item.body);
+  if (nested.length === 0) return node;
+  const block = newNode(build, {
+    path: node.path,
+    inline: false,
+    file: node.file,
+    scope: blockKey(id),
+    parent: node,
+    public: false,
+    block: true,
+  });
+  visitItems(build, block, nested, '', [], true);
+  return block;
+}
+
+/** The scope a function is owned by: its body's block when it has nested items, else the module. */
+function fnOwner(
+  build: Build,
+  node: RustModuleNode,
+  item: PendingFunction['item'],
+): RustModuleNode {
+  const id = build.fnIds.get(item);
+  return id === undefined ? node : bodyScope(build, node, item, id);
+}
+
 function addFunction(
   build: Build,
   owner: RustModuleNode,
   item: PendingFunction['item'],
   container: PendingFunction['container'],
+  blockAbi: string | null = null,
 ): void {
   const id = build.fnIds.get(item);
-  if (id !== undefined) build.functions.push({ owner, id, item, container });
+  if (id === undefined) return;
+  const abi = item.qualifiers.abi ?? blockAbi;
+  const noMangle = item.attrs.some((attr) => attr.path === 'no_mangle');
+  build.functions.push({ owner, id, item, container, abi, noMangle });
+}
+
+/** The id of a named item in its module's own scope: values for consts and statics, types otherwise. */
+function declIdOf(node: RustModuleNode, item: PendingDeclItem): string | undefined {
+  const table = node.tables.get(node.scope);
+  if (item.kind === 'const' || item.kind === 'static') {
+    return item.name === '_' ? undefined : table?.value.get(item.name);
+  }
+  return table?.type.get(item.name);
 }
 
 function visitItems(
@@ -247,12 +318,12 @@ function visitItems(
       continue;
     }
     if (item.kind === 'fn') {
-      addFunction(build, node, item, null);
+      addFunction(build, fnOwner(build, node, item), item, null);
       continue;
     }
     if (item.kind === 'impl') {
       for (const child of item.items) {
-        if (child.kind === 'fn') addFunction(build, node, child, item);
+        if (child.kind === 'fn') addFunction(build, fnOwner(build, node, child), child, item);
       }
       build.impls.push({
         owner: node,
@@ -266,7 +337,7 @@ function visitItems(
     }
     if (item.kind === 'trait') {
       for (const child of item.items) {
-        if (child.kind === 'fn') addFunction(build, node, child, item);
+        if (child.kind === 'fn') addFunction(build, fnOwner(build, node, child), child, item);
       }
       build.traits.push({
         owner: node,
@@ -274,6 +345,24 @@ function visitItems(
         span: item.span,
         supertraits: item.supertraits,
       });
+      continue;
+    }
+    if (item.kind === 'extern_block') {
+      for (const child of item.items) {
+        if (child.kind === 'fn') addFunction(build, node, child, null, item.abi);
+      }
+      continue;
+    }
+    if (
+      item.kind === 'struct' ||
+      item.kind === 'union' ||
+      item.kind === 'enum' ||
+      item.kind === 'type' ||
+      item.kind === 'const' ||
+      item.kind === 'static'
+    ) {
+      const id = declIdOf(node, item);
+      if (id !== undefined) build.decls.push({ owner: node, id, item });
       continue;
     }
     if (item.kind !== 'mod') continue;

@@ -13,6 +13,7 @@
  * A path that looks internal and does not resolve is reported as unresolved.
  */
 import type { Span } from '../items.js';
+import { isTokenGroup, type TokenTree } from '../token-tree.js';
 import type { RustCrateIndex, RustModuleNode } from './module-index.js';
 import {
   resolveName,
@@ -74,6 +75,8 @@ export function bindTypeRelations(crate: RustCrateIndex, env: RustNameEnvironmen
 
   for (const impl of crate.impls) {
     if (impl.trait === null) continue;
+    // `impl Trait for dyn Other` is not an impl on `Other`, and nothing here names the trait object.
+    if (startsWithDyn(impl.selfTy.tokens)) continue;
     const selfPath = pathOfTokens(impl.selfTy.tokens);
     const traitPath = pathOfTokens(impl.trait.tokens);
     if (selfPath === null || traitPath === null) continue;
@@ -127,6 +130,14 @@ export function bindTypeRelations(crate: RustCrateIndex, env: RustNameEnvironmen
   }
 
   return { edges, unresolved };
+}
+
+/** True when a type starts with `dyn`. */
+function startsWithDyn(trees: readonly TokenTree[]): boolean {
+  const [first] = trees;
+  return (
+    first !== undefined && !isTokenGroup(first) && first.kind === 'ident' && first.value === 'dyn'
+  );
 }
 
 /** The symbol a type or trait path names, looked up in the type namespace. */

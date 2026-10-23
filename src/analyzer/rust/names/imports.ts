@@ -116,7 +116,7 @@ function tryBind(use: PendingUse, crate: RustCrateIndex, env: RustNameEnvironmen
     crate.edition === '2015' && first !== undefined && !['self', 'super', 'crate'].includes(first)
       ? crate.root
       : owner;
-  const path = { global: false, segments: entry.path };
+  const path = { global: entry.global, segments: entry.path };
 
   if (entry.glob) {
     const resolution = resolveName(path, 'type', from, crate, env);

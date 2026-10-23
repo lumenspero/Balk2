@@ -49,32 +49,39 @@ describe('rust items: use trees', () => {
     expect(useTreeOf('use std::{self, fmt::{self, Display as D}, io::*, x as _};')).toEqual({
       kind: 'nested',
       path: ['std'],
+      global: false,
       items: [
-        { kind: 'name', path: ['std', 'self'], alias: null },
+        { kind: 'name', path: ['std', 'self'], alias: null, global: false },
         {
           kind: 'nested',
           path: ['std', 'fmt'],
+          global: false,
           items: [
-            { kind: 'name', path: ['std', 'fmt', 'self'], alias: null },
-            { kind: 'name', path: ['std', 'fmt', 'Display'], alias: 'D' },
+            { kind: 'name', path: ['std', 'fmt', 'self'], alias: null, global: false },
+            { kind: 'name', path: ['std', 'fmt', 'Display'], alias: 'D', global: false },
           ],
         },
-        { kind: 'glob', path: ['std', 'io'] },
-        { kind: 'name', path: ['std', 'x'], alias: '_' },
+        { kind: 'glob', path: ['std', 'io'], global: false },
+        { kind: 'name', path: ['std', 'x'], alias: '_', global: false },
       ],
     });
   });
 
-  it('accepts a leading `::` and a plain path', () => {
+  it('records a leading `::` as global', () => {
     expect(useTreeOf('use ::core::fmt;')).toEqual({
       kind: 'name',
       path: ['core', 'fmt'],
       alias: null,
+      global: true,
     });
   });
 
   it('reads a crate-relative glob', () => {
-    expect(useTreeOf('pub(crate) use super::*;')).toEqual({ kind: 'glob', path: ['super'] });
+    expect(useTreeOf('pub(crate) use super::*;')).toEqual({
+      kind: 'glob',
+      path: ['super'],
+      global: false,
+    });
   });
 
   it('reports a trailing `::` and a missing `;`', () => {

@@ -19,6 +19,7 @@ import type { SyntaxErrorNote } from '../repository-program.js';
 import type { Span } from './items.js';
 import { parseRustFile } from './items.js';
 import { bindCalls } from './names/calls.js';
+import { bindReferences } from './names/references.js';
 import { computeExports } from './names/exports.js';
 import { bindImports } from './names/imports.js';
 import { bindTypeRelations } from './names/type-relations.js';
@@ -64,12 +65,20 @@ export class RustFrontEnd implements LanguageFrontEnd {
     }
 
     const { crates, env } = buildCrates(input, rustFiles);
+    // `#[no_mangle]` functions with an ABI carry it on their exports edge (9.7). Symbol nodes have no metadata.
+    const abiById = new Map<string, string>();
+    for (const { index } of crates) {
+      for (const fn of index.functions) {
+        if (fn.noMangle && fn.abi !== null) abiById.set(fn.id, fn.abi.replace(/^"|"$/g, ''));
+      }
+    }
     for (const { index: crate, exporting } of crates) {
       if (exporting) {
         for (const edge of computeExports(crate)) {
+          const abi = abiById.get(edge.id);
           graph.addRelationship('exports', edge.from, edge.id, 'high', {
             evidence: 'ast',
-            metadata: { visibility: 'public' },
+            metadata: { visibility: 'public', ...(abi === undefined ? {} : { abi }) },
           });
         }
       }
@@ -139,6 +148,30 @@ export class RustFrontEnd implements LanguageFrontEnd {
         detail: call.detail,
       });
       graph.addRelationship('calls', call.file, unresolved.id, 'low', {
+        evidence: 'ast',
+        spans: [location],
+      });
+    }
+    const references = bindReferences(
+      crates.map((c) => c.index),
+      env,
+    );
+    for (const edge of references.edges) {
+      graph.addRelationship('references', edge.from, edge.to, 'high', {
+        evidence: 'ast',
+        spans: edge.spans.map((span) => toSourceSpan(span, edge.file)),
+      });
+    }
+    for (const mention of references.unresolved) {
+      const location = toSourceSpan(mention.span, mention.file);
+      const unresolved = graph.addUnresolved({
+        reason: mention.reason,
+        attempted: 'references',
+        subject: mention.subject,
+        location,
+        detail: mention.detail,
+      });
+      graph.addRelationship('references', mention.file, unresolved.id, 'low', {
         evidence: 'ast',
         spans: [location],
       });

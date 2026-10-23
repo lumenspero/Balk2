@@ -17,7 +17,8 @@
  * Known gaps: calls inside macro arguments, nested functions (their calls are credited to the
  * outer function), and tuple-struct constructors (they name no function).
  */
-import { type BodyFact, scanFunctionBody } from '../body.js';
+import type { BodyFact } from '../body.js';
+import { ownBodyFacts } from '../nested.js';
 import type { GenericParam, Item, Span } from '../items.js';
 import { lexRust, type RustToken } from '../lexer.js';
 import { buildTokenTrees, isTokenGroup, type TokenTree } from '../token-tree.js';
@@ -78,7 +79,7 @@ interface Callable {
   readonly dispatch: boolean;
 }
 
-interface Entry {
+export interface Entry {
   readonly crate: RustCrateIndex;
   readonly fn: PendingFunction;
 }
@@ -99,7 +100,7 @@ interface ImplInfo {
   readonly methods: ReadonlyMap<string, string>;
 }
 
-interface Repo {
+export interface Repo {
   readonly env: RustNameEnvironment;
   readonly entries: readonly Entry[];
   readonly fnsById: ReadonlyMap<string, Entry>;
@@ -110,7 +111,7 @@ interface Repo {
   readonly implsByItem: ReadonlyMap<Item, ImplInfo>;
 }
 
-interface Ctx {
+export interface Ctx {
   readonly repo: Repo;
   readonly crate: RustCrateIndex;
   readonly owner: RustModuleNode;
@@ -120,7 +121,7 @@ interface Ctx {
   readonly bounds: Map<string, string[]>;
 }
 
-type Locals = ReadonlyMap<string, Typed | null>;
+export type Locals = ReadonlyMap<string, Typed | null>;
 
 interface MutableEdge {
   readonly from: string;
@@ -143,7 +144,7 @@ export function bindCalls(
   for (const entry of repo.entries) {
     const body = entry.fn.item.body;
     if (body === null) continue;
-    const facts = scanFunctionBody(body);
+    const facts = ownBodyFacts(body);
     const ctx = contextOf(repo, entry);
     const locals = localsOf(entry.fn.item, facts, ctx);
     const from = entry.fn.id;
@@ -202,7 +203,7 @@ export function bindCalls(
 
 // ── The repository index ─────────────────────────────────────
 
-function buildRepo(crates: readonly RustCrateIndex[], env: RustNameEnvironment): Repo {
+export function buildRepo(crates: readonly RustCrateIndex[], env: RustNameEnvironment): Repo {
   const entries: Entry[] = [];
   for (const crate of crates) {
     for (const fn of crate.functions) entries.push({ crate, fn });
@@ -273,7 +274,7 @@ function buildRepo(crates: readonly RustCrateIndex[], env: RustNameEnvironment):
 }
 
 /** The symbol a path names in a namespace, when it names a symbol in the repository. */
-function symbolOf(
+export function symbolOf(
   path: RustPath,
   ns: 'type' | 'value',
   owner: RustModuleNode,
@@ -285,8 +286,16 @@ function symbolOf(
 }
 
 /** The id of an item declared by name in a module's own scope. */
-function declaredId(owner: RustModuleNode, name: string): string | undefined {
-  return owner.tables.get(owner.scope)?.type.get(name);
+export function declaredId(owner: RustModuleNode, name: string): string | undefined {
+  for (
+    let scope: RustModuleNode | null = owner;
+    scope !== null;
+    scope = scope.block ? scope.parent : null
+  ) {
+    const id = scope.tables.get(scope.scope)?.type.get(name);
+    if (id !== undefined) return id;
+  }
+  return undefined;
 }
 
 // ── Member lookup ────────────────────────────────────────────
@@ -377,7 +386,11 @@ function resolveCallPath(path: RustPath, ctx: Ctx, locals: Locals): CallResoluti
 // ── Local types (2.4) ────────────────────────────────────────
 
 /** The type of each local name in a function. A name bound twice, or by a pattern, has none. */
-function localsOf(fn: PendingFunction['item'], facts: readonly BodyFact[], ctx: Ctx): Locals {
+export function localsOf(
+  fn: PendingFunction['item'],
+  facts: readonly BodyFact[],
+  ctx: Ctx,
+): Locals {
   const map = new Map<string, Typed | null>();
   const bind = (name: string, typed: Typed | null): void => {
     map.set(name, map.has(name) ? null : typed);
@@ -486,7 +499,7 @@ function typeOf(trees: readonly TokenTree[], ctx: Ctx): Ty | null {
   return ctx.repo.traitIds.has(id) ? { kind: 'trait', id } : { kind: 'type', id };
 }
 
-function contextOf(repo: Repo, entry: Entry): Ctx {
+export function contextOf(repo: Repo, entry: Entry): Ctx {
   const { crate, fn } = entry;
   const container = fn.container;
   let self: Ty | null = null;
@@ -505,7 +518,7 @@ function contextOf(repo: Repo, entry: Entry): Ctx {
 }
 
 /** Records the trait ids each generic name is bound by, from its inline bounds and `where` clause. */
-function fillBounds(ctx: Ctx, generics: readonly GenericParam[], where: string): void {
+export function fillBounds(ctx: Ctx, generics: readonly GenericParam[], where: string): void {
   const texts: [string, string][] = [];
   for (const generic of generics) {
     if (generic.kind !== 'type') continue;
