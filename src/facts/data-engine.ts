@@ -68,6 +68,7 @@ export interface DataPathContext {
 /** The repository path an artifact fact names, or the path as written when no context is given. */
 function artifactPathOf(fact: DataReferenceFact, paths: DataPathContext | undefined): string {
   const written = normalizePath(fact.path);
+  if (fact.anchored === true) return written;
   if (paths === undefined || written.startsWith('../') || written.startsWith('/')) return written;
   return resolveBarePath(written, paths.bases(fact), paths.exists) ?? written;
 }

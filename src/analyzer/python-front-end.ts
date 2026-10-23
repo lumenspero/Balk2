@@ -159,7 +159,13 @@ export function analyzePythonSources(
       },
     }),
   );
-  const claimed = new Set(dataFacts.map((f) => `${f.filePath}:${f.span.startLine}:${f.path}`));
+  // An anchored path claims the literal it was built from, which is the last path segment (Phase 11.2).
+  const claimed = new Set(
+    dataFacts.map(
+      (f) =>
+        `${f.filePath}:${f.span.startLine}:${f.anchored === true ? lastSegment(f.path) : f.path}`,
+    ),
+  );
 
   // Entry points: script roots, `packageRoot` edges, and `registers` edges for plugin groups.
   const manifestProblems: ManifestProblem[] = [];
@@ -269,4 +275,8 @@ export class PythonFrontEnd implements LanguageFrontEnd {
 function dirOf(filePath: string): string {
   const slash = filePath.lastIndexOf('/');
   return slash < 0 ? '' : filePath.slice(0, slash);
+}
+
+function lastSegment(path: string): string {
+  return path.slice(path.lastIndexOf('/') + 1);
 }

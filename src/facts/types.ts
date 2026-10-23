@@ -326,6 +326,11 @@ export interface DataReferenceFact extends FactBase {
    * Bare relative paths are placed from this file. Without it, the fact's own file is used.
    */
   readonly pathFilePath?: string;
+  /**
+   * True when `path` is already a repository path, built from the file's own location (Phase 11.2).
+   * It names its file exactly, so it is not placed as a bare relative path.
+   */
+  readonly anchored?: boolean;
 }
 
 /** A resolved library call that the data catalog recognizes. */

@@ -436,3 +436,10 @@ A `use` of a constant is followed through the crate's module tree. `crate::`, `s
 - hyparquet takes a buffer or an async buffer from a helper, not a path, so it is not in the catalog. Its files are not matched unless an `fs` read supplies them.
 - DuckDB SQL (`read_parquet`) is matched by the DuckDB handle path in 11.6.
 - Known keyword limit, unchanged: a call the catalog does not match still falls to the keyword rule, and a keyword in the call's text, such as `read` inside `ParquetReader`, gives a high edge. Changing that would alter existing snapshots, so it is left for a separate decision.
+
+## Phase 11.2 output change (Python anchors)
+
+- A path built from the script's own location (`__file__`, `os.path.dirname`, `os.path.abspath`, `Path(...).resolve().parent`, `os.path.join`, pathlib `/`) is anchored to the directory of the file that holds it, and is placed exactly, not as a bare relative path. An anchored path above the repository root keeps its `../` parts.
+- The catalog call that takes an anchored path claims its literal's last segment, so the keyword pass does not add a second edge.
+- Handle loads (`json`, `pickle`, `csv`, `yaml`, `tomllib`) have no catalog entries: their path is the `open` call that made the handle.
+- `self.<attr>` directory joins are carried over from 2.0.0 unchanged.

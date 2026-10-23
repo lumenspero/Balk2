@@ -398,3 +398,98 @@ describe('Python data catalog: function-local constants (Phase 11.5)', () => {
     expect(highEdgesTo(map, 'data/none.csv')).toEqual([]);
   });
 });
+
+describe('Python data catalog: anchored paths (Phase 11.2)', () => {
+  it('os.path.join on the directory of __file__ names the file beside the script', () => {
+    const map = analyze({
+      'lib/app.py': [
+        'import os',
+        'import pandas as pd',
+        "df = pd.read_csv(os.path.join(os.path.dirname(__file__), 'a1.csv'))",
+      ].join('\n'),
+    });
+    expect(edgesTo(map, 'lib/a1.csv')).toEqual(['consumes/high lib/app.py']);
+  });
+
+  it('pathlib / on the parent of __file__ names the file beside the script', () => {
+    const map = analyze({
+      'lib/app.py': [
+        'from pathlib import Path',
+        'import pandas as pd',
+        "df = pd.read_csv(Path(__file__).resolve().parent / 'a2.csv')",
+      ].join('\n'),
+    });
+    expect(edgesTo(map, 'lib/a2.csv')).toEqual(['consumes/high lib/app.py']);
+  });
+
+  it('a module constant holding the script directory anchors the paths built from it', () => {
+    const map = analyze({
+      'lib/app.py': [
+        'import os',
+        'import pandas as pd',
+        'BASE_DIR = os.path.dirname(os.path.abspath(__file__))',
+        "df = pd.read_json(os.path.join(BASE_DIR, 'a3.json'))",
+      ].join('\n'),
+    });
+    expect(edgesTo(map, 'lib/a3.json')).toEqual(['consumes/high lib/app.py']);
+  });
+
+  it('a path joined from plain strings is placed as a bare relative path', () => {
+    const map = analyze({
+      'lib/app.py': [
+        'import os',
+        'import pandas as pd',
+        "df = pd.read_csv(os.path.join('data', 'a4.csv'))",
+      ].join('\n'),
+    });
+    expect(highEdgesTo(map, 'data/a4.csv')).toEqual(['consumes/high lib/app.py']);
+  });
+
+  it('an anchored path that climbs above the repository root keeps its written ../ parts', () => {
+    const map = analyze({
+      'app.py': [
+        'import os',
+        'import pandas as pd',
+        "df = pd.read_csv(os.path.join(os.path.dirname(__file__), '..', '..', 'a5.csv'))",
+      ].join('\n'),
+    });
+    expect(highEdgesTo(map, '../../a5.csv')).toEqual(['consumes/high app.py']);
+    expect(edgesTo(map, 'a5.csv')).toEqual([]);
+  });
+});
+
+describe('Python data catalog: more readers, writers and handles (Phase 11.2)', () => {
+  it('an Arrow CSV reader consumes its path', () => {
+    const map = analyze({
+      'app.py': ['import pyarrow.csv as pacsv', "table = pacsv.read_csv('x/c1.csv')"].join('\n'),
+    });
+    expect(highEdgesTo(map, 'x/c1.csv')).toEqual(['consumes/high app.py']);
+  });
+
+  it('an Arrow CSV writer takes its destination second and generates it', () => {
+    const map = analyze({
+      'app.py': ['import pyarrow.csv as pacsv', "pacsv.write_csv(table, 'x/c2.csv')"].join('\n'),
+    });
+    expect(highEdgesTo(map, 'x/c2.csv')).toEqual(['generates/high app.py']);
+  });
+
+  it('a pandas DataFrame read by pandas gives its reader edge; a pickle destination is not a data file', () => {
+    const map = analyze({
+      'app.py': [
+        'import pandas as pd',
+        "df = pd.read_csv('x/c5.csv')",
+        "df.to_pickle('x/c4.pkl')",
+      ].join('\n'),
+    });
+    expect(highEdgesTo(map, 'x/c5.csv')).toEqual(['consumes/high app.py']);
+    // `.pkl` is not a data format, so the to_pickle destination is not recorded as a data file.
+    expect(edgesTo(map, 'x/c4.pkl')).toEqual([]);
+  });
+
+  it('a JSON load on a handle reads the file its open call names', () => {
+    const map = analyze({
+      'app.py': ['import json', "data = json.load(open('x/c6.json'))"].join('\n'),
+    });
+    expect(highEdgesTo(map, 'x/c6.json')).toEqual(['consumes/high app.py']);
+  });
+});

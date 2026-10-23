@@ -109,3 +109,12 @@ A method on any other value is not a catalog call. `open` on a `Path` writes whe
 `pl.read_*` and `pl.scan_*` type their result as a Polars DataFrame and LazyFrame. A DataFrame's `write_csv`, `write_parquet`, `write_json` and `write_ipc` write the destination they are given, and a LazyFrame's `sink_csv`, `sink_parquet`, `sink_ipc` and `sink_ndjson` do the same. A name is typed only from a single assignment, as for pandas.
 
 A receiver name is not typed when an `import` in the same scope rebinds it: `import x`, `import x as y`, `from m import x` or `from m import *`. A star import in a scope leaves every name in it untyped, since it may bind any of them.
+
+## Phase 11.2 output change (Python anchors and catalog)
+
+- Anchored paths: a path built from the script's own location is resolved against the directory of the file that holds it, and placed exactly. The forms are `os.path.join(os.path.dirname(__file__), 'x.csv')`, `Path(__file__).resolve().parent / 'x.csv'`, `os.path.dirname(os.path.abspath(__file__))`, and a module constant assigned one of these in the same file (`BASE_DIR = …`). An anchored path that climbs above the repository root keeps its `../` parts, as a written relative path does.
+- `os.path.join` and pathlib `/` on plain strings build a relative path that is placed by the 11.4 rule (`os.path.join('data', 'x.csv')` gives `data/x.csv`).
+- A catalog call with an anchored path claims the literal's last segment, so the keyword pass does not add a second, bare edge for the same file.
+- Added: `pyarrow.csv` `read_csv` and `write_csv`, `pyarrow.feather` `read_table` and `write_feather`, `polars.read_ipc`, `pandas.read_pickle`, and `DataFrame.to_pickle`.
+- Decision, handle loads: `json`, `pickle`, `csv`, `yaml` and `tomllib` load and dump take a file handle, not a path. They have no catalog entries. The path is the `open` call that made the handle, which the catalog already matches, so `json.load(open('x.json'))` gives its edge at `open`.
+- Not in 11.2: a pickle destination (`.pkl`) gives no edge, because `.pkl` is not a data format in `src/data/formats.ts`. Anchored paths from a module constant imported from another file are not followed. Anchors inside an f-string are not followed.

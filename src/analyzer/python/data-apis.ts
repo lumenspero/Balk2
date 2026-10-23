@@ -35,7 +35,15 @@ interface PathSource {
   readonly text: string;
   readonly span: Expr['span'];
   readonly declaringFile?: string;
+  /**
+   * Set for a path anchored at the file's own location (Phase 11.2): `file` is the file itself
+   * (`__file__`), and `dir` is the directory that holds it. The text is relative to that anchor.
+   */
+  readonly anchor?: 'file' | 'dir';
 }
+
+/** Longest chain of names and helper calls a path expression is followed through. */
+const MAX_PATH_DEPTH = 8;
 
 /** The data-reference facts of every Python file, in source order. */
 export function analyzePythonDataApis(
@@ -371,34 +379,170 @@ function flowedConstant(
 }
 
 /**
- * The path an argument holds: a string literal, a name bound once to a string literal in the
- * function it is used in, or a module-level constant (Phase 11.5). A name bound in the function
- * more than once holds no single path, and does not fall through to a module constant of the same
- * name.
+ * The path an argument holds (Phase 11.2): a string literal, a name bound once to a string in its
+ * function or a module constant, or a path built from those with `os.path.join`, pathlib `/`, and the
+ * script's own location (`__file__`, `os.path.dirname`, `Path(...).parent`). An anchored path is
+ * relative to the file that holds it. Undefined for any other expression.
  */
 function pathSourceOf(
   value: Expr | undefined,
   info: FileInfo,
   infoOf: (filePath: string) => FileInfo | undefined,
   scope: readonly Stmt[],
+  depth = 0,
 ): PathSource | undefined {
-  if (value === undefined) return undefined;
+  if (value === undefined || depth > MAX_PATH_DEPTH) return undefined;
   const literal = stringValue(value);
   if (literal !== undefined) return literal;
-  if (value.kind !== 'name') return undefined;
+  const next = depth + 1;
+  if (value.kind === 'name') return nameSource(value, info, infoOf, scope, next);
+  if (value.kind === 'call') return callSource(value, info, infoOf, scope, next);
+  if (value.kind === 'attribute' && value.attr === 'parent') {
+    const parent = pathSourceOf(value.value, info, infoOf, scope, next);
+    if (parent?.anchor === undefined) return undefined;
+    const text = parent.anchor === 'file' ? '' : parentText(parent.text);
+    return { text, span: value.span, declaringFile: parent.declaringFile, anchor: 'dir' };
+  }
+  if (value.kind === 'binop' && value.op === '/') {
+    return joinSource([value.left, value.right], value.span, info, infoOf, scope, next);
+  }
+  return undefined;
+}
+
+/** A name's path: `__file__`, a local or module string, or a module constant that is anchored. */
+function nameSource(
+  name: Expr & { readonly kind: 'name' },
+  info: FileInfo,
+  infoOf: (filePath: string) => FileInfo | undefined,
+  scope: readonly Stmt[],
+  depth: number,
+): PathSource | undefined {
+  if (
+    name.id === '__file__' &&
+    !info.imported.has(name.id) &&
+    bindingsOf(name.id, scope).count === 0
+  ) {
+    return { text: '', span: name.span, declaringFile: info.filePath, anchor: 'file' };
+  }
   if (scope !== info.body) {
-    const local = bindingsOf(value.id, scope);
+    const local = bindingsOf(name.id, scope);
     if (local.count > 0) {
       const text = local.count === 1 ? stringValue(local.value) : undefined;
       return text === undefined
         ? undefined
-        : { text: text.text, span: value.span, declaringFile: info.filePath };
+        : { text: text.text, span: name.span, declaringFile: info.filePath };
     }
   }
-  const flow = flowedConstant(value, info, infoOf);
-  return flow === undefined
-    ? undefined
-    : { text: flow.text, span: value.span, declaringFile: flow.declaringFile };
+  const flow = flowedConstant(name, info, infoOf);
+  if (flow !== undefined) {
+    return { text: flow.text, span: name.span, declaringFile: flow.declaringFile };
+  }
+  // A module constant assigned an anchored path, such as `BASE = os.path.dirname(__file__)`.
+  const resolution = info.uses.get(spanKey(name.span))?.resolution;
+  if (resolution?.kind !== 'scope' || resolution.scopeKind !== 'module') return undefined;
+  if (info.imported.has(name.id)) return undefined;
+  const binding = bindingsOf(name.id, info.body);
+  if (binding.count !== 1 || binding.value === undefined) return undefined;
+  const anchored = pathSourceOf(binding.value, info, infoOf, info.body, depth);
+  if (anchored?.anchor === undefined) return undefined;
+  return { ...anchored, span: name.span, declaringFile: info.filePath };
+}
+
+/** A call that builds a path: `os.path.join`, `os.path.dirname`, `Path(...)`, or `.resolve()`. */
+function callSource(
+  call: Expr & { readonly kind: 'call' },
+  info: FileInfo,
+  infoOf: (filePath: string) => FileInfo | undefined,
+  scope: readonly Stmt[],
+  depth: number,
+): PathSource | undefined {
+  if (
+    call.func.kind === 'attribute' &&
+    (call.func.attr === 'resolve' || call.func.attr === 'absolute') &&
+    call.args.length === 0
+  ) {
+    const inner = pathSourceOf(call.func.value, info, infoOf, scope, depth);
+    return inner?.anchor === undefined ? undefined : { ...inner, span: call.span };
+  }
+  const name = qualifiedName(call.func, info);
+  const args = positionals(call.args);
+  if (name === 'os.path.join') return joinSource(args, call.span, info, infoOf, scope, depth);
+  if (args.length !== 1) return undefined;
+  const arg = pathSourceOf(args[0], info, infoOf, scope, depth);
+  if (arg === undefined) return undefined;
+  if (name === 'pathlib.Path') return { ...arg, span: call.span };
+  if (name === 'os.path.abspath' || name === 'os.path.realpath') {
+    return arg.anchor === undefined ? undefined : { ...arg, span: call.span };
+  }
+  if (name === 'os.path.dirname') {
+    if (arg.anchor === undefined) return undefined;
+    const text = arg.anchor === 'file' ? '' : parentText(arg.text);
+    return { text, span: call.span, declaringFile: arg.declaringFile, anchor: 'dir' };
+  }
+  return undefined;
+}
+
+/**
+ * The join of path parts, as `os.path.join` and pathlib `/` make it. Only the first part may be
+ * anchored: an anchored part after the first, or a part that starts afresh at `/`, gives no path.
+ */
+function joinSource(
+  parts: readonly Expr[],
+  span: Expr['span'],
+  info: FileInfo,
+  infoOf: (filePath: string) => FileInfo | undefined,
+  scope: readonly Stmt[],
+  depth: number,
+): PathSource | undefined {
+  const values = parts.map((part) => pathSourceOf(part, info, infoOf, scope, depth));
+  if (values.length === 0 || values.some((value) => value === undefined)) return undefined;
+  const [first, ...rest] = values as PathSource[];
+  if (first === undefined || first.anchor === 'file') return undefined;
+  if (rest.some((value) => value.anchor !== undefined || value.text.startsWith('/'))) {
+    return undefined;
+  }
+  const text = [first.text, ...rest.map((value) => value.text)].filter((t) => t !== '').join('/');
+  return { text, span, declaringFile: first.declaringFile, anchor: first.anchor };
+}
+
+/** The directory above an anchored directory's text. Above the anchor itself, it climbs with `..`. */
+function parentText(text: string): string {
+  if (text === '') return '..';
+  if (text === '..' || text.endsWith('/..')) return `${text}/..`;
+  const slash = text.lastIndexOf('/');
+  return slash < 0 ? '' : text.slice(0, slash);
+}
+
+/**
+ * The repository path an anchored source names, resolved against the directory of the file that
+ * holds it. Undefined when the path climbs above the repository root.
+ */
+function anchoredPath(source: PathSource, filePath: string): string {
+  const declaring = source.declaringFile ?? filePath;
+  const segments =
+    source.anchor === 'file'
+      ? declaring.split('/')
+      : [
+          ...declaring.slice(0, Math.max(declaring.lastIndexOf('/'), 0)).split('/'),
+          ...source.text.split('/'),
+        ];
+  // A path above the root keeps its `..` parts, as a written relative path does.
+  return resolveRepoSegments(segments) ?? segments.filter((s) => s !== '' && s !== '.').join('/');
+}
+
+/** Joins path segments, dropping empty and `.` parts and applying `..`. Undefined above the root. */
+function resolveRepoSegments(segments: readonly string[]): string | undefined {
+  const out: string[] = [];
+  for (const segment of segments) {
+    if (segment === '' || segment === '.') continue;
+    if (segment === '..') {
+      if (out.length === 0) return undefined;
+      out.pop();
+      continue;
+    }
+    out.push(segment);
+  }
+  return out.join('/');
 }
 
 function factsOfCall(
@@ -451,7 +595,24 @@ function factAt(
   api: DataApiMatch,
   context: string,
 ): DataReferenceFact[] {
-  if (source === undefined || !isDataPathLiteral(source.text)) return [];
+  if (source === undefined) return [];
+  if (source.anchor !== undefined) {
+    // An anchored path names its repository path exactly, so it is not placed as a bare path.
+    const path = anchoredPath(source, info.filePath);
+    if (!isDataPathLiteral(path)) return [];
+    return [
+      {
+        kind: 'data-reference',
+        filePath: info.filePath,
+        span: toSourceSpan(source.span, info.filePath),
+        path,
+        context,
+        api,
+        anchored: true,
+      },
+    ];
+  }
+  if (!isDataPathLiteral(source.text)) return [];
   return [
     {
       kind: 'data-reference',
