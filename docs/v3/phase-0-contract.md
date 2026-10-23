@@ -427,3 +427,12 @@ A `use` of a constant is followed through the crate's module tree. `crate::`, `s
 - JS/TS: see the `let`/`var` rule above.
 - Rust: a non-`mut` `let NAME = "literal";` is a constant for the rest of its block, when the block binds NAME once. A `mut` binding, a second binding of the same name in the block, or a non-literal binding is not a constant, and it hides an outer constant of the same name. The scope is the block that holds the `let`. A `let` that appears after a use in the same block is still counted for that use (the rule is block-wide, not sequential), which is a known limit.
 - In all three, the edge starts in the file that makes the call and the path is placed under the 11.4 rule from that file.
+
+## Phase 11.1 output change (JS/TS catalog)
+
+- `parquetjs` and `@dsnp/parquetjs`: `ParquetReader.openFile(p)` consumes its path (argument 0), and `ParquetWriter.openFile(schema, p)` generates it (argument 1). They match through a named import (`ParquetReader.openFile`) or a namespace import (`pq.ParquetReader.openFile`). A class the program declares with the same name does not match.
+- The JS resolver accepts a `Name.method` callee on a named or namespace import. Only dotted catalog names can match it, so no existing call changes.
+- Arrow: the JS library has no path-taking reader. Arrow IPC bytes are read through `fs` (`tableFromIPC(fs.readFileSync(p))`), which the `fs` catalog already matches.
+- hyparquet takes a buffer or an async buffer from a helper, not a path, so it is not in the catalog. Its files are not matched unless an `fs` read supplies them.
+- DuckDB SQL (`read_parquet`) is matched by the DuckDB handle path in 11.6.
+- Known keyword limit, unchanged: a call the catalog does not match still falls to the keyword rule, and a keyword in the call's text, such as `read` inside `ParquetReader`, gives a high edge. Changing that would alter existing snapshots, so it is left for a separate decision.

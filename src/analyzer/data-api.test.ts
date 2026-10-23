@@ -571,3 +571,60 @@ describe('DuckDB SQL: files a handle reads and writes (Phase 11.6)', () => {
     );
   });
 });
+
+describe('data catalog: Parquet readers and writers (Phase 11.1)', () => {
+  function edgesTo(map: ConnectionMap, artifact: string): string[] {
+    return map.relationships
+      .filter((r) => r.to === artifact && DATA_TYPES.has(r.type))
+      .map((r) => `${r.type}/${r.confidence} ${r.from}`)
+      .sort();
+  }
+
+  function buildWith(files: Record<string, string>): ConnectionMap {
+    return withFixture(files, (fixture) => {
+      const graph = new ConnectionGraph();
+      new JsTsAnalyzer().analyzeRepository(fixture.repository, graph, {});
+      return graph.build(META);
+    });
+  }
+
+  it('a ParquetReader opened on a path from a named import consumes it', () => {
+    const map = buildWith({
+      'a.ts': [
+        "import { ParquetReader } from 'parquetjs';",
+        "export function load(): unknown { return ParquetReader.openFile('data/p1.parquet'); }",
+      ].join('\n'),
+    });
+    expect(edgesTo(map, 'data/p1.parquet')).toContain('consumes/high a.ts');
+  });
+
+  it('a ParquetWriter takes its path second and generates it', () => {
+    const map = buildWith({
+      'a.ts': [
+        "import * as pq from 'parquetjs';",
+        "export function save(schema: unknown): unknown { return pq.ParquetWriter.openFile(schema, 'out/p2.parquet'); }",
+      ].join('\n'),
+    });
+    expect(edgesTo(map, 'out/p2.parquet')).toContain('generates/high a.ts');
+  });
+
+  it('the same reader from the @dsnp fork is matched', () => {
+    const map = buildWith({
+      'a.ts': [
+        "import { ParquetReader } from '@dsnp/parquetjs';",
+        "export function load(): unknown { return ParquetReader.openFile('data/p3.parquet'); }",
+      ].join('\n'),
+    });
+    expect(edgesTo(map, 'data/p3.parquet')).toContain('consumes/high a.ts');
+  });
+
+  it('a local class with an openFile method is not the library', () => {
+    const map = buildWith({
+      'a.ts': [
+        'class Table { static openFile(p: string): string { return p; } }',
+        "export function pick(): string { return Table.openFile('data/p4.parquet'); }",
+      ].join('\n'),
+    });
+    expect(edgesTo(map, 'data/p4.parquet').filter((e) => e.includes('/high'))).toEqual([]);
+  });
+});

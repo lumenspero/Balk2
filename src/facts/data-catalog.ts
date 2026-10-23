@@ -52,6 +52,11 @@ const FS_WRITE = [
 
 /** Catalog entries for JavaScript and TypeScript (Phase 11.1). The path is always the first argument. */
 export const JS_TS_DATA_APIS: readonly DataApiEntry[] = [
+  // Parquet files opened by path (Phase 11.1). The reader takes its path first, the writer second.
+  ...entriesFor('parquetjs', ['ParquetReader.openFile'], 'consumes', JS_TS),
+  ...entriesFor('parquetjs', ['ParquetWriter.openFile'], 'generates', JS_TS, 1),
+  ...entriesFor('@dsnp/parquetjs', ['ParquetReader.openFile'], 'consumes', JS_TS),
+  ...entriesFor('@dsnp/parquetjs', ['ParquetWriter.openFile'], 'generates', JS_TS, 1),
   ...entriesFor('fs', FS_READ, 'consumes', JS_TS),
   ...entriesFor('fs', FS_WRITE, 'generates', JS_TS),
   ...entriesFor('fs/promises', FS_READ, 'consumes', JS_TS),

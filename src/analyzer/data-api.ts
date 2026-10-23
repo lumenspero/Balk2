@@ -134,7 +134,8 @@ export function resolveCallee(
     if (binding.module === 'fs' && binding.imported === 'promises') {
       return { module: 'fs/promises', name };
     }
-    return undefined;
+    // A static method on a named import, such as `ParquetReader.openFile` (Phase 11.1).
+    return { module: binding.module, name: `${binding.imported}.${name}` };
   }
 
   if (
@@ -149,6 +150,14 @@ export function resolveCallee(
       (binding.imported === '*' || binding.imported === 'default')
     ) {
       return { module: 'fs/promises', name };
+    }
+  }
+
+  // A static method on a namespace import, such as `pq.ParquetReader.openFile` (Phase 11.1).
+  if (ts.isPropertyAccessExpression(object) && ts.isIdentifier(object.expression)) {
+    const binding = bindingOf(object.expression, checker);
+    if (binding && (binding.imported === '*' || binding.imported === 'default')) {
+      return { module: binding.module, name: `${object.name.text}.${name}` };
     }
   }
 
