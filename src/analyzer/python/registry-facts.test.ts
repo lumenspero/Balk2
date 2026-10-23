@@ -91,3 +91,35 @@ describe('python registry facts: dictionaries', () => {
     ).toEqual(['m.py:build registers a m.py:build.local -> m.py:User internal']);
   });
 });
+
+describe('python registry facts: repository registries', () => {
+  const REGISTRY_CLASS =
+    'class Registry:\n    def register(self, key, value):\n        return value\n\n    def get(self, key):\n        return key\n\n\n';
+
+  it('reads register calls and lookups on a repository registry', () => {
+    expect(
+      lines({
+        'm.py': `${CLASSES}${REGISTRY_CLASS}registry = Registry()\nregistry.register('user', User)\n\n\ndef load():\n    return registry.get('user')\n`,
+      }),
+    ).toEqual([
+      'm.py registers user m.py:registry -> m.py:User',
+      'm.py:load resolves user m.py:registry',
+    ]);
+  });
+
+  it('reads a decorator registration as a declaration of the decorated class', () => {
+    expect(
+      lines({
+        'm.py': `${REGISTRY_CLASS}registry = Registry()\n\n\n@registry.register('user')\nclass User:\n    pass\n`,
+      }),
+    ).toEqual(['declare m.py:registry user -> m.py:User']);
+  });
+
+  it('gives no fact for a class without a register method', () => {
+    expect(
+      lines({
+        'm.py': `class Box:\n    def get(self, key):\n        return key\n\n\nbox = Box()\nvalue = box.get('x')\n`,
+      }),
+    ).toEqual([]);
+  });
+});

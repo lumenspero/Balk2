@@ -1,20 +1,24 @@
 /**
- * Python registry facts (V3 Phase 12.2). Reads the dictionaries a program uses as registries:
- * literal-key stores and loads, `.get` lookups, and dictionary displays that map literal keys to
- * repository symbols. The registry engine turns them into keys and edges, as it does for JS/TS.
+ * Python registry facts (V3 Phase 12.2). Reads the registries a program uses:
+ * - dictionaries: literal-key stores and loads, `.get` lookups, and module-level displays that map
+ *   literal keys to repository symbols;
+ * - repository classes that declare a `register` method and a lookup method (`get`, `resolve`,
+ *   `create` or `load`): `register('k', Cls)` calls, lookups, and `@registry.register('k')`
+ *   decorators above a definition.
+ * The registry engine turns the facts into keys and edges, as it does for JS/TS.
  *
- * A receiver qualifies when the call pass types it as a built-in `dict` (a display or `dict(...)`).
- * A store is a registration only when its value is a repository symbol. Any other store gives no
- * fact. A non-literal key is dynamic, and the engine reports it only when the registry is trusted.
+ * A store or registration is a fact only when its value is a repository symbol. A non-literal key
+ * is dynamic, and the engine reports it only when the registry is trusted.
  *
  * Not yet read: receivers that are not plain names (`self.REGISTRY`), `setdefault` and `update`,
- * and repository classes with a `register` method and decorator registrations.
+ * parameter-name injection, and attribute registrations.
  */
 import type { Expr } from './ast.js';
 import type {
   CallContext,
   CallObserver,
   ObservedCall,
+  ObservedDecorator,
   ObservedDictAssign,
   ObservedStore,
   ObservedSubscript,
@@ -39,6 +43,9 @@ export interface PythonRegistryCollector {
 
 const BUILTIN_DICT = 'builtins.dict';
 
+/** Methods that look a key up on a repository registry, as the JS/TS catalog has them. */
+const REPO_LOOKUPS: readonly string[] = ['get', 'resolve', 'create', 'load'];
+
 /** A receiver the call pass types as a dictionary, with the registry scope its name names. */
 interface DictReceiver {
   readonly scope: string;
@@ -51,7 +58,7 @@ export function createPythonRegistryCollector(): PythonRegistryCollector {
 
   const observer: CallObserver = {
     onCall: (site) => {
-      const lookup = lookupOf(site);
+      const lookup = lookupOf(site) ?? registerOf(site);
       if (lookup !== undefined) calls.push(lookup);
     },
     onSubscript: (site) => {
@@ -62,6 +69,10 @@ export function createPythonRegistryCollector(): PythonRegistryCollector {
       const store = storeOf(site);
       if (store !== undefined) calls.push(store);
     },
+    onDecorator: (site) => {
+      const declaration = decoratorOf(site);
+      if (declaration !== undefined) declarations.push(declaration);
+    },
     onDictAssign: (site) => {
       declarations.push(...declarationsOf(site));
     },
@@ -69,15 +80,17 @@ export function createPythonRegistryCollector(): PythonRegistryCollector {
   return { observer, facts: () => [...declarations, ...calls] };
 }
 
-/** `REGISTRY.get('key')`: a lookup of a literal or dynamic key. */
+/** A lookup: `REGISTRY.get('key')` on a dictionary, or a lookup method on a repository registry. */
 function lookupOf(site: ObservedCall): RegistryCallFact | undefined {
   const { func, args } = site.call;
-  if (func.kind !== 'attribute' || func.attr !== 'get') return undefined;
+  if (func.kind !== 'attribute') return undefined;
   const first = args[0];
   if (first?.kind !== 'positional') return undefined;
-  const dict = dictReceiver(func.value, site);
-  if (dict === undefined) return undefined;
-  return callFact(site, site.call, site.owner, dict, {
+  const registry =
+    (func.attr === 'get' ? dictReceiver(func.value, site) : undefined) ??
+    (REPO_LOOKUPS.includes(func.attr) ? repoRegistry(func.value, site) : undefined);
+  if (registry === undefined) return undefined;
+  return callFact(site, site.call, site.owner, registry, {
     relationship: 'resolves',
     assignment: false,
     key: keyOf(first.value),
@@ -225,5 +238,75 @@ function callFact(
     receiver: dict.receiver,
     key: fields.key,
     ...(fields.target !== undefined ? { target: fields.target } : {}),
+  };
+}
+
+/** `registry.register('key', Cls)` on a repository registry, with a repository symbol as the value. */
+function registerOf(site: ObservedCall): RegistryCallFact | undefined {
+  const { func, args } = site.call;
+  if (func.kind !== 'attribute' || func.attr !== 'register') return undefined;
+  const keyArg = args[0];
+  const valueArg = args[1];
+  if (keyArg?.kind !== 'positional' || valueArg?.kind !== 'positional') return undefined;
+  const registry = repoRegistry(func.value, site);
+  const target = symbolOf(valueArg.value, site);
+  if (registry === undefined || target === undefined) return undefined;
+  return callFact(site, site.call, site.owner, registry, {
+    relationship: 'registers',
+    assignment: false,
+    key: keyOf(keyArg.value),
+    target,
+  });
+}
+
+/** `@registry.register('key')` above a definition: the definition is registered under the key. */
+function decoratorOf(site: ObservedDecorator): RegistryDeclarationFact | undefined {
+  const { decorator } = site;
+  if (decorator.kind !== 'call') return undefined;
+  const func = decorator.func;
+  if (func.kind !== 'attribute' || func.attr !== 'register') return undefined;
+  const keyArg = decorator.args[0];
+  if (keyArg?.kind !== 'positional') return undefined;
+  const registry = repoRegistry(func.value, site);
+  const key = keyOf(keyArg.value);
+  if (registry === undefined || key.kind !== 'static' || !site.declared.has(site.decoratedId)) {
+    return undefined;
+  }
+  return {
+    kind: 'registry-declaration',
+    filePath: site.info.filePath,
+    span: toSourceSpan(decorator.span, site.info.filePath),
+    source: 'decorator',
+    subject: subjectOf(decorator),
+    registry: registry.scope,
+    key,
+    target: site.decoratedId,
+    targetInGraph: true,
+    confidence: 'high',
+    evidence: 'ast',
+  };
+}
+
+/**
+ * The receiver as a repository registry: a name typed as a repository class that declares
+ * `register` and one of the lookup methods. A registry object's storage is not internal.
+ */
+function repoRegistry(value: Expr, site: CallContext): DictReceiver | undefined {
+  if (value.kind !== 'name') return undefined;
+  const typed = localTypeOf(value, site.info, site.index);
+  if (typed === undefined || typed.name.kind !== 'symbol') return undefined;
+  const cls = typed.name.id;
+  if (!site.declared.has(`${cls}.register`)) return undefined;
+  if (!REPO_LOOKUPS.some((method) => site.declared.has(`${cls}.${method}`))) return undefined;
+  const scope = identityOf(value, site.info);
+  if (scope === undefined) return undefined;
+  return {
+    scope,
+    receiver: {
+      identity: { kind: 'resolved', scope, confidence: 'high' },
+      qualifies: true,
+      qualificationEvidence: 'ast',
+      internal: false,
+    },
   };
 }
