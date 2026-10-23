@@ -459,3 +459,82 @@ describe('data catalog: served fetch paths (Phase 11.6)', () => {
     });
   });
 });
+
+describe('DuckDB SQL: files a handle reads and writes (Phase 11.6)', () => {
+  it('read_parquet in SQL sent to a const database reads its file', () => {
+    withFixture(
+      {
+        'a.ts': [
+          "import duckdb from 'duckdb';",
+          "const db = new duckdb.Database(':memory:');",
+          'db.all("SELECT * FROM read_parquet(\'data/titles.parquet\')", () => {});',
+        ].join('\n'),
+      },
+      (fixture) => {
+        expect(dataEdgesAt(build(fixture), 'high')).toEqual([
+          'consumes a.ts -> data/titles.parquet',
+        ]);
+      },
+    );
+  });
+
+  it('COPY … TO in SQL writes its target', () => {
+    withFixture(
+      {
+        'a.ts': [
+          "import { Database } from 'duckdb';",
+          "const db = new Database(':memory:');",
+          'db.run("COPY (SELECT 1 AS n) TO \'out/rows.parquet\' (FORMAT PARQUET)");',
+        ].join('\n'),
+      },
+      (fixture) => {
+        expect(dataEdgesAt(build(fixture), 'high')).toEqual(['generates a.ts -> out/rows.parquet']);
+      },
+    );
+  });
+
+  it('a connection made from a database reads the same way', () => {
+    withFixture(
+      {
+        'a.ts': [
+          "import duckdb from 'duckdb';",
+          "const db = new duckdb.Database(':memory:');",
+          'const con = db.connect();',
+          'con.all("SELECT * FROM read_csv(\'in/rows.csv\')", () => {});',
+        ].join('\n'),
+      },
+      (fixture) => {
+        expect(dataEdgesAt(build(fixture), 'high')).toEqual(['consumes a.ts -> in/rows.csv']);
+      },
+    );
+  });
+
+  it('an all method on an object that is not a DuckDB handle is not matched', () => {
+    withFixture(
+      {
+        'a.ts': [
+          'const store = { all: (sql: string) => sql };',
+          'store.all("SELECT * FROM read_csv(\'x/y.csv\')");',
+        ].join('\n'),
+      },
+      (fixture) => {
+        expect(dataEdgesAt(build(fixture), 'high')).toEqual([]);
+      },
+    );
+  });
+
+  it('a reassigned database is not a handle', () => {
+    withFixture(
+      {
+        'a.ts': [
+          "import duckdb from 'duckdb';",
+          "let db = new duckdb.Database(':memory:');",
+          'db.all("SELECT * FROM read_csv(\'x/z.csv\')", () => {});',
+        ].join('\n'),
+      },
+      (fixture) => {
+        expect(dataEdgesAt(build(fixture), 'high')).toEqual([]);
+      },
+    );
+  });
+});

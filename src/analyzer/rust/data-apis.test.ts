@@ -246,3 +246,29 @@ describe('Rust data catalog: chains, scopes and constants (Phase 11.6)', () => {
     expect(highEdgesTo(map, 'x/m2.json')).toEqual([]);
   });
 });
+
+describe('Rust data catalog: File::options chains (Phase 11.6)', () => {
+  it('File::options() with a write flag generates its path', () => {
+    const map = analyze({
+      'Cargo.toml': CARGO,
+      'src/main.rs': [
+        'use std::fs::File;',
+        'fn save() { let _f = File::options().write(true).create(true).open("out/f.json"); }',
+        'fn main() {}',
+      ].join('\n'),
+    });
+    expect(highEdgesTo(map, 'out/f.json')).toEqual(['generates/high src/main.rs']);
+  });
+
+  it('File::options() with only a read flag consumes its path', () => {
+    const map = analyze({
+      'Cargo.toml': CARGO,
+      'src/main.rs': [
+        'use std::fs::File;',
+        'fn load() { let _f = File::options().read(true).open("in/g.json"); }',
+        'fn main() {}',
+      ].join('\n'),
+    });
+    expect(highEdgesTo(map, 'in/g.json')).toEqual(['consumes/high src/main.rs']);
+  });
+});

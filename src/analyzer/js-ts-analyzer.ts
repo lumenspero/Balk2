@@ -31,6 +31,7 @@ import { applyDataEdges } from '../data/data-analyzer.js';
 import { runDataEngine, type DataPathContext } from '../facts/data-engine.js';
 import { defaultBareBases, servedBareBases, type BareBases } from '../facts/path-value.js';
 import type { DataReferenceFact, FactLanguage } from '../facts/types.js';
+import { duckDbFacts } from './duckdb-sql.js';
 import { dataFlowFact, dataReferenceFact } from './data-facts.js';
 
 export interface RepositoryAnalysisOptions {
@@ -274,6 +275,10 @@ export class JsTsAnalyzer implements Analyzer {
       if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
         const fact = dataReferenceFact(node, sourceFile, normalizedPath, dataResolution);
         if (fact) dataFacts.push(fact);
+        // SQL sent to a DuckDB handle names the files it reads and writes (Phase 11.6).
+        if (dataResolution) {
+          dataFacts.push(...duckDbFacts(node, sourceFile, normalizedPath, dataResolution));
+        }
       } else if (ts.isIdentifier(node) && dataResolution) {
         // A `const` string passed to a catalog call (Phase 11.5).
         const fact = dataFlowFact(node, sourceFile, normalizedPath, dataResolution);

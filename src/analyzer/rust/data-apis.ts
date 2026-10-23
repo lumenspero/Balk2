@@ -212,15 +212,16 @@ function openChain(
     if (!isParenGroup(receiverArgs) || !isIdent(previous)) return undefined;
 
     if (isPunct(trees[dot - 3], '::')) {
-      // The chain starts with `Path::new()`, which must be `new` on `OpenOptions`.
-      if (previous.value !== 'new') return undefined;
+      // The chain starts with `OpenOptions::new()` or `File::options()`.
       const root: string[] = [];
       for (let k = dot - 3; isPunct(trees[k], '::') && isIdent(trees[k - 1]); k -= 2) {
         root.unshift((trees[k - 1] as RustToken).value);
       }
-      return root.length === 0 || root[root.length - 1] !== 'OpenOptions'
-        ? undefined
-        : { root, writes };
+      const owner = root[root.length - 1];
+      const builds =
+        (previous.value === 'new' && owner === 'OpenOptions') ||
+        (previous.value === 'options' && owner === 'File');
+      return builds ? { root, writes } : undefined;
     }
     if (!isPunct(trees[dot - 3], '.')) return undefined;
     if (WRITE_FLAGS.has(previous.value) && isTrueArgument(receiverArgs)) writes = true;

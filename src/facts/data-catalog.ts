@@ -151,3 +151,21 @@ export function lookupDataApi(
       entry.languages.includes(language),
   );
 }
+
+/** The npm module whose `Database` runs SQL that can read and write files (Phase 11.6). */
+export const DUCKDB_MODULE = 'duckdb';
+
+/** Methods of a DuckDB database or connection whose first argument is SQL. */
+export const DUCKDB_SQL_METHODS: readonly string[] = ['all', 'run', 'exec', 'each', 'prepare'];
+
+/** SQL functions that read the file named by their first string argument. */
+export const DUCKDB_SQL_READERS: readonly string[] = [
+  'read_csv',
+  'read_csv_auto',
+  'read_parquet',
+  'read_json',
+  'read_json_auto',
+  'read_json_objects',
+  'parquet_scan',
+  'csv_scan',
+];
