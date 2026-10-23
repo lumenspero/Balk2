@@ -309,3 +309,38 @@ describe('Python data catalog: Polars frames (Phase 11.6)', () => {
     expect(highEdgesTo(map, 'out/q.csv')).toEqual(['generates/high app.py']);
   });
 });
+
+describe('Python data catalog: rebinding through imports (Phase 11.6)', () => {
+  it('a name later bound by an import is not typed from its earlier assignment', () => {
+    const map = analyze({
+      'app.py': [
+        'from pathlib import Path',
+        "p = Path('x/one.json')",
+        'from other import p',
+        'p.read_text()',
+      ].join('\n'),
+    });
+    expect(highEdgesTo(map, 'x/one.json')).toEqual([]);
+  });
+
+  it('a star import in the same scope leaves the name untyped', () => {
+    const map = analyze({
+      'app.py': [
+        'from pathlib import Path',
+        'from other import *',
+        "p = Path('x/two.json')",
+        'p.read_text()',
+      ].join('\n'),
+    });
+    expect(highEdgesTo(map, 'x/two.json')).toEqual([]);
+  });
+
+  it('a name bound once by assignment is still typed when nothing rebinds it', () => {
+    const map = analyze({
+      'app.py': ['from pathlib import Path', "p = Path('x/three.json')", 'p.read_text()'].join(
+        '\n',
+      ),
+    });
+    expect(highEdgesTo(map, 'x/three.json')).toEqual(['consumes/high app.py']);
+  });
+});

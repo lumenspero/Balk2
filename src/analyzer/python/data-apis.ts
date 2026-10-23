@@ -143,6 +143,28 @@ function bindingsOf(name: string, body: readonly Stmt[]): Binding {
           count++;
           value = undefined;
         }
+      } else if (st.kind === 'import') {
+        // `import os.path` binds `os`; `import x as y` binds `y` (Phase 11.6).
+        for (const alias of st.names) {
+          const bound = alias.asname ?? alias.name.split('.')[0];
+          if (bound === name) {
+            count++;
+            value = undefined;
+          }
+        }
+      } else if (st.kind === 'importfrom') {
+        if (st.names === 'star') {
+          // A star import may bind any name, so the name is not typed in this scope.
+          count++;
+          value = undefined;
+        } else {
+          for (const alias of st.names) {
+            if ((alias.asname ?? alias.name) === name) {
+              count++;
+              value = undefined;
+            }
+          }
+        }
       }
       for (const block of stmtBlocks(st)) visit(block);
     }

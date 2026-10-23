@@ -105,3 +105,5 @@ A method on any other value is not a catalog call. `open` on a `Path` writes whe
 ## Phase 11.6 output change (Polars frames)
 
 `pl.read_*` and `pl.scan_*` type their result as a Polars DataFrame and LazyFrame. A DataFrame's `write_csv`, `write_parquet`, `write_json` and `write_ipc` write the destination they are given, and a LazyFrame's `sink_csv`, `sink_parquet`, `sink_ipc` and `sink_ndjson` do the same. A name is typed only from a single assignment, as for pandas.
+
+A receiver name is not typed when an `import` in the same scope rebinds it: `import x`, `import x as y`, `from m import x` or `from m import *`. A star import in a scope leaves every name in it untyped, since it may bind any of them.
