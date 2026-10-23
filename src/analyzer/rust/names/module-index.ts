@@ -14,7 +14,7 @@
  * names through it resolve to nothing. The module tree (Phase 8) already reports that conflict.
  */
 import type { Visibility } from '../../../facts/types.js';
-import { parseRustFile, type Item, type RustFile } from '../items.js';
+import { parseRustFile, type Fragment, type Item, type RustFile, type Span } from '../items.js';
 import { isModRsFile, moduleFileCandidates, type InlineModule } from '../modules/paths.js';
 import { pathAttrOf } from '../modules/tree.js';
 import type { RustNamespace, RustNamespaceTables } from './namespaces.js';
@@ -76,6 +76,25 @@ export interface PendingUse {
   readonly isPub: boolean;
 }
 
+/** An `impl` block, with the module it is written in. Bound by bindTypeRelations. */
+export interface PendingImpl {
+  readonly owner: RustModuleNode;
+  readonly span: Span;
+  readonly selfTy: Fragment;
+  /** The trait of `impl Trait for Type`, or null for an inherent impl. */
+  readonly trait: Fragment | null;
+  /** The names of the impl's type parameters, which a self type may name. */
+  readonly generics: readonly string[];
+}
+
+/** A `trait` declaration, with the module it is written in. */
+export interface PendingTrait {
+  readonly owner: RustModuleNode;
+  readonly name: string;
+  readonly span: Span;
+  readonly supertraits: Fragment | null;
+}
+
 export interface RustCrateIndex {
   readonly root: RustModuleNode;
   /** Names of every scope in the crate's files, keyed by scope. */
@@ -87,6 +106,10 @@ export interface RustCrateIndex {
   readonly visibility: ReadonlyMap<string, Visibility>;
   /** Every `use` entry in the crate, in source order. Bound by bindImports. */
   readonly uses: readonly PendingUse[];
+  /** Every `impl` block in the crate, in source order. */
+  readonly impls: readonly PendingImpl[];
+  /** Every `trait` declaration in the crate, in source order. */
+  readonly traits: readonly PendingTrait[];
 }
 
 export interface CrateIndexInput {
@@ -103,6 +126,8 @@ interface Build {
   readonly namespaces: RustNamespaceTables;
   readonly visibility: Map<string, Visibility>;
   readonly uses: PendingUse[];
+  readonly impls: PendingImpl[];
+  readonly traits: PendingTrait[];
   readonly loaded: Set<string>;
 }
 
@@ -113,6 +138,8 @@ export function buildCrateIndex(input: CrateIndexInput): RustCrateIndex {
     namespaces: new Map(),
     visibility: new Map(),
     uses: [],
+    impls: [],
+    traits: [],
     loaded: new Set([input.root]),
   };
   const rootFile = loadFile(build, input.root);
@@ -137,6 +164,8 @@ export function buildCrateIndex(input: CrateIndexInput): RustCrateIndex {
     externCrates,
     visibility: build.visibility,
     uses: build.uses,
+    impls: build.impls,
+    traits: build.traits,
   };
 }
 
@@ -185,6 +214,25 @@ function visitItems(
       for (const entry of flattenUse(item.tree, item.span)) {
         build.uses.push({ owner: node, entry, isPub: item.vis.kind !== 'private' });
       }
+      continue;
+    }
+    if (item.kind === 'impl') {
+      build.impls.push({
+        owner: node,
+        span: item.span,
+        selfTy: item.selfTy,
+        trait: item.trait,
+        generics: item.generics.filter((g) => g.kind === 'type').map((g) => g.name),
+      });
+      continue;
+    }
+    if (item.kind === 'trait') {
+      build.traits.push({
+        owner: node,
+        name: item.name,
+        span: item.span,
+        supertraits: item.supertraits,
+      });
       continue;
     }
     if (item.kind !== 'mod') continue;

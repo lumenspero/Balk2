@@ -20,6 +20,7 @@ import type { Span } from './items.js';
 import { parseRustFile } from './items.js';
 import { computeExports } from './names/exports.js';
 import { bindImports } from './names/imports.js';
+import { bindTypeRelations } from './names/type-relations.js';
 import { buildCrateIndex, type RustCrateIndex } from './names/module-index.js';
 import type { RustNameEnvironment } from './names/resolve.js';
 import { analyzeRustSymbols } from './symbols.js';
@@ -88,6 +89,27 @@ export class RustFrontEnd implements LanguageFrontEnd {
           detail: use.detail,
         });
         graph.addRelationship('imports', use.file, unresolved.id, 'low', {
+          evidence: 'ast',
+          spans: [location],
+        });
+      }
+      const relations = bindTypeRelations(crate, env);
+      for (const edge of relations.edges) {
+        graph.addRelationship(edge.kind, edge.from, edge.to, 'high', {
+          evidence: 'ast',
+          spans: [toSourceSpan(edge.span, edge.file)],
+        });
+      }
+      for (const observation of relations.unresolved) {
+        const location = toSourceSpan(observation.span, observation.file);
+        const unresolved = graph.addUnresolved({
+          reason: observation.reason,
+          attempted: observation.kind,
+          subject: observation.subject,
+          location,
+          detail: observation.detail,
+        });
+        graph.addRelationship(observation.kind, observation.file, unresolved.id, 'low', {
           evidence: 'ast',
           spans: [location],
         });

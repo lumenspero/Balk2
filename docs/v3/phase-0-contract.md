@@ -210,3 +210,11 @@ This local run sets the provisional budget. The contract records the budget from
 - A private module is not walked, even when its items are declared `pub`. `pub(crate)` items are not exported.
 - `Declaration.exported` stays false. The export is the `exports` edge.
 - Not in 9.4: `#[macro_export]` (Phase 10), enum variants re-exported as associated paths (they are not symbols yet), and checking that a `pub use` names a public item.
+
+## Phase 9.5 output change (Rust impls and supertraits)
+
+- `impl Trait for Type` gives an `implements` edge from the type's symbol to the trait's symbol (`src/analyzer/rust/names/type-relations.ts`). Both are resolved through their paths in the module of the impl, so an impl in another file attaches to the struct it names. Evidence `ast`, with the impl span.
+- `trait A: B + C` gives `extends` edges from A to each supertrait that resolves in the repository. Generic supertraits (`Source<u8>`) are read without splitting inside their arguments.
+- An inherent impl gives no edge. A blanket impl over its own type parameter (`impl<T> Trait for T`) gives none. A trait or type from outside the repository (`Display` after `use std::fmt::Display`) gives none and no observation.
+- A path that looks internal and does not resolve is reported as `unresolved-module-path`, linked from its file by an `implements` or `extends` edge at low confidence.
+- Not in 9.5: method owners are still named by the file of the impl (the naming rule of 9.1), and the `implements` edge is the record that links them to the type. `impl Trait for dyn Other` is read as an impl on `Other`, which is a known gap. Trait-method dispatch is 9.6.
