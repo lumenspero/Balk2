@@ -203,6 +203,8 @@ interface Build {
   readonly decls: PendingDecl[];
   readonly macros: PendingMacro[];
   readonly macroCalls: PendingMacroCall[];
+  /** Symbol ids of the `macro_rules!` definitions, keyed by file, line and column (V3 Phase 10.1). */
+  readonly macroIds: Map<string, string>;
   readonly fnIds: Map<Extract<Item, { kind: 'fn' }>, string>;
   readonly loaded: Set<string>;
 }
@@ -220,6 +222,7 @@ export function buildCrateIndex(input: CrateIndexInput): RustCrateIndex {
     decls: [],
     macros: [],
     macroCalls: [],
+    macroIds: new Map(),
     fnIds: new Map(),
     loaded: new Set([input.root]),
   };
@@ -262,6 +265,11 @@ function loadFile(build: Build, file: string): RustFile {
     build.visibility.set(declaration.id, declaration.visibility);
   }
   for (const fn of analysis.functions) build.fnIds.set(fn.item, fn.id);
+  for (const declaration of analysis.declarations) {
+    if (declaration.symbolType !== 'macro') continue;
+    const { filePath, startLine, startColumn } = declaration.span;
+    build.macroIds.set(`${filePath}:${startLine}:${startColumn}`, declaration.id);
+  }
   return parsed;
 }
 
@@ -416,9 +424,12 @@ function visitItems(
       continue;
     }
     if (item.kind === 'macro_rules') {
+      // The id symbols.ts gave this definition, so a repeated name keeps its `#n` suffix.
+      const id = build.macroIds.get(`${node.file}:${item.span.line}:${item.span.column}`);
+      if (id === undefined) continue;
       build.macros.push({
         owner: node,
-        id: `${node.file}:${inlinePath === '' ? '' : `${inlinePath}::`}${item.name}!`,
+        id,
         name: item.name,
         span: item.span,
         exported: item.attrs.some((attr) => attr.path === 'macro_export'),

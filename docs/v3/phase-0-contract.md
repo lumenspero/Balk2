@@ -309,3 +309,13 @@ This local run sets the provisional budget. The contract records the budget from
 - `docs/v3/language-parity.md` now records Row 6 for Rust field and call-result receivers as a scope decision, not Deferred. The stale JS/TS and Python notes are corrected: Python inherited calls are recorded (5.3), and the JS/TS typed-receiver gap closes in 2.5.
 - Phase 9 exit: the Rust parity scenarios for modules, calls, methods, traits and shadowing pass, along with every Rust negative from 0.6 that belongs to Phases 6–9. The macro negative (10.1) waits for Phase 10.
 
+
+## Phase 10.1 output change (Rust macro invocations)
+
+- A `calls` edge goes from the owner to the `m!` symbol of each `macro_rules!` invocation in the repository, at `high` confidence (`src/analyzer/rust/names/calls.ts`, `macroTarget`).
+- The owner is the enclosing function, or the file for a module-level invocation. This matches file-level code in JS/TS and Python, which is owned by the file.
+- A bare name `m!` takes the last definition of `m` in the same file that comes before the invocation (textual scope). An invocation written before its definition gets no edge.
+- `crate::m!` takes a `#[macro_export]` macro in the crate, from any file. Other paths, and std macros such as `println!`, get no edge.
+- A repeated name links to the definition in scope, using the id symbols.ts gave it, so a second definition is `file:m!#2`.
+- Tokens inside a `macro_rules!` body are not analyzed, so a call written in a macro body gets no edge. The macro-generated-item negative in `src/testing/rust-corpus.ts` now expects the invocation edge, and it still expects no edge from `run` to the generated item.
+- Not in 10.1: macros defined inside a function body (their symbols exist, but invocations do not link to them yet), `#[macro_use]` across files, and macro arguments (10.2).

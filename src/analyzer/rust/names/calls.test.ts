@@ -173,3 +173,16 @@ describe('bindCalls: macro invocations (V3 Phase 10.1)', () => {
     expect(results.edges).toEqual([]);
   });
 });
+
+describe('bindCalls: a macro name defined twice (V3 Phase 10.1)', () => {
+  it('links each invocation to the definition in scope, using the symbol id of that definition', () => {
+    const results = callsOf({
+      'src/lib.rs':
+        'macro_rules! m { () => {} }\nfn a() { m!(); }\nmacro_rules! m { () => {} }\nfn b() { m!(); }',
+    });
+    expect(edgesOf(results)).toEqual([
+      ['src/lib.rs:a', 'src/lib.rs:m!', 'high', false],
+      ['src/lib.rs:b', 'src/lib.rs:m!#2', 'high', false],
+    ]);
+  });
+});
