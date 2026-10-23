@@ -176,7 +176,6 @@ export const RUST_CORPUS: readonly CorpusScenario[] = [
         expect: {
           symbols: ['src/lib.rs:Point[Display].fmt', 'src/lib.rs:Point[Debug].fmt'],
         },
-        pending: '9.5',
       },
     },
   },

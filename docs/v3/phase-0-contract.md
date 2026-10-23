@@ -266,3 +266,9 @@ This local run sets the provisional budget. The contract records the budget from
 - An `extern` block inside a function body is read, and its functions are declared under the function (`file:outer::puts`). A call from the body resolves to them.
 - `extern` items are read only at statement start, so `extern` as part of an expression is not an item.
 - Still not read: `mod` items inside a body (by design), and macro arguments (Phase 10). Calls in a const or static value, including calls inside its blocks, resolve to the const or static as their owner. A `let` in a const or static value is tracked the same way as a `let` in a function body: a call or mention of a name it binds never resolves to an item.
+
+### 9 exit: glob visibility and parity markers
+
+- Gap 8 closed. A glob import reaches a child module only when the child has some visibility (`pub`, `pub(crate)`, `pub(super)`, `pub(in ...)`), or when the importer is inside the module the glob names. A private child module is not brought in from outside its parent, as its items are not. `RustModuleNode.reachable` records this.
+- The Phase 9 `pending` markers are removed from the parity renditions for imported functions, the typed-receiver method call, the sibling-module negative (`src/testing/parity-corpus.ts`), and the Display/Debug `fmt` symbols (`src/testing/rust-corpus.ts`). They run in `npx vitest run src/analyzer/parity`.
+- Still open for Phase 9: `metadata.abi` on non-exported `#[no_mangle]` items (no edge carries it yet, because symbols have no metadata).

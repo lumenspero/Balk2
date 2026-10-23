@@ -305,7 +305,8 @@ function globFind(
   }
   if (ns === 'type') {
     const child = source.children.get(name);
-    if (child !== undefined) {
+    // A private child module is reached only from inside its parent, as its items are (gap 8).
+    if (child !== undefined && (visible || child.reachable)) {
       const childId = source.tables.get(source.scope)?.type.get(name);
       return { kind: 'module', node: child, id: child.inline ? childId : undefined };
     }

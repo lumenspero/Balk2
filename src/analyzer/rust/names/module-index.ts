@@ -56,6 +56,8 @@ export interface RustModuleNode {
   readonly scope: string;
   /** Whether the module is declared `pub`, so its items can be reached from outside the crate. */
   readonly public: boolean;
+  /** Whether the module has any visibility (`pub`, `pub(crate)`, ...). A private module is reached only inside its parent. */
+  readonly reachable: boolean;
   /** The declaring module, or null at the crate root. */
   readonly parent: RustModuleNode | null;
   readonly children: Map<string, RustModuleNode>;
@@ -242,12 +244,14 @@ function newNode(
     scope: string;
     parent: RustModuleNode | null;
     public: boolean;
+    reachable?: boolean;
     block?: boolean;
   },
 ): RustModuleNode {
   return {
     ...init,
     block: init.block === true,
+    reachable: init.reachable === true,
     children: new Map(),
     ambiguous: new Set(),
     tables: build.namespaces,
@@ -415,6 +419,7 @@ function visitItems(
         true,
         `${node.file}:${childInline}`,
         item.vis.kind === 'public',
+        item.vis.kind !== 'private',
       );
       visitItems(
         build,
@@ -446,6 +451,7 @@ function visitItems(
       false,
       childFile,
       item.vis.kind === 'public',
+      item.vis.kind !== 'private',
     );
     if (child.file !== childFile || build.loaded.has(childFile)) continue;
     build.loaded.add(childFile);
@@ -470,6 +476,7 @@ function addChild(
   inline: boolean,
   scope: string,
   isPub: boolean,
+  reachable: boolean,
 ): RustModuleNode {
   const existing = parent.children.get(name);
   if (existing !== undefined) {
@@ -483,6 +490,7 @@ function addChild(
     scope,
     parent,
     public: isPub,
+    reachable,
   });
   parent.children.set(name, child);
   return child;

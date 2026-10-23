@@ -109,6 +109,26 @@ describe('bindImports: globs', () => {
     expect(resolve(crate, 'hidden', 'value')).toEqual({ kind: 'not-found' });
   });
 
+  it('does not bring in a private child module through a glob from outside its parent', () => {
+    const crate = crateOf({
+      'src/lib.rs': 'mod a; use a::*;',
+      'src/a.rs': 'mod inner;',
+      'src/a/inner.rs': 'pub struct Item;',
+    });
+    bind(crate);
+    expect(resolve(crate, 'inner')).toEqual({ kind: 'not-found' });
+  });
+
+  it('brings in a pub(crate) child module through a glob from another module', () => {
+    const crate = crateOf({
+      'src/lib.rs': 'mod a; use a::*;',
+      'src/a.rs': 'pub(crate) mod inner;',
+      'src/a/inner.rs': 'pub struct Item;',
+    });
+    bind(crate);
+    expect(resolve(crate, 'inner')).toMatchObject({ kind: 'module' });
+  });
+
   it('gives an explicit use precedence over a glob', () => {
     const crate = crateOf({
       'src/lib.rs': 'mod a; mod b; use a::*; use b::Item;',
