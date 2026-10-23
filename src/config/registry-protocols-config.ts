@@ -1,5 +1,6 @@
 import {
   BUILT_IN_REGISTRY_PROTOCOLS,
+  type RegistryAttributeRule,
   type RegistryDecoratorRule,
   type RegistryDirection,
   type RegistryDiscoverRule,
@@ -30,11 +31,13 @@ const REGISTRY_KEYS = new Set([
   'decorators',
   'parameterDecorators',
   'nameInjection',
+  'attributes',
   'manifest',
   'discover',
 ]);
 const DECORATOR_KEYS = new Set(['name', 'registry', 'keyArg']);
 const NAME_INJECTION_KEYS = new Set(['registry', 'decorator']);
+const ATTRIBUTE_KEYS = new Set(['name', 'key', 'registry']);
 const MANIFEST_KEYS = new Set(['registry', 'key', 'target']);
 const DISCOVER_KEYS = new Set(['glob', 'registry']);
 const METHOD_KEYS = new Set(['method', 'direction', 'keyArg', 'keyFrom', 'valueArg', 'receiver']);
@@ -94,6 +97,13 @@ export function normalizeRegistries(
     problems,
     normalizeNameInjection,
   );
+  const attributes = normalizeEntries(
+    value['attributes'],
+    'attributes' in value,
+    `${base}.attributes`,
+    problems,
+    normalizeAttribute,
+  );
   const manifest = normalizeEntries(
     value['manifest'],
     'manifest' in value,
@@ -116,6 +126,7 @@ export function normalizeRegistries(
     ...(decorators.length > 0 ? { decorators } : {}),
     ...(parameterDecorators.length > 0 ? { parameterDecorators } : {}),
     ...(nameInjection.length > 0 ? { nameInjection } : {}),
+    ...(attributes.length > 0 ? { attributes } : {}),
     ...(manifest.length > 0 ? { manifest } : {}),
     ...(discover.length > 0 ? { discover } : {}),
   };
@@ -340,6 +351,35 @@ function normalizeEntries<T>(
     if (normalized !== undefined) entries.push(normalized);
   });
   return entries;
+}
+
+function normalizeAttribute(
+  value: unknown,
+  path: string,
+  problems: ConfigProblem[],
+): RegistryAttributeRule | undefined {
+  if (!isRecord(value)) {
+    problems.push({ path, message: 'must be an object; entry ignored' });
+    return undefined;
+  }
+  reportUnknownKeys(value, ATTRIBUTE_KEYS, path, problems);
+  const name = nonEmptyString(value['name'], `${path}.name`, problems);
+  const registry = nonEmptyString(value['registry'], `${path}.registry`, problems);
+  const key = normalizeAttributeKey(value['key'], `${path}.key`, problems);
+  if (name === undefined || registry === undefined || key === undefined) return undefined;
+  return { name, key, registry };
+}
+
+function normalizeAttributeKey(
+  value: unknown,
+  path: string,
+  problems: ConfigProblem[],
+): RegistryAttributeRule['key'] | undefined {
+  if (value === 'fn-name') return 'fn-name';
+  const arg = isRecord(value) ? value['arg'] : undefined;
+  if (isArgIndex(arg)) return { arg };
+  problems.push({ path, message: 'must be "fn-name" or { "arg": <index> }; entry ignored' });
+  return undefined;
 }
 
 function normalizeNameInjection(

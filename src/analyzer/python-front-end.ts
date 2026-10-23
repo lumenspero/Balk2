@@ -27,7 +27,7 @@ import { collectPythonSourceAnnotations } from './python-source-apply.js';
 import { analyzePythonCalls, combineObservers } from './python/calls.js';
 import { createPythonRegistryCollector } from './python/registry-facts.js';
 import { applyRegistryEdges } from './registry-apply.js';
-import type { RegistryNameInjectionRule } from './registry-protocols.js';
+import type { RegistryAttributeRule, RegistryNameInjectionRule } from './registry-protocols.js';
 import { runRegistryEngine } from '../facts/registry-engine.js';
 import { createPythonEventCollector } from './python/event-facts.js';
 import { runEventEngine } from '../facts/event-engine.js';
@@ -66,6 +66,8 @@ export interface PythonSourceOptions {
   readonly identityDecorators?: readonly string[];
   /** Fixture-style parameter injection from `protocols.registries.nameInjection`. */
   readonly nameInjection?: readonly RegistryNameInjectionRule[];
+  /** Attributes and decorators that register the item they sit on, from `protocols.registries`. */
+  readonly attributes?: readonly RegistryAttributeRule[];
   /** Package facts whose entry points resolve here, where the module index exists (V3 Phase 4.5) */
   readonly entryPoints?: {
     readonly packages: readonly PackageNode[];
@@ -133,7 +135,10 @@ export function analyzePythonSources(
   const events = createPythonEventCollector(sources, ctx);
 
   // Registries (Phase 12.2). Dictionary stores, loads and literal displays, read by the same walk.
-  const registries = createPythonRegistryCollector(options.nameInjection);
+  const registries = createPythonRegistryCollector({
+    nameInjection: options.nameInjection,
+    attributes: options.attributes,
+  });
 
   // Calls. The owner is the enclosing function or method, or the file for module-level code.
   for (const c of analyzePythonCalls(
@@ -275,6 +280,7 @@ export class PythonFrontEnd implements LanguageFrontEnd {
         pathBase: pathBaseOrder(input.config, 'python'),
         identityDecorators: input.config?.python?.identityDecorators,
         nameInjection: input.config?.protocols?.registries?.nameInjection,
+        attributes: input.config?.protocols?.registries?.attributes,
         entryPoints: input.packages
           ? {
               packages: input.packages.python.packages,

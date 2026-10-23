@@ -162,3 +162,27 @@ no declared fixture adds no edge. The decorator is matched as written, so `pytes
 `@pytest.fixture` and `@pytest.fixture(scope=...)`, but not `@fixture` after
 `from pytest import fixture`. The rule applies to Python only. The JavaScript and TypeScript
 front end ignores `nameInjection`.
+
+## Registries: decorator attributes (recipe)
+
+A decorator can register the item it sits on, configured under `protocols.registries.attributes`:
+
+```json
+{
+  "protocols": {
+    "registries": {
+      "attributes": [
+        { "name": "route", "key": "fn-name", "registry": "commands" },
+        { "name": "route", "key": { "arg": 0 }, "registry": "routes" }
+      ]
+    }
+  }
+}
+```
+
+`fn-name` declares the decorated function or class under its own name. `{ "arg": n }` declares it
+under the string or number literal in the decorator call's argument at that position, so
+`@route('/x')` declares `/x`. A bare decorator such as `@route` has no argument, so only `fn-name`
+applies to it. A decorator matches by its name as written, and only symbols declared in the
+repository are declared. The rule applies to Python only for now. Rust attributes use the same
+form and are not yet read.

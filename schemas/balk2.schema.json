@@ -321,6 +321,12 @@
             "$ref": "#/$defs/decorator"
           }
         },
+        "attributes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/attribute"
+          }
+        },
         "nameInjection": {
           "type": "array",
           "items": {
@@ -400,6 +406,34 @@
         },
         "keyArg": {
           "$ref": "#/$defs/argIndex"
+        }
+      }
+    },
+    "attribute": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "key", "registry"],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "key": {
+          "oneOf": [
+            { "const": "fn-name" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["arg"],
+              "properties": {
+                "arg": {
+                  "$ref": "#/$defs/argIndex"
+                }
+              }
+            }
+          ]
+        },
+        "registry": {
+          "$ref": "#/$defs/nonEmptyString"
         }
       }
     },

@@ -87,6 +87,20 @@ export interface RegistryNameInjectionRule {
   readonly decorator: string;
 }
 
+/**
+ * An attribute or decorator that registers the item it sits on: `#[tauri::command]` in Rust, or
+ * `@route('/x')` in Python. The item is declared in `registry`, under its own name (`fn-name`) or
+ * under the literal in the argument at `arg`.
+ */
+export interface RegistryAttributeRule {
+  /** The attribute or decorator as written, such as `tauri::command` or `route` */
+  readonly name: string;
+  /** `fn-name` keys the item by its name; `{ arg }` keys it by that argument's literal */
+  readonly key: 'fn-name' | { readonly arg: number };
+  /** Explicit registry identity the item is declared in */
+  readonly registry: string;
+}
+
 /** One explicit registration: `key` in `registry` maps to `target`. */
 export interface RegistryManifestEntry {
   readonly registry: string;
@@ -118,6 +132,8 @@ export interface RegistryProtocolOptions {
   readonly parameterDecorators?: readonly RegistryParameterDecoratorRule[];
   /** Parameter-name injection from declarations, such as pytest fixtures (Python) */
   readonly nameInjection?: readonly RegistryNameInjectionRule[];
+  /** Attributes and decorators that register the item they sit on */
+  readonly attributes?: readonly RegistryAttributeRule[];
   /** Explicit registrations, such as for generated code that no call site shows */
   readonly manifest?: readonly RegistryManifestEntry[];
   /** Files that register themselves under their name, found by glob */

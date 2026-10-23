@@ -36,7 +36,7 @@ import type {
   RegistryReceiverFact,
 } from '../../facts/types.js';
 import type { RegistryRelationship } from '../../types.js';
-import type { RegistryNameInjectionRule } from '../registry-protocols.js';
+import type { RegistryAttributeRule, RegistryNameInjectionRule } from '../registry-protocols.js';
 import { dottedName } from './expression-format.js';
 
 /** The collector: its observer feeds one walk, and `facts()` returns the facts it read. */
@@ -56,9 +56,17 @@ interface DictReceiver {
   readonly receiver: RegistryReceiverFact;
 }
 
+/** The rules a collector reads, from `protocols.registries`. */
+export interface PythonRegistryRules {
+  readonly nameInjection?: readonly RegistryNameInjectionRule[];
+  readonly attributes?: readonly RegistryAttributeRule[];
+}
+
 export function createPythonRegistryCollector(
-  nameInjection: readonly RegistryNameInjectionRule[] = [],
+  rules: PythonRegistryRules = {},
 ): PythonRegistryCollector {
+  const nameInjection = rules.nameInjection ?? [];
+  const attributes = rules.attributes ?? [];
   const declarations: RegistryDeclarationFact[] = [];
   const calls: RegistryCallFact[] = [];
   const injections: RegistryInjectionFact[] = [];
@@ -79,6 +87,7 @@ export function createPythonRegistryCollector(
     onDecorator: (site) => {
       const declaration = decoratorOf(site);
       if (declaration !== undefined) declarations.push(declaration);
+      declarations.push(...attributeDeclarationsOf(site, attributes));
     },
     onFunction: (site) => {
       for (const rule of nameInjection) {
@@ -400,4 +409,55 @@ function parameterInjectionsOf(
     });
   }
   return out;
+}
+
+/**
+ * An attribute rule declares the decorated symbol: under its own name for `fn-name`, or under the
+ * literal in the call's argument at `arg`. A bare decorator has no argument, so only `fn-name`
+ * applies to it.
+ */
+function attributeDeclarationsOf(
+  site: ObservedDecorator,
+  rules: readonly RegistryAttributeRule[],
+): RegistryDeclarationFact[] {
+  const { decorator } = site;
+  const written = dottedName(decorator.kind === 'call' ? decorator.func : decorator);
+  if (written === undefined || !site.declared.has(site.decoratedId)) return [];
+  const out: RegistryDeclarationFact[] = [];
+  for (const rule of rules) {
+    if (rule.name !== written) continue;
+    const key = keyForAttribute(rule, site);
+    if (key === undefined) continue;
+    out.push({
+      kind: 'registry-declaration',
+      filePath: site.info.filePath,
+      span: toSourceSpan(decorator.span, site.info.filePath),
+      source: 'decorator',
+      subject: `@${rule.name}`,
+      registry: rule.registry,
+      key,
+      target: site.decoratedId,
+      targetInGraph: true,
+      confidence: 'high',
+      evidence: 'config',
+    });
+  }
+  return out;
+}
+
+function keyForAttribute(
+  rule: RegistryAttributeRule,
+  site: ObservedDecorator,
+): RegistryKeyFact | undefined {
+  if (rule.key === 'fn-name') {
+    const label = site.decoratedId.slice(site.info.filePath.length + 1);
+    const name = label.split('.').pop() ?? label;
+    return { kind: 'static', name, keyType: 'string', numericLiteral: false, evidence: 'config' };
+  }
+  const { decorator } = site;
+  if (decorator.kind !== 'call') return undefined;
+  const arg = decorator.args[rule.key.arg];
+  if (arg?.kind !== 'positional') return undefined;
+  const key = keyOf(arg.value);
+  return key.kind === 'static' ? key : undefined;
 }

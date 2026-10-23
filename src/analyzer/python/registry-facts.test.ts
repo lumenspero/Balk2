@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { RegistryFact, RegistryKeyFact } from '../../facts/types.js';
 import { analyzePythonCalls } from './calls.js';
 import { createPythonRegistryCollector } from './registry-facts.js';
-import type { RegistryNameInjectionRule } from '../registry-protocols.js';
+import type { RegistryAttributeRule, RegistryNameInjectionRule } from '../registry-protocols.js';
 import { createImportResolver } from './modules/import-resolution.js';
 import { createSymbolResolver } from './modules/module-exports.js';
 import { ModuleIndex } from './modules/module-index.js';
@@ -10,6 +10,7 @@ import { ModuleIndex } from './modules/module-index.js';
 function collect(
   files: Record<string, string>,
   nameInjection: readonly RegistryNameInjectionRule[] = [],
+  attributes: readonly RegistryAttributeRule[] = [],
 ): RegistryFact[] {
   const index = new ModuleIndex(Object.keys(files));
   const readText = (p: string): string => files[p] ?? '';
@@ -17,7 +18,7 @@ function collect(
   const symbols = createSymbolResolver({ resolver: imports, readText });
   const ctx = { symbols, imports };
   const sources = Object.entries(files).map(([filePath, source]) => ({ filePath, source }));
-  const collector = createPythonRegistryCollector(nameInjection);
+  const collector = createPythonRegistryCollector({ nameInjection, attributes });
   analyzePythonCalls(sources, ctx, {}, collector.observer);
   return collector.facts();
 }
@@ -31,8 +32,9 @@ function keyText(key: RegistryKeyFact): string {
 function lines(
   files: Record<string, string>,
   nameInjection: readonly RegistryNameInjectionRule[] = [],
+  attributes: readonly RegistryAttributeRule[] = [],
 ): string[] {
-  return collect(files, nameInjection).map((f) => {
+  return collect(files, nameInjection, attributes).map((f) => {
     if (f.kind === 'registry-injection')
       return `${f.owner} injects ${keyText(f.key)} ${f.registry}`;
     if (f.kind === 'registry-declaration') {
@@ -168,6 +170,39 @@ describe('python registry facts: parameter-name injection (pytest fixtures)', ()
         },
         FIXTURES,
       ),
+    ).toEqual([]);
+  });
+});
+
+describe('python registry facts: attribute registrations', () => {
+  const ROUTE_SOURCE =
+    'def route(path):\n    def wrap(fn):\n        return fn\n    return wrap\n\n\n';
+  const BY_NAME: RegistryAttributeRule[] = [
+    { name: 'route', key: 'fn-name', registry: 'commands' },
+  ];
+  const BY_ARG: RegistryAttributeRule[] = [{ name: 'route', key: { arg: 0 }, registry: 'routes' }];
+
+  it('declares a decorated function under its own name for an fn-name rule', () => {
+    expect(
+      lines({ 'app.py': `${ROUTE_SOURCE}@route('/x')\ndef greet():\n    return 1\n` }, [], BY_NAME),
+    ).toEqual(['declare commands greet -> app.py:greet']);
+  });
+
+  it('declares a decorated function under the literal in the argument for an arg rule', () => {
+    expect(
+      lines({ 'app.py': `${ROUTE_SOURCE}@route('/x')\ndef greet():\n    return 1\n` }, [], BY_ARG),
+    ).toEqual(['declare routes /x -> app.py:greet']);
+  });
+
+  it('declares nothing for a function without the attribute', () => {
+    expect(lines({ 'app.py': `${ROUTE_SOURCE}def greet():\n    return 1\n` }, [], BY_NAME)).toEqual(
+      [],
+    );
+  });
+
+  it('declares nothing for a bare decorator under an arg rule, which has no argument', () => {
+    expect(
+      lines({ 'app.py': `${ROUTE_SOURCE}@route\ndef greet():\n    return 1\n` }, [], BY_ARG),
     ).toEqual([]);
   });
 });
