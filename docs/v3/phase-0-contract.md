@@ -301,5 +301,4 @@ This local run sets the provisional budget. The contract records the budget from
   - `2.5`: JS/TS method calls on typed receivers, constructor results and `super`. A JS/TS method call is matched by name only, so `user.save()` gets no edge to `User.save`.
   - `12.3`: module-level shared state, in all three languages. No `writesState` edges are produced.
   - `11.3`: Rust data lineage. No `generates` or `consumes` edges are produced.
-- Correction: the `8.4` markers stay. The unreachable-file and module-conflict renditions expect `unreachable-module` and `module-conflict` diagnostics, and the parity harness cannot yet report diagnostics, so both renditions fail. Phase 8.4's diagnostic reporting is missing, not complete.
-
+- Phase 8.4 diagnostics are reported. The parity harness now reads `moduleProblems` from the build, so a `"<kind> <path>"` expectation is met by a reported `unreachable-module` or `module-conflict`. Both `8.4` renditions (the unreachable file and the `foo.rs`/`foo/mod.rs` conflict) pass, and their markers are removed.

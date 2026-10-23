@@ -48,6 +48,8 @@ function entries(): CorpusEntry[] {
 function analyzeFiles(files: Readonly<Record<string, string>>): {
   map: ConnectionMap;
   syntaxPaths: Set<string>;
+  /** Reported diagnostics as `"<kind> <path>"`, from the module tree problems. */
+  diagnostics: Set<string>;
 } {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'balk2-parity-'));
   try {
@@ -61,6 +63,9 @@ function analyzeFiles(files: Readonly<Record<string, string>>): {
     return {
       map,
       syntaxPaths: new Set(built.syntaxErrors.map((e) => e.path)),
+      diagnostics: new Set(
+        built.moduleProblems.map((problem) => `${problem.kind} ${problem.path}`),
+      ),
     };
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
@@ -77,7 +82,7 @@ function hasRelationship(map: ConnectionMap, expectation: string): boolean {
 /** Checks one non-pending rendition. Returns the list of unmet expectations. */
 function unmetExpectations(entry: CorpusEntry): string[] {
   const { expect: want } = entry.rendition;
-  const { map, syntaxPaths } = analyzeFiles(entry.rendition.files);
+  const { map, syntaxPaths, diagnostics } = analyzeFiles(entry.rendition.files);
   const unmet: string[] = [];
 
   for (const rel of want.relationships ?? []) {
@@ -95,10 +100,8 @@ function unmetExpectations(entry: CorpusEntry): string[] {
   if (want.noSyntaxErrors && syntaxPaths.size > 0) {
     unmet.push(`unexpected syntax diagnostics: ${[...syntaxPaths].join(', ')}`);
   }
-  if (want.diagnostics && want.diagnostics.length > 0) {
-    // Diagnostic kinds such as unreachable-module are added in later phases. Until then, a
-    // non-pending rendition cannot meet a diagnostic expectation.
-    unmet.push(`diagnostics not yet reported: ${want.diagnostics.join(', ')}`);
+  for (const diagnostic of want.diagnostics ?? []) {
+    if (!diagnostics.has(diagnostic)) unmet.push(`missing diagnostic: ${diagnostic}`);
   }
   return unmet;
 }

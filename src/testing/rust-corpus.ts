@@ -133,7 +133,6 @@ export const RUST_CORPUS: readonly CorpusScenario[] = [
         expect: {
           diagnostics: ['unreachable-module src/orphan.rs'],
         },
-        pending: '8.4',
       },
     },
   },
@@ -152,7 +151,6 @@ export const RUST_CORPUS: readonly CorpusScenario[] = [
         expect: {
           diagnostics: ['module-conflict src/lib.rs'],
         },
-        pending: '8.4',
       },
     },
   },
