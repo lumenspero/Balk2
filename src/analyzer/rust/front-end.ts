@@ -159,7 +159,9 @@ export class RustFrontEnd implements LanguageFrontEnd {
       });
     }
     // Build scripts (10.5): the package of each build script, by manifest, for OUT_DIR includes.
-    const manifestById = new Map((input.packages?.packages ?? []).map((node) => [node.id, node.manifest]));
+    const manifestById = new Map(
+      (input.packages?.packages ?? []).map((node) => [node.id, node.manifest]),
+    );
     const buildScriptByManifest = new Map<string, string>();
     for (const node of input.packages?.packages ?? []) {
       if (node.ecosystem === 'cargo' && node.target === 'build-script') {
@@ -180,7 +182,8 @@ export class RustFrontEnd implements LanguageFrontEnd {
     );
     for (const edge of buildScriptEdges) {
       if (edge.kind === 'reads') {
-        if (!graph.hasArtifact(edge.artifactPath)) graph.addArtifact(edge.artifactPath, edge.format);
+        if (!graph.hasArtifact(edge.artifactPath))
+          graph.addArtifact(edge.artifactPath, edge.format);
         graph.addRelationship('reads', edge.from, edge.artifactPath, 'high', {
           evidence: 'ast',
           spans: [toSourceSpan(edge.span, edge.file)],
@@ -222,7 +225,8 @@ export class RustFrontEnd implements LanguageFrontEnd {
           metadata: { resourceKind: edge.resourceKind, mechanism: 'include' },
         });
       } else if (edge.kind === 'consumes') {
-        if (!graph.hasArtifact(edge.artifactPath)) graph.addArtifact(edge.artifactPath, edge.format);
+        if (!graph.hasArtifact(edge.artifactPath))
+          graph.addArtifact(edge.artifactPath, edge.format);
         graph.addRelationship('consumes', edge.from, edge.artifactPath, 'high', {
           evidence: 'ast',
           spans: [toSourceSpan(edge.span, edge.file)],

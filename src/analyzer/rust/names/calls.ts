@@ -193,7 +193,8 @@ export function bindCalls(
       } else if (fact.kind === 'macro-call') {
         const owner = scopeCtx(ctx, scopes, fact.span).owner;
         const target = macroTarget(fact.path, fact.span, owner, ctx.crate);
-        if (target !== undefined) record({ id: target, confidence: 'high', dispatch: false }, fact.span);
+        if (target !== undefined)
+          record({ id: target, confidence: 'high', dispatch: false }, fact.span);
       } else if (fact.kind === 'method-call') {
         if (fact.receiver === null) continue;
         const typed = receiverOf(fact.receiver, scopeCtx(ctx, scopes, fact.span), locals);

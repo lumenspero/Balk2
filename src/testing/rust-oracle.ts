@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { CrateModules, ModuleEdge } from '../analyzer/rust/modules/tree.js';
+import type { ConnectionGraph } from '../graph.js';
 
 /**
  * Helpers for the rustc oracle (V3 Phase 8.5). Test-only: they run rustc and evaluate cfg
@@ -89,8 +90,17 @@ export function rustcCfgSet(): Set<string> {
   );
 }
 
-/** The `.rs` files rustc reads for one crate root, from its dependency file, sorted. */
-export function rustcReads(workspace: string, root: string, outDir: string): string[] {
+/**
+ * Every input rustc reads for one crate root, from its dependency file, sorted. Repository inputs
+ * are workspace-relative; absolute inputs (such as `OUT_DIR` files) are kept as written. `env` is
+ * added to rustc's environment, for `env!` and `OUT_DIR`.
+ */
+export function rustcInputs(
+  workspace: string,
+  root: string,
+  outDir: string,
+  env: Readonly<Record<string, string>> = {},
+): string[] {
   const manifest = readFileSync(path.join(workspace, 'Cargo.toml'), 'utf8');
   const edition = /edition\s*=\s*"(\d{4})"/.exec(manifest)?.[1] ?? '2015';
   const crateType = path.basename(root) === 'main.rs' ? 'bin' : 'lib';
@@ -108,7 +118,12 @@ export function rustcReads(workspace: string, root: string, outDir: string): str
       `--emit=dep-info=${depFile}`,
       root,
     ],
-    { cwd: workspace, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+    {
+      cwd: workspace,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, ...env },
+    },
   );
   // The dependency file is `<output>: <input> <input> ...`, with long lines continued by `\`.
   const text = readFileSync(depFile, 'utf8').replace(/\\\n/g, ' ');
@@ -117,9 +132,17 @@ export function rustcReads(workspace: string, root: string, outDir: string): str
     .trim()
     .split(/\s+/);
   return inputs
-    .filter((input) => input.endsWith('.rs') && !path.isAbsolute(input))
-    .map((input) => path.posix.normalize(input.split(path.sep).join('/')))
+    .map((input) =>
+      path.isAbsolute(input) ? input : path.posix.normalize(input.split(path.sep).join('/')),
+    )
     .sort();
+}
+
+/** The `.rs` files rustc reads for one crate root, workspace-relative and sorted. */
+export function rustcReads(workspace: string, root: string, outDir: string): string[] {
+  return rustcInputs(workspace, root, outDir).filter(
+    (input) => input.endsWith('.rs') && !path.isAbsolute(input),
+  );
 }
 
 /** The files a crate root reaches through declarations whose conditions hold. */
@@ -137,4 +160,30 @@ export function reachedWhenActive(crate: CrateModules, trueSet: ReadonlySet<stri
     }
   }
   return [...reached].sort();
+}
+
+/**
+ * The repository files Balk2 says a crate root reads (V3 Phase 10): its active module files, plus the
+ * targets of the include_str!, include_bytes! and include! calls in those files. Includes of OUT_DIR
+ * are absolute paths in rustc and are drawn as dependsOn, so they are not listed here.
+ */
+export function balk2Reads(
+  graph: ConnectionGraph,
+  crate: CrateModules,
+  trueSet: ReadonlySet<string>,
+): string[] {
+  const reads = new Set(reachedWhenActive(crate, trueSet));
+  // An include is drawn from the file (include!) or from the symbol that holds the macro (`src/lib.rs:PAGE`).
+  const inReads = (id: string): boolean =>
+    [...reads].some((file) => id === file || id.startsWith(`${file}:`));
+  for (const rel of graph.getRelationships()) {
+    if (!inReads(rel.from)) continue;
+    const include =
+      (rel.type === 'imports' && rel.metadata?.loadKind === 'include-macro') ||
+      (rel.type === 'usesResource' && rel.metadata?.mechanism === 'include') ||
+      (rel.type === 'consumes' && rel.metadata?.embed === true);
+    if (include)
+      reads.add(rel.to.startsWith('resource:') ? rel.to.slice('resource:'.length) : rel.to);
+  }
+  return [...reads].sort();
 }

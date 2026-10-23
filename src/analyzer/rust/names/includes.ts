@@ -141,7 +141,14 @@ export function bindIncludes(
       }
     }
     for (const call of crate.index.macroCalls) {
-      visit(lastOf(call.path), call.owner.file, call.owner.file, call.args, call.span, crate.packageId);
+      visit(
+        lastOf(call.path),
+        call.owner.file,
+        call.owner.file,
+        call.args,
+        call.span,
+        crate.packageId,
+      );
     }
   }
   return edges;
@@ -161,7 +168,12 @@ function includeEdge(site: Site, files: ReadonlySet<string>): IncludeEdge | unde
   }
   const value = parts === undefined ? undefined : joinPathParts(parts);
   if (value === undefined || value.kind === 'unknown') {
-    return observation(site, attempted, 'dynamic-include-path', `${site.name}! names a path that is not a literal`);
+    return observation(
+      site,
+      attempted,
+      'dynamic-include-path',
+      `${site.name}! names a path that is not a literal`,
+    );
   }
 
   const target = resolveRepoPath(value, {
@@ -169,7 +181,12 @@ function includeEdge(site: Site, files: ReadonlySet<string>): IncludeEdge | unde
     ...(site.packageDir === undefined ? {} : { packageDir: site.packageDir }),
   });
   if (target === undefined || !files.has(target)) {
-    return observation(site, attempted, 'unresolved-module-path', `${site.name}! names no file in the repository`);
+    return observation(
+      site,
+      attempted,
+      'unresolved-module-path',
+      `${site.name}! names no file in the repository`,
+    );
   }
 
   if (site.name === 'include') {
@@ -224,7 +241,10 @@ function partsOf(trees: readonly TokenTree[]): PathPart[] | 'build-output' | und
     const literal = literalOf(first[0]);
     return literal === undefined
       ? undefined
-      : [{ kind: 'anchor', anchor: 'file-dir' }, { kind: 'literal', text: literal }];
+      : [
+          { kind: 'anchor', anchor: 'file-dir' },
+          { kind: 'literal', text: literal },
+        ];
   }
   const [head, bang, group] = first;
   if (
@@ -303,7 +323,8 @@ export function literalOf(tree: TokenTree | undefined): string | undefined {
   if (tree === undefined || isTokenGroup(tree) || tree.kind !== 'str') return undefined;
   const raw = /^r(#*)"([\s\S]*)"\1$/.exec(tree.text);
   if (raw !== null) return raw[2];
-  if (tree.text.length < 2 || !tree.text.startsWith('"') || !tree.text.endsWith('"')) return undefined;
+  if (tree.text.length < 2 || !tree.text.startsWith('"') || !tree.text.endsWith('"'))
+    return undefined;
   const inner = tree.text.slice(1, -1);
   return inner.includes('\\') ? undefined : inner;
 }

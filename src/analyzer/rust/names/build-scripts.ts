@@ -42,10 +42,7 @@ export type BuildScriptEdge =
       readonly span: Span;
     };
 
-const RERUN_PREFIXES: readonly string[] = [
-  'cargo:rerun-if-changed=',
-  'cargo::rerun-if-changed=',
-];
+const RERUN_PREFIXES: readonly string[] = ['cargo:rerun-if-changed=', 'cargo::rerun-if-changed='];
 const PRINT_MACROS: ReadonlySet<string> = new Set(['println', 'print']);
 
 /** Every `rerun-if-changed` line a build script prints, as the files it reads. */
@@ -102,7 +99,8 @@ function rerunEdge(
     { kind: 'anchor', anchor: 'package-dir' },
     { kind: 'literal', text: rest },
   ]);
-  const target = packageDir === undefined ? undefined : resolveRepoPath(value, { fileDir: '', packageDir });
+  const target =
+    packageDir === undefined ? undefined : resolveRepoPath(value, { fileDir: '', packageDir });
   if (target === undefined || !files.has(target)) {
     return {
       kind: 'observation',

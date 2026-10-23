@@ -1,15 +1,17 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildConnectionGraphDetailed } from '../../../cli/build-graph.js';
 import {
+  balk2Reads,
   evaluate,
   isActive,
   parseCfg,
   reachedWhenActive,
   rustcCfgSet,
+  rustcInputs,
   rustcReads,
 } from '../../../testing/rust-oracle.js';
 
@@ -101,3 +103,57 @@ describe.skipIf(!ORACLE_ENABLED)('rustc oracle (V3 Phase 8.5)', () => {
     expect(actual).toContain('src/platform.rs');
   });
 });
+
+// ── include and build-script edges (V3 Phase 10) ────────────────────────────
+
+/** The text build.rs writes into OUT_DIR for build-script-basic. The oracle writes it itself, since it does not run cargo. */
+const BUILD_OUTPUT = 'pub fn generated() -> u32 {\n    7\n}\n';
+
+describe.skipIf(!ORACLE_ENABLED)(
+  'rustc oracle: include and build-script edges (V3 Phase 10)',
+  () => {
+    let trueSet: ReadonlySet<string>;
+    let outDir: string;
+
+    beforeAll(() => {
+      trueSet = rustcCfgSet();
+      outDir = mkdtempSync(path.join(tmpdir(), 'balk2-rustc-include-'));
+    });
+
+    afterAll(() => {
+      if (outDir) rmSync(outDir, { recursive: true, force: true });
+    });
+
+    it('includes-basic: rustc reads the files include_str!, include_bytes! and include! reach', () => {
+      const workspace = path.join(ORACLE_ROOT, 'includes-basic');
+      const built = buildConnectionGraphDetailed(workspace);
+      const lib = built.moduleTree.crates.find((crate) => crate.root === 'src/lib.rs');
+      expect(lib).toBeDefined();
+      if (!lib) return;
+      const actual = rustcInputs(workspace, lib.root, outDir).filter(
+        (input) => !path.isAbsolute(input),
+      );
+      expect(actual).toEqual(balk2Reads(built.graph, lib, trueSet));
+    });
+
+    it('build-script-basic: rustc reads the crate files and the OUT_DIR file its include! names', () => {
+      const workspace = path.join(ORACLE_ROOT, 'build-script-basic');
+      const built = buildConnectionGraphDetailed(workspace);
+      const lib = built.moduleTree.crates.find((crate) => crate.root === 'src/lib.rs');
+      expect(lib).toBeDefined();
+      if (!lib) return;
+      const outputDir = path.join(outDir, 'out');
+      mkdirSync(outputDir, { recursive: true });
+      const generated = path.join(outputDir, 'generated.rs');
+      writeFileSync(generated, BUILD_OUTPUT, 'utf8');
+      const inputs = rustcInputs(workspace, lib.root, outDir, {
+        OUT_DIR: outputDir,
+        BUILD_TAG: 'oracle',
+      });
+      expect(inputs.filter((input) => !path.isAbsolute(input))).toEqual(
+        balk2Reads(built.graph, lib, trueSet),
+      );
+      expect(inputs.filter((input) => path.isAbsolute(input))).toEqual([generated]);
+    });
+  },
+);

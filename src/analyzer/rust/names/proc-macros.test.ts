@@ -6,7 +6,12 @@ const DERIVE_ID = 'package:cargo:crates/derive#proc-macro:my-derive';
 const APP_ID = 'package:cargo:crates/app#lib:app';
 const OTHER_ID = 'package:cargo:crates/other#proc-macro:other-derive';
 
-function crateOf(id: string, root: string, files: Record<string, string>, procMacro: boolean): ProcMacroCrate {
+function crateOf(
+  id: string,
+  root: string,
+  files: Record<string, string>,
+  procMacro: boolean,
+): ProcMacroCrate {
   return {
     id,
     procMacro,
@@ -36,9 +41,14 @@ describe('bindProcMacros: derives (V3 Phase 10.3)', () => {
     const edges = bindProcMacros(
       [
         crateOf(DERIVE_ID, 'crates/derive/src/lib.rs', DERIVE_FILES, true),
-        crateOf(APP_ID, 'crates/app/src/lib.rs', {
-          'crates/app/src/lib.rs': '#[derive(Debug, Describe)]\npub struct Point;\n',
-        }, false),
+        crateOf(
+          APP_ID,
+          'crates/app/src/lib.rs',
+          {
+            'crates/app/src/lib.rs': '#[derive(Debug, Describe)]\npub struct Point;\n',
+          },
+          false,
+        ),
       ],
       [{ from: APP_ID, to: DERIVE_ID }],
     );
@@ -51,9 +61,14 @@ describe('bindProcMacros: derives (V3 Phase 10.3)', () => {
     const edges = bindProcMacros(
       [
         crateOf(DERIVE_ID, 'crates/derive/src/lib.rs', DERIVE_FILES, true),
-        crateOf(APP_ID, 'crates/app/src/lib.rs', {
-          'crates/app/src/lib.rs': '#[derive(my_derive::Describe)]\nenum Mode { A }\n',
-        }, false),
+        crateOf(
+          APP_ID,
+          'crates/app/src/lib.rs',
+          {
+            'crates/app/src/lib.rs': '#[derive(my_derive::Describe)]\nenum Mode { A }\n',
+          },
+          false,
+        ),
       ],
       [{ from: APP_ID, to: DERIVE_ID }],
     );
@@ -66,9 +81,14 @@ describe('bindProcMacros: derives (V3 Phase 10.3)', () => {
     const edges = bindProcMacros(
       [
         crateOf(DERIVE_ID, 'crates/derive/src/lib.rs', DERIVE_FILES, true),
-        crateOf(APP_ID, 'crates/app/src/lib.rs', {
-          'crates/app/src/lib.rs': '#[derive(Describe)]\npub struct Point;\n',
-        }, false),
+        crateOf(
+          APP_ID,
+          'crates/app/src/lib.rs',
+          {
+            'crates/app/src/lib.rs': '#[derive(Describe)]\npub struct Point;\n',
+          },
+          false,
+        ),
       ],
       [],
     );
@@ -79,9 +99,14 @@ describe('bindProcMacros: derives (V3 Phase 10.3)', () => {
     const edges = bindProcMacros(
       [
         crateOf(DERIVE_ID, 'crates/derive/src/lib.rs', DERIVE_FILES, true),
-        crateOf(APP_ID, 'crates/app/src/lib.rs', {
-          'crates/app/src/lib.rs': '#[derive(Debug)]\npub struct Point;\n',
-        }, false),
+        crateOf(
+          APP_ID,
+          'crates/app/src/lib.rs',
+          {
+            'crates/app/src/lib.rs': '#[derive(Debug)]\npub struct Point;\n',
+          },
+          false,
+        ),
       ],
       [{ from: APP_ID, to: DERIVE_ID }],
     );
@@ -92,13 +117,23 @@ describe('bindProcMacros: derives (V3 Phase 10.3)', () => {
     const edges = bindProcMacros(
       [
         crateOf(DERIVE_ID, 'crates/derive/src/lib.rs', DERIVE_FILES, true),
-        crateOf(OTHER_ID, 'crates/other/src/lib.rs', {
-          'crates/other/src/lib.rs':
-            '#[proc_macro_derive(Describe)]\npub fn other(input: TokenStream) -> TokenStream { input }\n',
-        }, true),
-        crateOf(APP_ID, 'crates/app/src/lib.rs', {
-          'crates/app/src/lib.rs': '#[derive(Describe)]\npub struct Point;\n',
-        }, false),
+        crateOf(
+          OTHER_ID,
+          'crates/other/src/lib.rs',
+          {
+            'crates/other/src/lib.rs':
+              '#[proc_macro_derive(Describe)]\npub fn other(input: TokenStream) -> TokenStream { input }\n',
+          },
+          true,
+        ),
+        crateOf(
+          APP_ID,
+          'crates/app/src/lib.rs',
+          {
+            'crates/app/src/lib.rs': '#[derive(Describe)]\npub struct Point;\n',
+          },
+          false,
+        ),
       ],
       [
         { from: APP_ID, to: DERIVE_ID },
@@ -114,9 +149,14 @@ describe('bindProcMacros: attributes (V3 Phase 10.3)', () => {
     const edges = bindProcMacros(
       [
         crateOf(DERIVE_ID, 'crates/derive/src/lib.rs', DERIVE_FILES, true),
-        crateOf(APP_ID, 'crates/app/src/lib.rs', {
-          'crates/app/src/lib.rs': '#[route(get)]\npub fn handler() {}\n',
-        }, false),
+        crateOf(
+          APP_ID,
+          'crates/app/src/lib.rs',
+          {
+            'crates/app/src/lib.rs': '#[route(get)]\npub fn handler() {}\n',
+          },
+          false,
+        ),
       ],
       [{ from: APP_ID, to: DERIVE_ID }],
     );
@@ -129,9 +169,14 @@ describe('bindProcMacros: attributes (V3 Phase 10.3)', () => {
     const edges = bindProcMacros(
       [
         crateOf(DERIVE_ID, 'crates/derive/src/lib.rs', DERIVE_FILES, true),
-        crateOf(APP_ID, 'crates/app/src/lib.rs', {
-          'crates/app/src/lib.rs': '#[make]\npub fn handler() {}\n',
-        }, false),
+        crateOf(
+          APP_ID,
+          'crates/app/src/lib.rs',
+          {
+            'crates/app/src/lib.rs': '#[make]\npub fn handler() {}\n',
+          },
+          false,
+        ),
       ],
       [{ from: APP_ID, to: DERIVE_ID }],
     );
@@ -142,9 +187,14 @@ describe('bindProcMacros: attributes (V3 Phase 10.3)', () => {
     const edges = bindProcMacros(
       [
         crateOf(DERIVE_ID, 'crates/derive/src/lib.rs', DERIVE_FILES, false),
-        crateOf(APP_ID, 'crates/app/src/lib.rs', {
-          'crates/app/src/lib.rs': '#[route(get)]\npub fn handler() {}\n',
-        }, false),
+        crateOf(
+          APP_ID,
+          'crates/app/src/lib.rs',
+          {
+            'crates/app/src/lib.rs': '#[route(get)]\npub fn handler() {}\n',
+          },
+          false,
+        ),
       ],
       [{ from: APP_ID, to: DERIVE_ID }],
     );

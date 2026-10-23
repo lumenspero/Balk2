@@ -71,7 +71,9 @@ export function bindProcMacros(
   const edges: ProcMacroEdge[] = [];
   for (const crate of crates) {
     const providers = defs.filter(
-      (def) => def.crateId !== crate.id && dependencies.some((d) => d.from === crate.id && d.to === def.crateId),
+      (def) =>
+        def.crateId !== crate.id &&
+        dependencies.some((d) => d.from === crate.id && d.to === def.crateId),
     );
     if (providers.length === 0) continue;
 
@@ -83,13 +85,25 @@ export function bindProcMacros(
           for (const name of deriveNames(attr)) {
             const target = uniqueProvider(providers, 'derive', name);
             if (target !== undefined) {
-              edges.push({ from: decl.id, to: target, file: decl.owner.file, span: attr.span, mechanism: 'derive' });
+              edges.push({
+                from: decl.id,
+                to: target,
+                file: decl.owner.file,
+                span: attr.span,
+                mechanism: 'derive',
+              });
             }
           }
         } else {
           const target = uniqueProvider(providers, 'attribute', lastSegment(attr.path));
           if (target !== undefined) {
-            edges.push({ from: decl.id, to: target, file: decl.owner.file, span: attr.span, mechanism: 'attribute' });
+            edges.push({
+              from: decl.id,
+              to: target,
+              file: decl.owner.file,
+              span: attr.span,
+              mechanism: 'attribute',
+            });
           }
         }
       }
@@ -101,7 +115,13 @@ export function bindProcMacros(
         if (attr.path === 'derive') continue;
         const target = uniqueProvider(providers, 'attribute', lastSegment(attr.path));
         if (target !== undefined) {
-          edges.push({ from: fn.id, to: target, file: fn.owner.file, span: attr.span, mechanism: 'attribute' });
+          edges.push({
+            from: fn.id,
+            to: target,
+            file: fn.owner.file,
+            span: attr.span,
+            mechanism: 'attribute',
+          });
         }
       }
     }
@@ -115,7 +135,9 @@ function uniqueProvider(
   kind: ProcMacroKind,
   name: string,
 ): string | undefined {
-  const ids = new Set(providers.filter((def) => def.kind === kind && def.name === name).map((def) => def.id));
+  const ids = new Set(
+    providers.filter((def) => def.kind === kind && def.name === name).map((def) => def.id),
+  );
   return ids.size === 1 ? [...ids][0] : undefined;
 }
 
@@ -138,7 +160,9 @@ function firstArgument(attr: Attribute): string | undefined {
 
 /** The derive names in `#[derive(A, path::B)]`, each reduced to its last segment. */
 function deriveNames(attr: Attribute): string[] {
-  return argumentParts(attr).map(lastSegment).filter((name) => name.length > 0);
+  return argumentParts(attr)
+    .map(lastSegment)
+    .filter((name) => name.length > 0);
 }
 
 /** The last `::` segment of a path, with spaces removed (`web :: route` becomes `route`). */

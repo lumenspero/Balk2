@@ -42,7 +42,8 @@ describe('bindBuildScripts: rerun-if-changed (V3 Phase 10.5)', () => {
 
   it('accepts the cargo:: spelling', () => {
     const files = {
-      'crates/app/build.rs': 'fn main() {\n    println!("cargo::rerun-if-changed=assets/logo.svg");\n}\n',
+      'crates/app/build.rs':
+        'fn main() {\n    println!("cargo::rerun-if-changed=assets/logo.svg");\n}\n',
       'crates/app/assets/logo.svg': '<svg/>',
     };
     const edges = bindBuildScripts(
@@ -81,10 +82,14 @@ describe('bindBuildScripts: rerun-if-changed (V3 Phase 10.5)', () => {
 
   it('draws no edge for a rerun line outside a build script', () => {
     const files = {
-      'src/lib.rs': 'pub fn main() {\n    println!("cargo:rerun-if-changed=data/schema.json");\n}\n',
+      'src/lib.rs':
+        'pub fn main() {\n    println!("cargo:rerun-if-changed=data/schema.json");\n}\n',
       'data/schema.json': '{}',
     };
-    const edges = bindBuildScripts([crateOf('src/lib.rs', files, '', false)], new Set(Object.keys(files)));
+    const edges = bindBuildScripts(
+      [crateOf('src/lib.rs', files, '', false)],
+      new Set(Object.keys(files)),
+    );
     expect(edges).toEqual([]);
   });
 });

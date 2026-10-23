@@ -108,8 +108,7 @@ export const RUST_CORPUS: readonly CorpusScenario[] = [
             '[package]\nname = "my-derive"\nversion = "0.1.0"\nedition = "2021"\n\n[lib]\nproc-macro = true\n',
           'crates/derive/src/lib.rs':
             '#[proc_macro_derive(Describe)]\npub fn describe(input: TokenStream) -> TokenStream {\n    input\n}\n',
-          'crates/app/Cargo.toml':
-            '[package]\nname = "app"\nversion = "0.1.0"\nedition = "2021"\n',
+          'crates/app/Cargo.toml': '[package]\nname = "app"\nversion = "0.1.0"\nedition = "2021"\n',
           'crates/app/src/lib.rs': '#[derive(Describe)]\npub struct Point;\n',
         },
         expect: {
@@ -161,7 +160,7 @@ export const RUST_CORPUS: readonly CorpusScenario[] = [
       rust: {
         files: {
           'Cargo.toml': CARGO,
-          'src/lib.rs': 'pub fn load(path: &str) -> &\'static str {\n    include_str!(path)\n}\n',
+          'src/lib.rs': "pub fn load(path: &str) -> &'static str {\n    include_str!(path)\n}\n",
           'src/data/config.json': '{}\n',
         },
         expect: {
@@ -178,8 +177,7 @@ export const RUST_CORPUS: readonly CorpusScenario[] = [
       rust: {
         files: {
           'Cargo.toml': CARGO,
-          'build.rs':
-            'fn main() {\n    println!("cargo:rerun-if-changed=data/schema.json");\n}\n',
+          'build.rs': 'fn main() {\n    println!("cargo:rerun-if-changed=data/schema.json");\n}\n',
           'src/lib.rs': 'pub fn run() {}\n',
           'data/schema.json': '{}\n',
         },
@@ -201,7 +199,9 @@ export const RUST_CORPUS: readonly CorpusScenario[] = [
           'src/lib.rs': 'include!(concat!(env!("OUT_DIR"), "/generated.rs"));\n',
         },
         expect: {
-          relationships: ['dependsOn package:cargo:.#lib:demo -> package:cargo:.#build-script:build'],
+          relationships: [
+            'dependsOn package:cargo:.#lib:demo -> package:cargo:.#build-script:build',
+          ],
         },
       },
     },
