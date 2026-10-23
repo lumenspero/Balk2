@@ -85,3 +85,11 @@ These come from the manifests in `pyproject.toml` projects. Each is new output. 
 - Direction changes in Python output are expected where the keyword rule guessed. Examples: `np.savetxt('out.csv', ...)` gives `generates` (was a low-confidence `reads`), and `sqlite3.connect('x.sqlite')` gives `reads` at high confidence (was a low-confidence guess). Each is covered by `src/analyzer/python-data-apis.test.ts`.
 - Bare paths are placed by the 11.4 rule, from the script's directory and then the repository root.
 - Not in 11.2: receivers. Methods on a `pandas.DataFrame`, `pathlib.Path` variables, `csv`, `json`, `pickle`, `yaml` and `tomllib` loads and dumps on file handles, and `Final` constants (Phase 11.5 for Python). Those keep the keyword rule until typed receivers and handle flows land.
+
+## Phase 11.5 output change (Python constants)
+
+A module-level constant whose name is upper-case and bound exactly once to a plain string literal now carries its value to catalog calls in the same file or to calls that import it by name (`from .cfg import DB`). `sqlite3.connect(DB)` therefore yields a `reads` edge at high confidence from the calling file to the artifact. The artifact is placed from the file that declares the constant, under the 11.4 rule. Constants with a `Final` annotation are accepted. A name bound twice, a lower-case name, or a non-literal value is not treated as a constant.
+
+The line-based keyword pass is unchanged. The declaration line of a constant (`DB = 'store.sqlite'`) still gets its existing low-confidence edge, placed at the repository root as before. Placing that edge by the 11.4 rule would change baseline output for every bare literal in Python, so it is left for a deliberate baseline change.
+
+Handle flows (`json.load(f)`, `pickle.load`, and similar) add no edges of their own. The artifact path is set at the `open` call, which the catalog already matches.

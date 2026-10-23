@@ -113,3 +113,67 @@ describe('Python bare paths (Phase 11.2 with 11.4)', () => {
     expect(edgesTo(map, 'store.sqlite')).toEqual([]);
   });
 });
+
+describe('Python constants carry paths to catalog calls (Phase 11.5)', () => {
+  it('an upper-case module constant passed to connect reads at high confidence', () => {
+    const map = analyze({
+      'app.py': ['import sqlite3', "DB = 'db/app.sqlite'", 'conn = sqlite3.connect(DB)'].join('\n'),
+    });
+    expect(edgesTo(map, 'db/app.sqlite')).toContain('reads/high app.py');
+  });
+
+  it('a Final-annotated constant passed to open is written', () => {
+    const map = analyze({
+      'app.py': [
+        'from typing import Final',
+        "OUT: Final = 'out/report.json'",
+        "with open(OUT, 'w') as f:",
+        "    f.write('{}')",
+      ].join('\n'),
+    });
+    expect(edgesTo(map, 'out/report.json')).toContain('generates/high app.py');
+  });
+
+  it('a constant imported from another repository module generates in the calling file', () => {
+    const map = analyze({
+      'config.py': "OUT_CSV = 'out/data.csv'\n",
+      'app.py': [
+        'import numpy as np',
+        'from config import OUT_CSV',
+        'np.savetxt(OUT_CSV, [1, 2])',
+      ].join('\n'),
+    });
+    expect(edgesTo(map, 'out/data.csv')).toContain('generates/high app.py');
+  });
+
+  it('a constant is placed from the file that declares it', () => {
+    const map = analyze({
+      'lib/cfg.py': "DB = 'store.sqlite'\n",
+      'lib/app.py': ['import sqlite3', 'from .cfg import DB', 'sqlite3.connect(DB)'].join('\n'),
+      'lib/store.sqlite': '',
+    });
+    expect(edgesTo(map, 'lib/store.sqlite')).toContain('reads/high lib/app.py');
+    // The declaration's own line still gets the existing low keyword edge, which is baseline behavior.
+    expect(edgesTo(map, 'store.sqlite').filter((e) => e.includes('/high'))).toEqual([]);
+  });
+
+  it('a lower-case name is not a constant', () => {
+    const map = analyze({
+      'app.py': ['import sqlite3', "db = 'db/lower.sqlite'", 'sqlite3.connect(db)'].join('\n'),
+    });
+    expect(edgesTo(map, 'db/lower.sqlite').filter((e) => e.includes('/high'))).toEqual([]);
+  });
+
+  it('a constant bound twice is not a constant', () => {
+    const map = analyze({
+      'app.py': [
+        'import sqlite3',
+        "DB = 'db/first.sqlite'",
+        "DB = 'db/second.sqlite'",
+        'sqlite3.connect(DB)',
+      ].join('\n'),
+    });
+    expect(edgesTo(map, 'db/first.sqlite').filter((e) => e.includes('/high'))).toEqual([]);
+    expect(edgesTo(map, 'db/second.sqlite').filter((e) => e.includes('/high'))).toEqual([]);
+  });
+});

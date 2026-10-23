@@ -146,7 +146,8 @@ export function analyzePythonSources(
       facts: dataFacts,
       paths: {
         exists: (repoPath) => knownFiles.has(repoPath),
-        bases: (fact) => defaultBareBases('python', { file: dirOf(fact.filePath) }),
+        bases: (fact) =>
+          defaultBareBases('python', { file: dirOf(fact.pathFilePath ?? fact.filePath) }),
       },
     }),
   );
