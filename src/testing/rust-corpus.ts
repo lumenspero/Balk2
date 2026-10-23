@@ -120,6 +120,58 @@ export const RUST_CORPUS: readonly CorpusScenario[] = [
   },
 
   {
+    name: 'include_str of a data file consumes it from the function that holds the macro',
+    family: 'macros',
+    renditions: {
+      rust: {
+        files: {
+          'Cargo.toml': CARGO,
+          'src/lib.rs':
+            'pub fn load() -> &\'static str {\n    include_str!("data/config.json")\n}\n',
+          'src/data/config.json': '{}\n',
+        },
+        expect: {
+          relationships: ['consumes src/lib.rs:load -> src/data/config.json'],
+        },
+      },
+    },
+  },
+
+  {
+    name: 'include! imports the included file from the including file',
+    family: 'macros',
+    renditions: {
+      rust: {
+        files: {
+          'Cargo.toml': CARGO,
+          'src/lib.rs': 'include!("gen.rs");\n\npub fn run() -> i32 {\n    generated()\n}\n',
+          'src/gen.rs': 'pub fn generated() -> i32 {\n    1\n}\n',
+        },
+        expect: {
+          relationships: ['imports src/lib.rs -> src/gen.rs'],
+        },
+      },
+    },
+  },
+
+  {
+    name: 'include_str with a variable path draws no consumes edge (negative)',
+    family: 'macros',
+    renditions: {
+      rust: {
+        files: {
+          'Cargo.toml': CARGO,
+          'src/lib.rs': 'pub fn load(path: &str) -> &\'static str {\n    include_str!(path)\n}\n',
+          'src/data/config.json': '{}\n',
+        },
+        expect: {
+          absent: ['consumes src/lib.rs:load -> src/data/config.json'],
+        },
+      },
+    },
+  },
+
+  {
     name: 'mod inside a raw string is not a declaration (negative)',
     family: 'lexing',
     renditions: {

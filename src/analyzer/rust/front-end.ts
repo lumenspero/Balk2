@@ -19,6 +19,7 @@ import type { SyntaxErrorNote } from '../repository-program.js';
 import type { Span } from './items.js';
 import { parseRustFile } from './items.js';
 import { bindCalls } from './names/calls.js';
+import { bindIncludes } from './names/includes.js';
 import { bindProcMacros } from './names/proc-macros.js';
 import { bindReferences } from './names/references.js';
 import { computeExports } from './names/exports.js';
@@ -156,6 +157,48 @@ export class RustFrontEnd implements LanguageFrontEnd {
         spans: [location],
       });
     }
+    // Compile-time includes (10.4): include!, include_str! and include_bytes! link the files they name.
+    const includes = bindIncludes(
+      crates.map((c) => ({ index: c.index, packageDir: c.packageDir })),
+      new Set(input.files.map(normalizePath)),
+    );
+    for (const edge of includes) {
+      if (edge.kind === 'imports') {
+        graph.addRelationship('imports', edge.from, edge.to, 'high', {
+          evidence: 'ast',
+          spans: [toSourceSpan(edge.span, edge.file)],
+          metadata: { loadKind: 'include-macro' },
+        });
+      } else if (edge.kind === 'uses') {
+        const node = graph.addResource(edge.resourcePath, edge.resourceKind);
+        graph.addRelationship('usesResource', edge.from, node.id, 'high', {
+          evidence: 'ast',
+          spans: [toSourceSpan(edge.span, edge.file)],
+          metadata: { resourceKind: edge.resourceKind, mechanism: 'include' },
+        });
+      } else if (edge.kind === 'consumes') {
+        if (!graph.hasArtifact(edge.artifactPath)) graph.addArtifact(edge.artifactPath, edge.format);
+        graph.addRelationship('consumes', edge.from, edge.artifactPath, 'high', {
+          evidence: 'ast',
+          spans: [toSourceSpan(edge.span, edge.file)],
+          metadata: { embed: true },
+        });
+      } else {
+        const location = toSourceSpan(edge.span, edge.file);
+        const unresolved = graph.addUnresolved({
+          reason: edge.reason,
+          attempted: edge.attempted,
+          subject: edge.subject,
+          location,
+          detail: edge.detail,
+        });
+        graph.addRelationship(edge.attempted, edge.from, unresolved.id, 'low', {
+          evidence: 'ast',
+          spans: [location],
+        });
+      }
+    }
+
     // Proc macros (10.3): a derive or attribute links its item to the proc macro that provides it.
     const procMacros = bindProcMacros(
       crates.map((c) => ({ id: c.id, index: c.index, procMacro: c.procMacro })),
@@ -202,6 +245,8 @@ interface CrateEntry {
   readonly exporting: boolean;
   readonly id: string;
   readonly procMacro: boolean;
+  /** Repository-relative directory of the package, for `CARGO_MANIFEST_DIR` (10.4). */
+  readonly packageDir: string | undefined;
 }
 
 /**
@@ -245,6 +290,7 @@ function buildCrates(
       exporting: target === 'lib' || target === 'proc-macro',
       id: root.packageId,
       procMacro: target === 'proc-macro',
+      packageDir: packageDirOf(packageById.get(root.packageId)?.manifest),
     });
     indexByPackage.set(root.packageId, index);
   }
@@ -254,6 +300,13 @@ function buildCrates(
     if (index !== undefined && !repoCrates.has(node.name)) repoCrates.set(node.name, index);
   }
   return { crates, env };
+}
+
+/** The repository-relative directory holding a package's manifest, or undefined when unknown. */
+function packageDirOf(manifest: string | undefined): string | undefined {
+  if (manifest === undefined) return undefined;
+  const dir = path.posix.dirname(manifest);
+  return dir === '.' ? '' : dir;
 }
 
 function toSourceSpan(span: Span, filePath: string): SourceSpan {

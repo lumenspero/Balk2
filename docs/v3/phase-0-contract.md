@@ -336,3 +336,17 @@ This local run sets the provisional budget. The contract records the budget from
 - A derive or attribute name provided by two different proc-macro dependencies links to neither, because the name is ambiguous.
 - A derive path such as `my_derive::Describe` matches by its last segment. A std derive such as `Debug` matches no provider and gets no edge.
 - Not in 10.3: function-like `#[proc_macro]` invocations (`make!(...)`), derives and attributes on items inside a function body, methods, and helper attributes named in `attributes(...)`.
+
+## Phase 10.4 output change (Rust compile-time includes)
+
+- `include!("file")` gives an `imports` edge from the including file to the file it names, with `metadata.loadKind` set to `include-macro` and `high` confidence (`src/analyzer/rust/names/includes.ts`). It is read wherever it appears: at module level, in a function body, or in a const or static value.
+- `include_str!` and `include_bytes!` name a file, and the edge's kind depends on what the file is:
+  - A template, stylesheet or schema gives a `usesResource` edge from the owning symbol (the function, const or static, or the file for module level), with `metadata.resourceKind` and `metadata.mechanism: "include"`.
+  - Any other file that exists gives a `consumes` edge from the owner to an artifact at that path. The artifact's format is the detected data format, or `unknown`, and the edge carries `metadata.embed: true`. A source file included this way also gets an artifact node at its path, next to its file node.
+- The path goes through the shared path evaluator (`joinPathParts`, `resolveRepoPath`, 2.2). A plain string is relative to the file that holds the macro. `concat!` may join plain strings and `env!("CARGO_MANIFEST_DIR")`, which resolves to the directory of the owning package's `Cargo.toml`. Adjacent strings are joined, and a leading separator after the package anchor is dropped, so the join is `CARGO_MANIFEST_DIR` plus the rest of the string.
+- A path that cannot be evaluated gives a `dynamic-include-path` observation: a variable, a string with an escape, or `env!` of any variable other than `CARGO_MANIFEST_DIR`. A path that names no file in the repository gives an `unresolved-module-path` observation. Each observation is a `low` edge to an unresolved node, with `imports` for `include!` and `consumes` for `include_str!` and `include_bytes!`.
+- Not in 10.4:
+  - `env!` of `OUT_DIR` and other build outputs (10.5).
+  - `file!()`, `module_path!()` and other macros that name a path.
+  - `#[path]` on an `include!`.
+  - The `rustc` oracle for includes. The `rust-oracle` job compares module files against dep-info, and an include comparison needs an oracle workspace that uses `include_*` and runs `cargo build` in CI. It is not verified in this sandbox, because it has no `cargo`.
