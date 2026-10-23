@@ -18,7 +18,7 @@
  * outer function), and tuple-struct constructors (they name no function).
  */
 import type { BodyFact } from '../body.js';
-import { ownBodyFacts } from '../nested.js';
+import { ownBodyFacts, startsWithin } from '../nested.js';
 import type { GenericParam, Item, Span } from '../items.js';
 import { lexRust, type RustToken } from '../lexer.js';
 import { buildTokenTrees, isTokenGroup, type TokenTree } from '../token-tree.js';
@@ -27,6 +27,7 @@ import type {
   PendingImpl,
   RustCrateIndex,
   RustModuleNode,
+  BodyScope,
 } from './module-index.js';
 import {
   type RustNameEnvironment,
@@ -146,7 +147,9 @@ export function bindCalls(
     if (body === null) continue;
     const facts = ownBodyFacts(body);
     const ctx = contextOf(repo, entry);
-    const locals = localsOf(entry.fn.item, facts, ctx);
+    const locals = localsOf(entry.fn.item, facts, ctx, (span) =>
+      scopeCtx(ctx, entry.fn.scopes, span),
+    );
     const from = entry.fn.id;
     const file = entry.fn.owner.file;
 
@@ -172,7 +175,11 @@ export function bindCalls(
       if (fact.kind === 'call') {
         const segments = fact.path;
         if (segments.length === 1 && locals.has(segments[0] ?? '')) continue;
-        const resolved = resolveCallPath({ global: false, segments }, ctx, locals);
+        const resolved = resolveCallPath(
+          { global: false, segments },
+          scopeCtx(ctx, entry.fn.scopes, fact.span),
+          locals,
+        );
         if (resolved.unresolved !== undefined) {
           unresolved.push({
             file,
@@ -186,7 +193,7 @@ export function bindCalls(
         }
       } else if (fact.kind === 'method-call') {
         if (fact.receiver === null) continue;
-        const typed = receiverOf(fact.receiver, ctx, locals);
+        const typed = receiverOf(fact.receiver, scopeCtx(ctx, entry.fn.scopes, fact.span), locals);
         if (typed === null) continue;
         const callable = memberOf(repo, typed.ty, fact.method);
         if (callable === null) continue;
@@ -390,6 +397,7 @@ export function localsOf(
   fn: PendingFunction['item'],
   facts: readonly BodyFact[],
   ctx: Ctx,
+  scoped: (span: Span) => Ctx = () => ctx,
 ): Locals {
   const map = new Map<string, Typed | null>();
   const bind = (name: string, typed: Typed | null): void => {
@@ -413,10 +421,10 @@ export function localsOf(
       }
       let typed: Typed | null = null;
       if (fact.type !== null) {
-        const ty = typeOf(fact.type.tokens, ctx);
+        const ty = typeOf(fact.type.tokens, scoped(fact.span));
         typed = ty === null ? null : { ty, confidence: 'high' };
       } else if (fact.init !== null) {
-        typed = typeOfInit(fact.init, ctx);
+        typed = typeOfInit(fact.init, scoped(fact.span));
       }
       bind(only.name, typed);
     } else if (fact.kind === 'for' || fact.kind === 'match-arm') {
@@ -589,4 +597,13 @@ function angleArgs(trees: readonly TokenTree[], start: number): TokenTree[] | nu
     if (k > start) inner.push(tree);
   }
   return null;
+}
+
+/** The context a span resolves in: the innermost block scope that holds it, else the function's own (9.8). */
+export function scopeCtx(ctx: Ctx, scopes: readonly BodyScope[], span: Span): Ctx {
+  let owner: RustModuleNode | undefined;
+  for (const scope of scopes) {
+    if (startsWithin(span, scope.span)) owner = scope.owner;
+  }
+  return owner === undefined || owner === ctx.owner ? ctx : { ...ctx, owner };
 }

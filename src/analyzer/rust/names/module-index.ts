@@ -19,7 +19,7 @@ import { isModRsFile, moduleFileCandidates, type InlineModule } from '../modules
 import { pathAttrOf } from '../modules/tree.js';
 import type { RustNamespace, RustNamespaceTables } from './namespaces.js';
 import { analyzeRustSymbols } from '../symbols.js';
-import { blockKey, nestedItemsOf } from '../nested.js';
+import { blockKey, bodyBlocksOf, type BodyBlock } from '../nested.js';
 import { flattenUse, type UseEntry } from './use-tree.js';
 
 /** What a `use` binds a name to. `isPub` is true for `pub use`, which other modules can reach. */
@@ -100,6 +100,12 @@ export interface PendingTrait {
   readonly supertraits: Fragment | null;
 }
 
+/** A block scope of a function body: the span it covers, and the owner that names resolve in there (9.8). */
+export interface BodyScope {
+  readonly span: Span;
+  readonly owner: RustModuleNode;
+}
+
 /** A function declared in the crate: a free function, or a method of an `impl` or `trait` (V3 Phase 9.6). */
 export interface PendingFunction {
   readonly owner: RustModuleNode;
@@ -108,6 +114,8 @@ export interface PendingFunction {
   readonly item: Extract<Item, { kind: 'fn' }>;
   /** The `impl` or `trait` item the function is written in, or null for a free function. */
   readonly container: Extract<Item, { kind: 'impl' | 'trait' }> | null;
+  /** The block scopes of the body, outermost first. A span resolves in the last scope that holds it. */
+  readonly scopes: readonly BodyScope[];
   /** The ABI as written, from the function or the `extern` block it is in, or null. */
   readonly abi: string | null;
   /** True when the function carries `#[no_mangle]`. */
@@ -247,50 +255,52 @@ function newNode(
   };
 }
 
-/** The scope a function's body resolves in: a block of its nested items when it has any, else its module (9.8). */
-function bodyScope(
+/**
+ * The owner a function resolves its signature in, and the block scopes of its body (9.8). A block
+ * scope has the block's items, and its parent is the nearest enclosing block that has items.
+ */
+function bodyScopes(
   build: Build,
   node: RustModuleNode,
   item: PendingFunction['item'],
   id: string,
-): RustModuleNode {
-  const nested = nestedItemsOf(item.body);
-  if (nested.length === 0) return node;
-  const block = newNode(build, {
-    path: node.path,
-    inline: false,
-    file: node.file,
-    scope: blockKey(id),
-    parent: node,
-    public: false,
-    block: true,
-  });
-  visitItems(build, block, nested, '', [], true);
-  return block;
-}
-
-/** The scope a function is owned by: its body's block when it has nested items, else the module. */
-function fnOwner(
-  build: Build,
-  node: RustModuleNode,
-  item: PendingFunction['item'],
-): RustModuleNode {
-  const id = build.fnIds.get(item);
-  return id === undefined ? node : bodyScope(build, node, item, id);
+): { owner: RustModuleNode; scopes: BodyScope[] } {
+  if (item.body === null) return { owner: node, scopes: [] };
+  const blocks = bodyBlocksOf(item.body);
+  const made = new Map<BodyBlock, RustModuleNode>();
+  const scopes: BodyScope[] = [];
+  for (const block of blocks) {
+    const parent = block.parent === null ? node : (made.get(block.parent) ?? node);
+    const scope = newNode(build, {
+      path: node.path,
+      inline: false,
+      file: node.file,
+      scope: blockKey(id, block.position),
+      parent,
+      public: false,
+      block: true,
+    });
+    made.set(block, scope);
+    scopes.push({ span: block.span, owner: scope });
+    visitItems(build, scope, block.items, '', [], true);
+  }
+  const top = blocks.find((block) => block.top);
+  return { owner: top === undefined ? node : (made.get(top) ?? node), scopes };
 }
 
 function addFunction(
   build: Build,
-  owner: RustModuleNode,
+  node: RustModuleNode,
   item: PendingFunction['item'],
   container: PendingFunction['container'],
   blockAbi: string | null = null,
 ): void {
   const id = build.fnIds.get(item);
   if (id === undefined) return;
+  const { owner, scopes } = bodyScopes(build, node, item, id);
   const abi = item.qualifiers.abi ?? blockAbi;
   const noMangle = item.attrs.some((attr) => attr.path === 'no_mangle');
-  build.functions.push({ owner, id, item, container, abi, noMangle });
+  build.functions.push({ owner, id, item, container, abi, noMangle, scopes });
 }
 
 /** The id of a named item in its module's own scope: values for consts and statics, types otherwise. */
@@ -318,12 +328,12 @@ function visitItems(
       continue;
     }
     if (item.kind === 'fn') {
-      addFunction(build, fnOwner(build, node, item), item, null);
+      addFunction(build, node, item, null);
       continue;
     }
     if (item.kind === 'impl') {
       for (const child of item.items) {
-        if (child.kind === 'fn') addFunction(build, fnOwner(build, node, child), child, item);
+        if (child.kind === 'fn') addFunction(build, node, child, item);
       }
       build.impls.push({
         owner: node,
@@ -337,7 +347,7 @@ function visitItems(
     }
     if (item.kind === 'trait') {
       for (const child of item.items) {
-        if (child.kind === 'fn') addFunction(build, fnOwner(build, node, child), child, item);
+        if (child.kind === 'fn') addFunction(build, node, child, item);
       }
       build.traits.push({
         owner: node,

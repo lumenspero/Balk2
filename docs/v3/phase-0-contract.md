@@ -251,3 +251,10 @@ This local run sets the provisional budget. The contract records the budget from
 - `use` inside a function body now binds like a module-level `use`. The 9.3 note that deferred it to Phase 10 is superseded.
 - `mod` inside a function body is not read. Macro arguments are still not scanned (Phase 10).
 - Known limits: a const or static initializer with a block that contains an item is not scanned for that item; `extern "C"` blocks inside a body are not read.
+
+### 9.8 addendum: inner blocks
+
+- Items declared in any `{ }` block inside a function body are read, not only items at the top of the body. Each block that declares items is a scope, keyed by the function id and the block's position (`file:outer::inner` names the item; the scope key is `file:outer{line:column}`).
+- A block's items are visible in that block and in the blocks nested inside it. They are not visible outside it.
+- Each call and mention resolves in the innermost block scope that holds it. A `let` annotation resolves in its own block too.
+- Items inside a block belong to the item, and their calls and references are not credited to the function around the block.

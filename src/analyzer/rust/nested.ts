@@ -1,10 +1,10 @@
 /**
  * Items declared inside function bodies (V3 Phase 9.8). A nested item is named under its function
  * (`file:outer::inner`). Its calls and references belong to it, not to the function around it, and
- * its names are visible only inside the block where it is written.
+ * its names are visible only inside the `{ }` block where it is written, and the blocks in that block.
  *
  * Only items are read. A statement is an item when it starts with an item keyword (after any
- * attributes, `pub`, `unsafe` and `const fn`) at a statement start. `mod` items are not read.
+ * attributes, `pub`, `unsafe`) at a statement start. `mod` items are not read.
  */
 import { type BodyFact, scanFunctionBody } from './body.js';
 import { type Item, parseItems, type Span, TreeCursor } from './items.js';
@@ -36,14 +36,27 @@ const BRACED: ReadonlySet<string> = new Set([
   'mod',
 ]);
 
-const cache = new WeakMap<TokenGroup, Item[]>();
+/** A `{ }` block that declares items. Blocks are listed outermost first. */
+export interface BodyBlock {
+  /** The block's position in its file. With the function id, it names the block's scope. */
+  readonly position: string;
+  readonly span: Span;
+  readonly items: readonly Item[];
+  /** The nearest enclosing block that declares items, or null. */
+  readonly parent: BodyBlock | null;
+  /** True for the function's own body. */
+  readonly top: boolean;
+}
 
-/** The items declared directly in a function body, as the parser reads them. Cached per body. */
-export function nestedItemsOf(body: TokenGroup | null): Item[] {
-  if (body === null) return [];
-  const cached = cache.get(body);
+const itemCache = new WeakMap<TokenGroup, Item[]>();
+const blockCache = new WeakMap<TokenGroup, BodyBlock[]>();
+
+/** The items declared directly in a group's statements, as the parser reads them. Cached per group. */
+export function nestedItemsOf(group: TokenGroup | null): Item[] {
+  if (group === null) return [];
+  const cached = itemCache.get(group);
   if (cached !== undefined) return cached;
-  const trees = body.children;
+  const trees = group.children;
   const items: Item[] = [];
   let i = 0;
   while (i < trees.length) {
@@ -60,21 +73,76 @@ export function nestedItemsOf(body: TokenGroup | null): Item[] {
     }
     i = end + 1;
   }
-  cache.set(body, items);
+  itemCache.set(group, items);
   return items;
+}
+
+/** The blocks of a function body that declare items, including blocks inside other blocks. Cached per body. */
+export function bodyBlocksOf(body: TokenGroup): BodyBlock[] {
+  const cached = blockCache.get(body);
+  if (cached !== undefined) return cached;
+  const blocks: BodyBlock[] = [];
+  collectBlocks(body, null, blocks, true);
+  blockCache.set(body, blocks);
+  return blocks;
 }
 
 /** The facts of a function body that are not inside one of its nested items. */
 export function ownBodyFacts(body: TokenGroup): BodyFact[] {
-  const nested = nestedItemsOf(body);
+  const nested = bodyBlocksOf(body).flatMap((block) => block.items);
   const facts = scanFunctionBody(body);
   if (nested.length === 0) return facts;
   return facts.filter((fact) => !nested.some((item) => startsWithin(fact.span, item.span)));
 }
 
-/** The scope key of the block that holds a function's nested items. */
-export function blockKey(fnId: string): string {
-  return `${fnId}{body}`;
+/** The scope key of a block: its function's id and the block's position. */
+export function blockKey(fnId: string, position: string): string {
+  return `${fnId}{${position}}`;
+}
+
+/** True when a span starts inside another. */
+export function startsWithin(inner: Span, outer: Span): boolean {
+  const afterStart =
+    inner.line > outer.line || (inner.line === outer.line && inner.column >= outer.column);
+  const beforeEnd =
+    inner.line < outer.endLine || (inner.line === outer.endLine && inner.column <= outer.endColumn);
+  return afterStart && beforeEnd;
+}
+
+function collectBlocks(
+  group: TokenGroup,
+  enclosing: BodyBlock | null,
+  out: BodyBlock[],
+  top: boolean,
+): void {
+  const items = group.delimiter === '{' ? nestedItemsOf(group) : [];
+  let here = enclosing;
+  if (items.length > 0) {
+    here = {
+      position: `${group.line}:${group.column}`,
+      span: spanOf(group),
+      items,
+      parent: enclosing,
+      top,
+    };
+    out.push(here);
+  }
+  for (const child of group.children) {
+    if (!isTokenGroup(child)) continue;
+    // A group inside a nested item belongs to that item, not to this block.
+    const childSpan = spanOf(child);
+    if (items.some((item) => startsWithin(childSpan, item.span))) continue;
+    collectBlocks(child, here, out, false);
+  }
+}
+
+function spanOf(group: TokenGroup): Span {
+  return {
+    line: group.line,
+    column: group.column,
+    endLine: group.endLine,
+    endColumn: group.endColumn,
+  };
 }
 
 function startsStatement(previous: TokenTree | undefined): boolean {
@@ -97,14 +165,8 @@ function itemKeywordAt(trees: readonly TokenTree[], i: number): number | null {
   if (!ITEM_KEYWORDS.has(word.value)) return null;
   const next = trees[j + 1];
   // `const {` and `static ||` are expressions, not items, and a bare `union` is a name.
-  if (word.value === 'const' || word.value === 'static') {
+  if (word.value === 'const' || word.value === 'static' || word.value === 'union') {
     if (next === undefined || isTokenGroup(next) || next.kind !== 'ident') return null;
-  }
-  if (
-    word.value === 'union' &&
-    (next === undefined || isTokenGroup(next) || next.kind !== 'ident')
-  ) {
-    return null;
   }
   return j;
 }
@@ -127,13 +189,4 @@ function isPunct(tree: TokenTree | undefined, text: string): boolean {
 
 function isWord(tree: TokenTree | undefined, word: string): boolean {
   return tree !== undefined && !isTokenGroup(tree) && tree.kind === 'ident' && tree.value === word;
-}
-
-/** True when a span starts inside another. */
-function startsWithin(inner: Span, outer: Span): boolean {
-  const afterStart =
-    inner.line > outer.line || (inner.line === outer.line && inner.column >= outer.column);
-  const beforeEnd =
-    inner.line < outer.endLine || (inner.line === outer.endLine && inner.column <= outer.endColumn);
-  return afterStart && beforeEnd;
 }

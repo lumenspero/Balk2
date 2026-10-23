@@ -24,7 +24,7 @@
  * source order. Two definitions in different `cfg` branches are the same symbol instead (twins),
  * so both declarations keep one id and their conditions.
  */
-import { blockKey, nestedItemsOf } from './nested.js';
+import { blockKey, bodyBlocksOf } from './nested.js';
 import type { Declaration, Visibility } from '../../facts/types.js';
 import type { SourceSpan, SymbolType } from '../../types.js';
 import type {
@@ -130,13 +130,14 @@ function walkModule(walk: Walk, items: readonly Item[], scope: Scope): void {
 
 /** Declares the items written inside a function body, under the function's name (9.8). */
 function walkFnBody(walk: Walk, item: FnItem, fnId: string, fnBase: string, scope: Scope): void {
-  const nested = nestedItemsOf(item.body);
-  if (nested.length === 0) return;
-  walkModule(walk, nested, {
-    modulePath: `${fnBase}::`,
-    key: blockKey(fnId),
-    conditions: scope.conditions,
-  });
+  if (item.body === null) return;
+  for (const block of bodyBlocksOf(item.body)) {
+    walkModule(walk, block.items, {
+      modulePath: `${fnBase}::`,
+      key: blockKey(fnId, block.position),
+      conditions: scope.conditions,
+    });
+  }
 }
 
 function walkModuleItem(walk: Walk, item: Item, scope: Scope): void {

@@ -74,3 +74,27 @@ describe('nested items: references', () => {
     );
   });
 });
+
+describe('nested items in inner blocks', () => {
+  it('names an item declared in an inner block under the function', () => {
+    const ids = analyzeRustSymbols(
+      parseRustFile('fn outer(x: bool) { if x { fn inner() {} } }'),
+      'src/lib.rs',
+    ).declarations.map((declaration) => declaration.id);
+    expect(ids).toEqual(expect.arrayContaining(['src/lib.rs:outer::inner']));
+  });
+
+  it('gives a call inside the inner block to the item declared there', () => {
+    const pairs = callPairs({
+      'src/lib.rs': 'fn outer(x: bool) { if x { fn inner() {} inner(); } }',
+    });
+    expect(pairs).toEqual([['src/lib.rs:outer', 'src/lib.rs:outer::inner']]);
+  });
+
+  it('keeps the item out of the rest of the function', () => {
+    const pairs = callPairs({
+      'src/lib.rs': 'fn outer(x: bool) { if x { fn inner() {} } inner(); }',
+    });
+    expect(pairs).toEqual([]);
+  });
+});

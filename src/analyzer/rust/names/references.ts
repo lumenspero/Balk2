@@ -16,8 +16,16 @@ import { type BodyFact, scanTokens } from '../body.js';
 import { ownBodyFacts } from '../nested.js';
 import type { GenericParam, Span } from '../items.js';
 import { isTokenGroup, type TokenTree } from '../token-tree.js';
-import { buildRepo, type Ctx, contextOf, fillBounds, localsOf, type Repo } from './calls.js';
-import type { RustCrateIndex } from './module-index.js';
+import {
+  buildRepo,
+  type Ctx,
+  contextOf,
+  fillBounds,
+  localsOf,
+  type Repo,
+  scopeCtx,
+} from './calls.js';
+import type { BodyScope, RustCrateIndex } from './module-index.js';
 import {
   type RustNameEnvironment,
   type RustPath,
@@ -140,7 +148,13 @@ export function bindReferences(
     const body = fn.item.body;
     if (body !== null) {
       const facts = ownBodyFacts(body);
-      factMentions(walk, src, facts, localsOf(fn.item, facts, ctx));
+      factMentions(
+        walk,
+        src,
+        facts,
+        localsOf(fn.item, facts, ctx, (span) => scopeCtx(ctx, fn.scopes, span)),
+        fn.scopes,
+      );
     }
   }
 
@@ -170,7 +184,7 @@ export function bindReferences(
         if (item.ty !== null) mentionsIn(walk, src, item.ty.tokens, item.span);
         if (item.value !== null) {
           const facts = scanTokens(item.value.tokens);
-          factMentions(walk, src, facts, new Map());
+          factMentions(walk, src, facts, new Map(), []);
         }
       }
     }
@@ -225,18 +239,20 @@ function factMentions(
   src: Source,
   facts: readonly BodyFact[],
   locals: ReadonlyMap<string, unknown>,
+  scopes: readonly BodyScope[],
 ): void {
   for (const fact of facts) {
+    const at: Source = { ...src, ctx: scopeCtx(src.ctx, scopes, fact.span) };
     if (fact.kind === 'let') {
-      if (fact.type !== null) mentionsIn(walk, src, fact.type.tokens, fact.span);
+      if (fact.type !== null) mentionsIn(walk, at, fact.type.tokens, fact.span);
     } else if (fact.kind === 'call' || fact.kind === 'path') {
       const segments = fact.kind === 'call' ? fact.path : fact.segments;
       if (segments.length === 1 && locals.has(segments[0] ?? '')) continue;
       const path: RustPath = { global: false, segments };
-      mentionPath(walk, src, path, 'value', walk.targets.values, fact.span);
+      mentionPath(walk, at, path, 'value', walk.targets.values, fact.span);
     } else if (fact.kind === 'struct-literal') {
       const path: RustPath = { global: false, segments: fact.path };
-      mentionPath(walk, src, path, 'type', walk.targets.literals, fact.span);
+      mentionPath(walk, at, path, 'type', walk.targets.literals, fact.span);
     }
   }
 }
