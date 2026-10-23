@@ -28,6 +28,7 @@ import type {
   RustCrateIndex,
   RustModuleNode,
   BodyScope,
+  PendingMacro,
 } from './module-index.js';
 import {
   type RustNameEnvironment,
@@ -189,6 +190,10 @@ export function bindCalls(
         } else {
           record(resolved.callable, fact.span);
         }
+      } else if (fact.kind === 'macro-call') {
+        const owner = scopeCtx(ctx, scopes, fact.span).owner;
+        const target = macroTarget(fact.path, fact.span, owner, ctx.crate);
+        if (target !== undefined) record({ id: target, confidence: 'high', dispatch: false }, fact.span);
       } else if (fact.kind === 'method-call') {
         if (fact.receiver === null) continue;
         const typed = receiverOf(fact.receiver, scopeCtx(ctx, scopes, fact.span), locals);
@@ -228,7 +233,57 @@ export function bindCalls(
     }
   }
 
+  // Module-level macro invocations (10.1). They have no owner symbol, so the file owns them,
+  // as file-level code is owned in JS/TS and Python.
+  for (const crate of crates) {
+    for (const call of crate.macroCalls) {
+      const ctx: Ctx = { repo, crate, owner: call.owner, self: null, bounds: new Map() };
+      bindBody(
+        call.owner.file,
+        call.owner.file,
+        [{ kind: 'macro-call', path: call.path, args: call.args, span: call.span }],
+        ctx,
+        new Map(),
+        [],
+      );
+    }
+  }
+
   return { edges: [...edges.values()], unresolved };
+}
+
+// ── Macro invocations (V3 Phase 10.1) ────────────────────────
+
+/**
+ * The `m!` symbol that a macro invocation names, or undefined when no repository macro is named.
+ * A bare name takes the last same-file definition before the invocation (textual scope). A
+ * `crate::m!` path takes a `#[macro_export]` macro. Other paths, and std macros, name nothing.
+ */
+function macroTarget(
+  path: readonly string[],
+  span: Span,
+  owner: RustModuleNode,
+  crate: RustCrateIndex,
+): string | undefined {
+  const name = path[path.length - 1];
+  if (name === undefined) return undefined;
+  if (path.length === 1) {
+    let found: PendingMacro | undefined;
+    for (const def of crate.macros) {
+      if (def.owner.file !== owner.file || def.name !== name) continue;
+      if (!startsBefore(def.span, span)) continue;
+      if (found === undefined || startsBefore(found.span, def.span)) found = def;
+    }
+    return found?.id;
+  }
+  if (path.length === 2 && path[0] === 'crate') {
+    return crate.macros.find((def) => def.exported && def.name === name)?.id;
+  }
+  return undefined;
+}
+
+function startsBefore(a: Span, b: Span): boolean {
+  return a.line < b.line || (a.line === b.line && a.column < b.column);
 }
 
 // ── The repository index ─────────────────────────────────────

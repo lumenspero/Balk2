@@ -138,6 +138,26 @@ export interface PendingDecl {
   readonly scopes: readonly BodyScope[];
 }
 
+/** A `macro_rules!` macro in the crate, with its symbol id (V3 Phase 10.1). */
+export interface PendingMacro {
+  readonly owner: RustModuleNode;
+  /** The symbol id, `file:name!` (inline modules add their path, as symbols.ts does). */
+  readonly id: string;
+  readonly name: string;
+  readonly span: Span;
+  /** True when the macro carries `#[macro_export]`, so it sits at the crate root. */
+  readonly exported: boolean;
+}
+
+/** A macro invocation written as an item, outside any function body (V3 Phase 10.1). */
+export interface PendingMacroCall {
+  /** The module the invocation is written in. Its owner for edges is the file. */
+  readonly owner: RustModuleNode;
+  readonly path: readonly string[];
+  readonly args: Extract<Item, { kind: 'macro_call' }>['args'];
+  readonly span: Span;
+}
+
 export interface RustCrateIndex {
   readonly root: RustModuleNode;
   /** Names of every scope in the crate's files, keyed by scope. */
@@ -157,6 +177,10 @@ export interface RustCrateIndex {
   readonly functions: readonly PendingFunction[];
   /** Every struct, union, enum, type alias, const and static in the crate. */
   readonly decls: readonly PendingDecl[];
+  /** Every `macro_rules!` macro in the crate, in source order (V3 Phase 10.1). */
+  readonly macros: readonly PendingMacro[];
+  /** Every item-level macro invocation in the crate, in source order (V3 Phase 10.1). */
+  readonly macroCalls: readonly PendingMacroCall[];
 }
 
 export interface CrateIndexInput {
@@ -177,6 +201,8 @@ interface Build {
   readonly traits: PendingTrait[];
   readonly functions: PendingFunction[];
   readonly decls: PendingDecl[];
+  readonly macros: PendingMacro[];
+  readonly macroCalls: PendingMacroCall[];
   readonly fnIds: Map<Extract<Item, { kind: 'fn' }>, string>;
   readonly loaded: Set<string>;
 }
@@ -192,6 +218,8 @@ export function buildCrateIndex(input: CrateIndexInput): RustCrateIndex {
     traits: [],
     functions: [],
     decls: [],
+    macros: [],
+    macroCalls: [],
     fnIds: new Map(),
     loaded: new Set([input.root]),
   };
@@ -221,6 +249,8 @@ export function buildCrateIndex(input: CrateIndexInput): RustCrateIndex {
     traits: build.traits,
     functions: build.functions,
     decls: build.decls,
+    macros: build.macros,
+    macroCalls: build.macroCalls,
   };
 }
 
@@ -382,6 +412,25 @@ function visitItems(
         name: item.name,
         span: item.span,
         supertraits: item.supertraits,
+      });
+      continue;
+    }
+    if (item.kind === 'macro_rules') {
+      build.macros.push({
+        owner: node,
+        id: `${node.file}:${inlinePath === '' ? '' : `${inlinePath}::`}${item.name}!`,
+        name: item.name,
+        span: item.span,
+        exported: item.attrs.some((attr) => attr.path === 'macro_export'),
+      });
+      continue;
+    }
+    if (item.kind === 'macro_call') {
+      build.macroCalls.push({
+        owner: node,
+        path: item.path.split('::'),
+        args: item.args,
+        span: item.span,
       });
       continue;
     }

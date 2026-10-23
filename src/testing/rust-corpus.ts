@@ -42,6 +42,7 @@ export const RUST_CORPUS: readonly CorpusScenario[] = [
         },
         expect: {
           symbols: ['src/lib.rs:run'],
+          relationships: ['calls src/lib.rs -> src/lib.rs:make!'],
           absent: ['calls src/lib.rs:run -> src/lib.rs:generated'],
         },
       },

@@ -139,3 +139,37 @@ describe('bindCalls: typed receivers', () => {
     expect(edgesOf(results)).toEqual([['src/lib.rs:T.a', 'src/lib.rs:T.b', 'high', true]]);
   });
 });
+
+describe('bindCalls: macro invocations (V3 Phase 10.1)', () => {
+  it('links a body invocation to the macro defined earlier in the file', () => {
+    const results = callsOf({
+      'src/lib.rs': 'macro_rules! m { () => {} }\nfn main() { m!(); }',
+    });
+    expect(edgesOf(results)).toEqual([['src/lib.rs:main', 'src/lib.rs:m!', 'high', false]]);
+  });
+
+  it('links a module-level invocation with the file as its owner', () => {
+    const results = callsOf({ 'src/lib.rs': 'macro_rules! m { () => {} }\nm!();' });
+    expect(edgesOf(results)).toEqual([['src/lib.rs', 'src/lib.rs:m!', 'high', false]]);
+  });
+
+  it('does not link an invocation written before the macro definition', () => {
+    const results = callsOf({ 'src/lib.rs': 'fn main() { m!(); }\nmacro_rules! m { () => {} }' });
+    expect(results.edges).toEqual([]);
+  });
+
+  it('links crate::name! to a #[macro_export] macro', () => {
+    const results = callsOf({
+      'src/lib.rs': '#[macro_export]\nmacro_rules! m { () => {} }\nfn main() { crate::m!(); }',
+    });
+    expect(edgesOf(results)).toEqual([['src/lib.rs:main', 'src/lib.rs:m!', 'high', false]]);
+  });
+
+  it('draws no edge for std macros or for tokens inside a macro definition', () => {
+    const results = callsOf({
+      'src/lib.rs':
+        'macro_rules! m { () => { helper() } }\nfn helper() {}\nfn main() { println!("x"); vec![1]; }',
+    });
+    expect(results.edges).toEqual([]);
+  });
+});
