@@ -253,23 +253,35 @@ function methodFacts(
     return factAt(info, source, match, `pathlib.Path.${method}`);
   }
 
-  if (type.startsWith('pandas.') && lookupDataApi('python', 'pandas', type.slice(7), 0)) {
+  const frame = frameTypeOf(type);
+  if (frame !== undefined) {
     const found: DataReferenceFact[] = [];
     positionals(call.args).forEach((value, index) => {
-      const entry = lookupDataApi('python', 'pandas.DataFrame', method, index);
+      const entry = lookupDataApi('python', frame, method, index);
       if (entry === undefined) return;
       const match: DataApiMatch = {
         module: entry.module,
         name: entry.name,
         direction: entry.direction,
       };
-      found.push(
-        ...factAt(info, pathSourceOf(value, info, infoOf), match, `pandas.DataFrame.${method}`),
-      );
+      found.push(...factAt(info, pathSourceOf(value, info, infoOf), match, `${frame}.${method}`));
     });
     return found;
   }
   return undefined;
+}
+
+/**
+ * The frame type a pandas or Polars reader returns (Phase 11.6): `read_*` gives a DataFrame, and
+ * `scan_*` a LazyFrame. Undefined for any other call.
+ */
+function frameTypeOf(type: string): string | undefined {
+  const dot = type.lastIndexOf('.');
+  const module = type.slice(0, dot);
+  const reader = type.slice(dot + 1);
+  if (module !== 'pandas' && module !== 'polars') return undefined;
+  if (lookupDataApi('python', module, reader, 0) === undefined) return undefined;
+  return reader.startsWith('scan_') ? `${module}.LazyFrame` : `${module}.DataFrame`;
 }
 
 /** True for `Final`, `typing.Final`, and `Final[...]` annotations. */

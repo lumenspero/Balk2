@@ -101,3 +101,7 @@ A method call on a value of known type gives a data edge at high confidence:
 - `df = pd.read_csv(...)` followed by `df.to_csv`, `to_parquet`, `to_json`, `to_excel` or `to_feather` writes the destination. The DataFrame is typed the same way: a single assignment from a pandas reader.
 
 A method on any other value is not a catalog call. `open` on a `Path` writes when its mode writes, as the builtin does.
+
+## Phase 11.6 output change (Polars frames)
+
+`pl.read_*` and `pl.scan_*` type their result as a Polars DataFrame and LazyFrame. A DataFrame's `write_csv`, `write_parquet`, `write_json` and `write_ipc` write the destination they are given, and a LazyFrame's `sink_csv`, `sink_parquet`, `sink_ipc` and `sink_ndjson` do the same. A name is typed only from a single assignment, as for pandas.

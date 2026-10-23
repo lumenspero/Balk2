@@ -101,6 +101,21 @@ export const PYTHON_DATA_APIS: readonly DataApiEntry[] = [
   // Methods on a `pathlib.Path` receiver read or write the path the receiver holds (Phase 11.6).
   ...entriesFor('pathlib.Path', ['read_text', 'read_bytes'], 'consumes', PYTHON, -1),
   ...entriesFor('pathlib.Path', ['write_text', 'write_bytes'], 'generates', PYTHON, -1),
+  // Writers on a Polars DataFrame, or a LazyFrame from `scan_*`, take the destination first (Phase 11.6).
+  ...entriesFor(
+    'polars.DataFrame',
+    ['write_csv', 'write_parquet', 'write_json', 'write_ipc'],
+    'generates',
+    PYTHON,
+    0,
+  ),
+  ...entriesFor(
+    'polars.LazyFrame',
+    ['sink_csv', 'sink_parquet', 'sink_ipc', 'sink_ndjson'],
+    'generates',
+    PYTHON,
+    0,
+  ),
   // Writers on a DataFrame read by pandas take the destination as their first argument.
   ...entriesFor(
     'pandas.DataFrame',

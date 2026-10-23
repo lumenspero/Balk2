@@ -283,3 +283,29 @@ describe('Python data catalog: method receivers (Phase 11.6)', () => {
     expect(highEdgesTo(map, 'out/x.csv')).toEqual([]);
   });
 });
+
+describe('Python data catalog: Polars frames (Phase 11.6)', () => {
+  it('a Polars DataFrame writes the destination of its write_ method', () => {
+    const map = analyze({
+      'app.py': [
+        'import polars as pl',
+        "df = pl.read_csv('in/p.csv')",
+        "df.write_parquet('out/p.parquet')",
+      ].join('\n'),
+    });
+    expect(highEdgesTo(map, 'in/p.csv')).toEqual(['consumes/high app.py']);
+    expect(highEdgesTo(map, 'out/p.parquet')).toEqual(['generates/high app.py']);
+  });
+
+  it('a LazyFrame from scan_ writes through sink_', () => {
+    const map = analyze({
+      'app.py': [
+        'import polars as pl',
+        "lf = pl.scan_parquet('in/q.parquet')",
+        "lf.sink_csv('out/q.csv')",
+      ].join('\n'),
+    });
+    expect(highEdgesTo(map, 'in/q.parquet')).toEqual(['consumes/high app.py']);
+    expect(highEdgesTo(map, 'out/q.csv')).toEqual(['generates/high app.py']);
+  });
+});
