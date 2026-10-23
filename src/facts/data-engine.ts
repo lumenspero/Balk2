@@ -1,7 +1,7 @@
 import { detectArtifactFormat } from '../data/formats.js';
 import { normalizePath } from '../graph.js';
 import type { ArtifactFormat, Confidence } from '../types.js';
-import { resolveBarePath, type BareBases } from './path-value.js';
+import { hasBareCandidate, resolveBarePath, type BareBases } from './path-value.js';
 import type { DataReferenceFact } from './types.js';
 
 /**
@@ -54,7 +54,6 @@ const READ_KEYWORDS = [
   'read_parquet',
   'read_csv',
   'createreadstream',
-  'fetch',
 ];
 
 /**
@@ -79,11 +78,20 @@ export function runDataEngine(input: {
   readonly paths?: DataPathContext;
 }): DataEdge[] {
   return input.facts.map((fact) => {
-    // A call the front end resolved to a catalog API has a known direction (Phase 11.1).
-    const direction: InferredDirection = fact.api
-      ? { type: fact.api.direction, certain: true }
-      : inferDataDirection(fact.context);
     const artifact = artifactPathOf(fact, input.paths);
+    // A call the front end resolved to a catalog API has a known direction (Phase 11.1). A served
+    // URL path with no candidate file keeps the keyword rule, at low confidence (Phase 11.6).
+    const unplaced =
+      fact.api?.served === true &&
+      input.paths !== undefined &&
+      !hasBareCandidate(normalizePath(fact.path), input.paths.bases(fact), input.paths.exists);
+    const keyword = inferDataDirection(fact.context);
+    const direction: InferredDirection =
+      fact.api && !unplaced
+        ? { type: fact.api.direction, certain: true }
+        : fact.api
+          ? { type: keyword.type, certain: false }
+          : keyword;
     return {
       source: normalizePath(fact.filePath),
       artifact,
@@ -131,6 +139,10 @@ export function inferDataDirection(callContext: string): InferredDirection {
   for (const kw of READ_KEYWORDS) {
     if (lower.includes(kw)) return { type: 'consumes', certain: true };
   }
+
+  // `fetch` reads, but the catalog decides whether the call is the global, so the keyword is only a
+  // guess (Phase 11.6).
+  if (lower.includes('fetch')) return { type: 'consumes', certain: false };
 
   // Check for file opening mode flags e.g. open('foo.json', 'w')
   if (/(['"])(w|wb|a|w\+|wb\+)\1/i.test(lower)) {

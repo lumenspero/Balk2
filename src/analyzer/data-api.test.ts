@@ -401,3 +401,61 @@ describe('data catalog: require bindings and moves (Phase 11.6)', () => {
     );
   });
 });
+
+/** The build with the repository's paths given, so bare and served paths can be placed (Phase 11.6). */
+function buildPlaced(fixture: RepositoryFixture, files: Record<string, string>): ConnectionMap {
+  const graph = new ConnectionGraph();
+  new JsTsAnalyzer().analyzeRepository(fixture.repository, graph, {
+    dataPaths: new Set(Object.keys(files)),
+  });
+  return graph.build(META);
+}
+
+/** Data edges at one confidence, as `type from -> to`, sorted. */
+function dataEdgesAt(map: ConnectionMap, confidence: 'high' | 'low'): string[] {
+  return map.relationships
+    .filter((r) => DATA_TYPES.has(r.type) && r.confidence === confidence)
+    .map((r) => `${r.type} ${r.from} -> ${r.to}`)
+    .sort();
+}
+
+describe('data catalog: served fetch paths (Phase 11.6)', () => {
+  it('a fetched path is placed in the public folder when the file is there', () => {
+    const files = {
+      'package.json': '{"name":"app"}',
+      'public/data/games.json': '[]',
+      'src/app.ts': "export const load = () => fetch('data/games.json');",
+    };
+    withFixture(files, (fixture) => {
+      expect(dataEdgesAt(buildPlaced(fixture, files), 'high')).toEqual([
+        'consumes src/app.ts -> public/data/games.json',
+      ]);
+    });
+  });
+
+  it('a fetched path with no file stays a low keyword edge at the root', () => {
+    const files = {
+      'package.json': '{"name":"app"}',
+      'src/app.ts': "export const load = () => fetch('data/missing.json');",
+    };
+    withFixture(files, (fixture) => {
+      const map = buildPlaced(fixture, files);
+      expect(dataEdgesAt(map, 'high')).toEqual([]);
+      expect(dataEdgesAt(map, 'low')).toEqual(['consumes src/app.ts -> data/missing.json']);
+    });
+  });
+
+  it('a function the program declares named fetch is not the global', () => {
+    const files = {
+      'package.json': '{"name":"app"}',
+      'public/data/x.json': '[]',
+      'src/app.ts': [
+        'function fetch(p: string): string { return p; }',
+        "export const load = () => fetch('data/x.json');",
+      ].join('\n'),
+    };
+    withFixture(files, (fixture) => {
+      expect(dataEdgesAt(buildPlaced(fixture, files), 'high')).toEqual([]);
+    });
+  });
+});

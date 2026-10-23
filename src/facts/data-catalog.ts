@@ -17,6 +17,8 @@ export interface DataApiEntry {
   readonly name: string;
   readonly direction: CatalogDirection;
   readonly languages: readonly FactLanguage[];
+  /** True for a URL path served from a public folder (Phase 11.6). See `DataApiMatch.served`. */
+  readonly served?: boolean;
   /**
    * The positional argument that holds the artifact path, counted from 0. `-1` names the receiver
    * of a method call, so `Path('x.json').read_text()` reads the path the receiver holds (Phase 11.6).
@@ -59,6 +61,15 @@ export const JS_TS_DATA_APIS: readonly DataApiEntry[] = [
   ...entriesFor('fs', MOVE, 'generates', JS_TS, 1),
   ...entriesFor('fs/promises', MOVE, 'consumes', JS_TS, 0),
   ...entriesFor('fs/promises', MOVE, 'generates', JS_TS, 1),
+  // The global `fetch` (Phase 11.6). Its path is a URL path, served from the package's public folder.
+  {
+    module: 'global',
+    name: 'fetch',
+    direction: 'consumes',
+    languages: JS_TS,
+    argument: 0,
+    served: true,
+  },
 ];
 
 /**

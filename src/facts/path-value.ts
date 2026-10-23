@@ -90,7 +90,7 @@ function isRemoteOrTemplate(text: string): boolean {
 }
 
 /** A base a bare relative path can be taken against (Phase 11.4). */
-export type PathBase = 'file' | 'package' | 'repository';
+export type PathBase = 'file' | 'package' | 'repository' | 'public';
 
 /**
  * The bases for one bare relative path. `order` is most specific first, and always ends with the
@@ -123,13 +123,11 @@ export function defaultBareBases(
  * the repository root, as a path with no known file has always been. Returns undefined when no
  * candidate stays inside the repository.
  */
-export function resolveBarePath(
-  path: string,
-  bases: BareBases,
-  exists: (repoPath: string) => boolean,
-): string | undefined {
-  if (path.startsWith('/')) return undefined;
-
+/**
+ * The repository paths a bare relative path can name under these bases, most specific first, with
+ * duplicates removed. Empty when no base stays inside the repository.
+ */
+export function bareCandidates(path: string, bases: BareBases): string[] {
   const candidates: string[] = [];
   for (const base of bases.order) {
     const dir = base === 'repository' ? '' : bases.dirs[base];
@@ -139,11 +137,49 @@ export function resolveBarePath(
     const repoPath = joined === '.' ? '' : joined;
     if (!candidates.includes(repoPath)) candidates.push(repoPath);
   }
+  return candidates;
+}
 
+/** True when one of the path's candidates is a scanned repository file (Phase 11.6). */
+export function hasBareCandidate(
+  path: string,
+  bases: BareBases,
+  exists: (repoPath: string) => boolean,
+): boolean {
+  return !path.startsWith('/') && bareCandidates(path, bases).some((c) => exists(c));
+}
+
+/**
+ * The repository-relative path a bare relative path names (Phase 11.4). Each base gives one
+ * candidate, in order, with duplicates removed. A single existing candidate is used. When several
+ * exist, the first one (the most specific base) is used. When none exists, the path is taken at
+ * the repository root, as a path with no known file has always been. Returns undefined when no
+ * candidate stays inside the repository.
+ */
+export function resolveBarePath(
+  path: string,
+  bases: BareBases,
+  exists: (repoPath: string) => boolean,
+): string | undefined {
+  if (path.startsWith('/')) return undefined;
+
+  const candidates = bareCandidates(path, bases);
   if (candidates.length === 0) return undefined;
   const existing = candidates.filter((candidate) => exists(candidate));
   if (existing.length === 1) return existing[0];
   if (existing.length > 1) return candidates[0];
   const atRoot = nodePath.posix.normalize(path);
   return atRoot === '..' || atRoot.startsWith('../') ? undefined : atRoot;
+}
+
+/** The bases a served URL path is placed from: the public folder, the package root, the repo root. */
+export function servedBareBases(dirs: { readonly package?: string }): BareBases {
+  const pkg = dirs.package;
+  return {
+    order: ['public', 'package', 'repository'],
+    dirs: {
+      public: pkg === undefined ? undefined : pkg === '' ? 'public' : `${pkg}/public`,
+      package: pkg,
+    },
+  };
 }

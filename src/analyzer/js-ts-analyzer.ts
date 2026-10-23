@@ -29,7 +29,7 @@ import { normalizePath } from '../graph.js';
 import type { SymbolType } from '../types.js';
 import { applyDataEdges } from '../data/data-analyzer.js';
 import { runDataEngine, type DataPathContext } from '../facts/data-engine.js';
-import { defaultBareBases } from '../facts/path-value.js';
+import { defaultBareBases, servedBareBases, type BareBases } from '../facts/path-value.js';
 import type { DataReferenceFact, FactLanguage } from '../facts/types.js';
 import { dataFlowFact, dataReferenceFact } from './data-facts.js';
 
@@ -607,10 +607,26 @@ function dataPathContext(
   if (dataPaths === undefined) return undefined;
   return {
     exists: (repoPath) => dataPaths.has(repoPath),
-    // A flowed constant is placed from the file that declares it (Phase 11.5).
-    bases: (fact) =>
-      defaultBareBases(language, { file: dirOf(fact.pathFilePath ?? fact.filePath) }),
+    // A flowed constant is placed from the file that declares it (Phase 11.5). A served URL path is
+    // placed from the package's public folder (Phase 11.6).
+    bases: (fact): BareBases => {
+      const placedFrom = fact.pathFilePath ?? fact.filePath;
+      if (fact.api?.served) {
+        return servedBareBases({ package: nearestPackageDir(placedFrom, dataPaths) ?? '' });
+      }
+      return defaultBareBases(language, { file: dirOf(placedFrom) });
+    },
   };
+}
+
+/** The nearest directory holding a package.json, walking up from a file, or undefined (Phase 11.6). */
+function nearestPackageDir(filePath: string, dataPaths: ReadonlySet<string>): string | undefined {
+  let dir = dirOf(filePath);
+  for (;;) {
+    if (dataPaths.has(dir === '' ? 'package.json' : `${dir}/package.json`)) return dir;
+    if (dir === '') return undefined;
+    dir = dirOf(dir);
+  }
 }
 
 /** The directory of a repository path, or '' for a file at the root. */

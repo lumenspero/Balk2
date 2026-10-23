@@ -94,6 +94,16 @@ export interface ResolvedApi {
 }
 
 /**
+ * A global the language library declares, such as `fetch`, named as the module `global` (Phase 11.6).
+ * A function the program declares itself is not a library global, so it does not match.
+ */
+function globalApi(identifier: ts.Identifier, checker: ts.TypeChecker): ResolvedApi | undefined {
+  const declaration = checker.getSymbolAtLocation(identifier)?.declarations?.[0];
+  if (declaration === undefined || !declaration.getSourceFile().hasNoDefaultLib) return undefined;
+  return { module: 'global', name: identifier.text };
+}
+
+/**
  * The module export a callee names, for these forms:
  * - `fn(...)` with `import { fn } from 'm'`
  * - `ns.fn(...)` with `import * as ns from 'm'` or `import ns from 'm'`
@@ -106,7 +116,8 @@ export function resolveCallee(
 ): ResolvedApi | undefined {
   if (ts.isIdentifier(callee)) {
     const binding = bindingOf(callee, checker);
-    if (!binding || binding.imported === '*' || binding.imported === 'default') return undefined;
+    if (!binding) return globalApi(callee, checker);
+    if (binding.imported === '*' || binding.imported === 'default') return undefined;
     return { module: binding.module, name: binding.imported };
   }
 
@@ -167,7 +178,14 @@ export function dataApiOfLiteral(
   if (!resolved) return undefined;
 
   const entry = lookupDataApi(language, resolved.module, resolved.name, index);
-  return entry ? { module: entry.module, name: entry.name, direction: entry.direction } : undefined;
+  return entry
+    ? {
+        module: entry.module,
+        name: entry.name,
+        direction: entry.direction,
+        ...(entry.served ? { served: true } : {}),
+      }
+    : undefined;
 }
 
 /** A catalog call that receives a `const` string binding (Phase 11.5). */

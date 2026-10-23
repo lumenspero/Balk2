@@ -333,6 +333,11 @@ export interface DataApiMatch {
   readonly module: string;
   readonly name: string;
   readonly direction: 'generates' | 'consumes' | 'reads';
+  /**
+   * True for an API whose path is a URL path served from a public folder (`fetch`, Phase 11.6). Such
+   * a path is placed only where a candidate exists; otherwise its edge stays a low keyword edge.
+   */
+  readonly served?: boolean;
 }
 
 /** A `# balk2:` or `// balk2:` source annotation, before it is applied. */
