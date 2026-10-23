@@ -272,3 +272,79 @@ describe('Rust data catalog: File::options chains (Phase 11.6)', () => {
     expect(highEdgesTo(map, 'in/g.json')).toEqual(['consumes/high src/main.rs']);
   });
 });
+
+describe('Rust data catalog: module paths (Phase 11.6)', () => {
+  it('crate:: reaches a constant in an inline module of the crate root', () => {
+    const map = analyze({
+      'Cargo.toml': CARGO,
+      'src/main.rs': [
+        'mod config { pub const DB: &str = "data/inline.json"; }',
+        'use crate::config::DB;',
+        'fn load() -> String { std::fs::read_to_string(DB).unwrap() }',
+        'fn main() {}',
+      ].join('\n'),
+    });
+    expect(highEdgesTo(map, 'data/inline.json')).toEqual(['consumes/high src/main.rs']);
+  });
+
+  it('super:: from an inline module reaches its parent module', () => {
+    const map = analyze({
+      'Cargo.toml': CARGO,
+      'src/main.rs': [
+        'mod outer {',
+        '    pub const DB: &str = "data/nested.json";',
+        '    mod inner {',
+        '        use super::DB;',
+        '        pub fn load() -> String { std::fs::read_to_string(DB).unwrap() }',
+        '    }',
+        '}',
+        'fn main() {}',
+      ].join('\n'),
+    });
+    expect(highEdgesTo(map, 'data/nested.json')).toEqual(['consumes/high src/main.rs']);
+  });
+
+  it('super:: from a file module reaches the file that declares it', () => {
+    const map = analyze({
+      'Cargo.toml': CARGO,
+      'src/main.rs': ['pub const DB: &str = "data/root.json";', 'mod config;', 'fn main() {}'].join(
+        '\n',
+      ),
+      'src/config.rs': [
+        'use super::DB;',
+        'pub fn load() -> String { std::fs::read_to_string(DB).unwrap() }',
+      ].join('\n'),
+    });
+    expect(highEdgesTo(map, 'data/root.json')).toEqual(['consumes/high src/config.rs']);
+  });
+
+  it('crate:: through a file module into its inline child reaches the constant', () => {
+    const map = analyze({
+      'Cargo.toml': CARGO,
+      'src/main.rs': [
+        'mod config;',
+        'use crate::config::sub::DB;',
+        'fn load() -> String { std::fs::read_to_string(DB).unwrap() }',
+        'fn main() {}',
+      ].join('\n'),
+      'src/config.rs': 'pub mod sub { pub const DB: &str = "data/sub.json"; }\n',
+    });
+    expect(highEdgesTo(map, 'data/sub.json')).toEqual(['consumes/high src/main.rs']);
+  });
+
+  it('a use in a parent module is not visible inside an inline child module', () => {
+    const map = analyze({
+      'Cargo.toml': CARGO,
+      'src/main.rs': [
+        'mod outer {',
+        '    use std::fs;',
+        '    mod inner {',
+        '        pub fn f() { fs::write("x/n.json", "").ok(); }',
+        '    }',
+        '}',
+        'fn main() {}',
+      ].join('\n'),
+    });
+    expect(highEdgesTo(map, 'x/n.json')).toEqual([]);
+  });
+});

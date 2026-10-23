@@ -24,19 +24,35 @@ export interface RustConstant {
   readonly declaringFile: string;
 }
 
-/** Finds the constant a `use` path names in another file of the crate, or undefined. */
+/**
+ * A module of the crate: a file, and the inline modules inside it, by name. A file's own module has
+ * no inline path (Phase 11.6).
+ */
+export interface ModulePosition {
+  readonly file: string;
+  readonly inline: readonly string[];
+}
+
+/**
+ * Finds the constant a `use` path names, as written in the module `from`. The last segment is the
+ * constant's name. Returns undefined when the path names no plain-string constant.
+ */
 export type RustConstantLookup = (
-  modulePath: readonly string[],
-  name: string,
+  from: ModulePosition,
+  path: readonly string[],
 ) => RustConstant | undefined;
 
-/** The names a block makes visible: its `use` targets, and its plain-string constants. */
+/**
+ * The names a block makes visible: its `use` targets and plain-string constants, and the inline
+ * module path it sits at. An inline module starts with no names of its enclosing module (Phase 11.6).
+ */
 interface Scope {
   readonly uses: ReadonlyMap<string, readonly string[]>;
   readonly consts: ReadonlyMap<string, string>;
+  readonly module: readonly string[];
 }
 
-const EMPTY_SCOPE: Scope = { uses: new Map(), consts: new Map() };
+const EMPTY_SCOPE: Scope = { uses: new Map(), consts: new Map(), module: [] };
 
 /** Flags of `OpenOptions` that make a chain a write when they are set to `true`. */
 const WRITE_FLAGS: ReadonlySet<string> = new Set([
@@ -68,10 +84,35 @@ export function analyzeRustDataApis(
   return facts;
 }
 
-/** The plain-string constants a file declares at its top level, by name (Phase 11.6). */
-export function rustConstantsOf(source: string): ReadonlyMap<string, string> {
-  const { trees } = buildTokenTrees(lexRust(source).tokens);
+/** The plain-string constants a block declares directly, by name (Phase 11.6). */
+export function constantsIn(trees: readonly TokenTree[]): ReadonlyMap<string, string> {
   return scopeOf(trees, EMPTY_SCOPE).consts;
+}
+
+/** The modules a block declares: inline modules with their contents, and file modules by name. */
+export function moduleBlocks(trees: readonly TokenTree[]): {
+  readonly inline: ReadonlyMap<string, readonly TokenTree[]>;
+  readonly files: readonly string[];
+} {
+  const inline = new Map<string, readonly TokenTree[]>();
+  const files: string[] = [];
+  for (let i = 0; i < trees.length; i++) {
+    const name = trees[i + 1];
+    if (!isWord(trees[i], 'mod') || !isIdent(name)) continue;
+    const after = trees[i + 2];
+    if (isPunct(after, ';')) {
+      files.push(name.value);
+    } else if (after !== undefined && isTokenGroup(after) && after.delimiter === '{') {
+      inline.set(name.value, after.children);
+    }
+  }
+  return { inline, files };
+}
+
+/** The name of the inline module a group opens, when the group follows `mod name`. */
+function inlineModuleNameBefore(trees: readonly TokenTree[], i: number): string | undefined {
+  const name = trees[i - 1];
+  return isIdent(name) && isWord(trees[i - 2], 'mod') ? name.value : undefined;
 }
 
 function isWord(tree: TokenTree | undefined, word: string): boolean {
@@ -122,6 +163,7 @@ function untilSemicolon(trees: readonly TokenTree[], start: number): TokenTree[]
  * it declares, on top of the names it inherits. A `static mut` is not a constant.
  */
 function scopeOf(trees: readonly TokenTree[], inherited: Scope): Scope {
+  // The module path is carried through; the names are gathered from this block's own items.
   const uses = new Map(inherited.uses);
   const consts = new Map(inherited.consts);
   for (let i = 0; i < trees.length; i++) {
@@ -147,7 +189,7 @@ function scopeOf(trees: readonly TokenTree[], inherited: Scope): Scope {
       }
     }
   }
-  return { uses, consts };
+  return { uses, consts, module: inherited.module };
 }
 
 /** Finds every call in a token sequence, including calls inside groups, with the scope it is in. */
@@ -161,7 +203,17 @@ function scanTrees(
     const tree = trees[i];
     if (tree === undefined) continue;
     if (isTokenGroup(tree)) {
-      scanTrees(tree.children, scope, visit);
+      // An inline module starts a scope of its own: the names of its parent are not visible in it.
+      const inlineName = inlineModuleNameBefore(trees, i);
+      const inner: Scope =
+        inlineName === undefined
+          ? scope
+          : {
+              uses: EMPTY_SCOPE.uses,
+              consts: EMPTY_SCOPE.consts,
+              module: [...scope.module, inlineName],
+            };
+      scanTrees(tree.children, inner, visit);
       continue;
     }
     if (tree.kind !== 'ident') continue;
@@ -346,7 +398,7 @@ function valueOfArgument(
   if (local !== undefined) return { token: tree, value: local, declaringFile: filePath };
   const target = scope.uses.get(tree.value);
   if (target === undefined || target.length < 2 || lookup === undefined) return undefined;
-  const found = lookup(target.slice(0, -1), target[target.length - 1] ?? '');
+  const found = lookup({ file: filePath, inline: scope.module }, target);
   return found === undefined
     ? undefined
     : { token: tree, value: found.value, declaringFile: found.declaringFile };

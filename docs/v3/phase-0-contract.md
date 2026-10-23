@@ -410,3 +410,7 @@ A repository with a Python writer of JSON, a Rust converter from that JSON to Pa
 ## Phase 11.6 output change (DuckDB SQL)
 
 A string or template with no substitutions, passed as the first argument of `all`, `run`, `exec`, `each` or `prepare` on a DuckDB handle, is read as SQL. A handle is a `const` bound to `new duckdb.Database(…)`, or to `connect()` on one; a reassigned name is not a handle. A file named by `read_csv`, `read_parquet`, `read_json` (and their `_auto` and `_scan` aliases) is a read. A `COPY … TO 'path'` target is a write. Each is a high-confidence edge from the calling file. The edge's span is the whole SQL string, since the path sits inside it. SQL held in a variable is not followed.
+
+## Phase 11.6 output change (Rust module paths)
+
+A `use` of a constant is followed through the crate's module tree. `crate::`, `self::` and `super::` are resolved from the module the `use` is written in, and an inline `mod` is a module of its own. An inline module starts with no `use` or constant names of its parent, as Rust requires, so a parent's `use` is not visible inside it. A file module's parent is the module that declares it. A constant is placed from the file that declares it.

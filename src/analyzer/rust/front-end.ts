@@ -7,7 +7,8 @@
 import { applyDataEdges } from '../../data/data-analyzer.js';
 import { runDataEngine } from '../../facts/data-engine.js';
 import { defaultBareBases } from '../../facts/path-value.js';
-import { analyzeRustDataApis, rustConstantsOf, type RustConstantLookup } from './data-apis.js';
+import { analyzeRustDataApis, type RustConstantLookup } from './data-apis.js';
+import { RustModuleTree } from './module-tree.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { ConnectionGraph } from '../../graph.js';
@@ -317,35 +318,22 @@ export class RustFrontEnd implements LanguageFrontEnd {
     // path to a constant in another file is followed to that file, which is where the path is
     // placed from. A bare path is placed from that directory's package, then the repository root (11.4).
     const knownFiles = new Set(input.files.map(normalizePath));
-    const constantsOf = new Map<string, ReadonlyMap<string, string>>();
-    const constantsIn = (file: string): ReadonlyMap<string, string> => {
-      let found = constantsOf.get(file);
-      if (found === undefined) {
-        found = rustConstantsOf(sources.get(file) ?? '');
-        constantsOf.set(file, found);
-      }
-      return found;
+    const modules = new RustModuleTree({
+      files: [...sources.keys()],
+      exists: (file): boolean => knownFiles.has(file),
+      source: (file): string | undefined => sources.get(file),
+      crateRoot: (file): string | undefined => crateRootOf(file, knownFiles),
+    });
+    const lookup: RustConstantLookup = (from, path) => {
+      const name = path[path.length - 1];
+      if (name === undefined) return undefined;
+      const module = modules.resolve(path.slice(0, -1), from);
+      if (module === undefined) return undefined;
+      const value = modules.constantAt(module, name);
+      return value === undefined ? undefined : { value, declaringFile: module.file };
     };
-    const lookupFrom =
-      (filePath: string): RustConstantLookup =>
-      (modulePath, name) => {
-        if (modulePath[0] !== 'crate') return undefined;
-        const packageDir = nearestPackageDir(filePath, knownFiles);
-        if (packageDir === undefined) return undefined;
-        const base = packageDir === '' ? 'src' : `${packageDir}/src`;
-        const rest = modulePath.slice(1).join('/');
-        const candidates =
-          rest === ''
-            ? [`${base}/lib.rs`, `${base}/main.rs`]
-            : [`${base}/${rest}.rs`, `${base}/${rest}/mod.rs`];
-        const existing = candidates.filter((candidate) => knownFiles.has(candidate));
-        if (existing.length !== 1) return undefined;
-        const declaringFile = existing[0] ?? '';
-        const value = constantsIn(declaringFile).get(name);
-        return value === undefined ? undefined : { value, declaringFile };
-      };
     const dataFacts = [...sources].flatMap(([filePath, source]) =>
-      analyzeRustDataApis(filePath, source, lookupFrom(filePath)),
+      analyzeRustDataApis(filePath, source, lookup),
     );
     applyDataEdges(
       graph,
@@ -366,6 +354,14 @@ export class RustFrontEnd implements LanguageFrontEnd {
     );
     return { problems: [], syntaxErrors };
   }
+}
+
+/** The crate root file of a file's crate: `src/lib.rs` or `src/main.rs`, or undefined (Phase 11.6). */
+function crateRootOf(filePath: string, knownFiles: ReadonlySet<string>): string | undefined {
+  const packageDir = nearestPackageDir(filePath, knownFiles);
+  if (packageDir === undefined) return undefined;
+  const base = packageDir === '' ? 'src' : `${packageDir}/src`;
+  return [`${base}/lib.rs`, `${base}/main.rs`].find((candidate) => knownFiles.has(candidate));
 }
 
 /** The directory of a repository path, or '' for a file at the root. */
