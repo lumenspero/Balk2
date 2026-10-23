@@ -397,7 +397,6 @@ This local run sets the provisional budget. The contract records the budget from
 - Polars readers and writers that take a path directly are matched: `LazyCsvReader::new(p)` consumes, and `LazyFrame::scan_csv`/`scan_parquet` consume. The Polars readers and writers that take a `File` (`ParquetReader::new`, `CsvWriter::new`, and `serde_json::from_reader`) are matched at the `File::open` or `File::create` call that makes the handle, not at the reader or writer.
 - Not in 11.3: glob imports (`use polars::prelude::*`), `pub use` re-exports, and `LazyFrame` sink methods (`sink_parquet(p)` and similar), which need the receiver's type.
 
-
 ## Phase 11.6 output change (gaps closed in the language passes)
 
 - **JavaScript and TypeScript, `fetch`.** The global `fetch` is a catalog read of its path (module `global`, consumes its first argument), when the call resolves to the library's own declaration. A program's own function named `fetch` is not matched. A served path is placed from the package's `public/` folder, then the package root, then the repository root. It is a high-confidence edge only when one of those candidates is a scanned file. Otherwise the edge is the low keyword edge, placed at the root, as an unresolved path has always been. The keyword rule now reads `fetch` at low confidence, so a `fetch` line is no longer a high edge by keyword alone.

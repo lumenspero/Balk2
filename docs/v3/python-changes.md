@@ -99,6 +99,7 @@ Handle flows (`json.load(f)`, `pickle.load`, and similar) add no edges of their 
 ## Phase 11.6 output change (Python method receivers)
 
 A method call on a value of known type gives a data edge at high confidence:
+
 - `Path(p).read_text()`, `read_bytes()`, `write_text()`, `write_bytes()`, and `Path(p).open(mode)` take the path the `Path` holds. A `Path` assigned to a name once in its scope is typed from that assignment, so `store = Path('data/cfg.json')` followed by `store.read_text()` reads it. A name assigned twice is not typed.
 - `df = pd.read_csv(...)` followed by `df.to_csv`, `to_parquet`, `to_json`, `to_excel` or `to_feather` writes the destination. The DataFrame is typed the same way: a single assignment from a pandas reader.
 
