@@ -393,7 +393,9 @@ This local run sets the provisional budget. The contract records the budget from
 - A method call on a value (`h.open(...)`) and a bare name with no `use` are not matched. An argument that holds contents rather than a path (the second argument of `fs::write`) is not matched.
 - A bare path is placed from the package directory (the nearest `Cargo.toml`), then the repository root (11.4).
 - The write-then-read parity scenario (`src/testing/parity-corpus.ts`) now passes in Rust. Its `pending: '11.3'` marker is removed.
-- Not in 11.3: method chains such as `OpenOptions::new().write(true).open(p)`, handle flows (`serde_json::from_reader(File::open(p)?)` is matched at the `File::open` call, but the reader and writer calls are not), `use` items inside inline modules and function bodies, glob imports, and `const`/`static` flows (Phase 11.5 for Rust).
+- Builder chains are matched when they end in `from_path`: `csv::ReaderBuilder::new()…from_path(p)` consumes its path and `csv::WriterBuilder::new()…from_path(p)` generates it. `OpenOptions` and `File::options()` chains end in `open`. A `from_path` on a builder not made by `new()` is not matched.
+- Polars readers and writers that take a path directly are matched: `LazyCsvReader::new(p)` consumes, and `LazyFrame::scan_csv`/`scan_parquet` consume. The Polars readers and writers that take a `File` (`ParquetReader::new`, `CsvWriter::new`, and `serde_json::from_reader`) are matched at the `File::open` or `File::create` call that makes the handle, not at the reader or writer.
+- Not in 11.3: glob imports (`use polars::prelude::*`), `pub use` re-exports, and `LazyFrame` sink methods (`sink_parquet(p)` and similar), which need the receiver's type.
 
 
 ## Phase 11.6 output change (gaps closed in the language passes)

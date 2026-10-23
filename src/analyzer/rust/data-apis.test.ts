@@ -409,3 +409,101 @@ describe('Rust data catalog: let bindings (Phase 11.5)', () => {
     expect(highEdgesTo(map, 'x/m5.json')).toEqual([]);
   });
 });
+
+describe('Rust data catalog: builders and handles (Phase 11.3)', () => {
+  it('csv ReaderBuilder::new() chained to from_path consumes its path', () => {
+    const map = analyze({
+      'Cargo.toml': CARGO,
+      'src/main.rs': [
+        'fn main() {',
+        '    let _r = csv::ReaderBuilder::new().has_headers(false).from_path("x/b1.csv");',
+        '}',
+      ].join('\n'),
+    });
+    expect(highEdgesTo(map, 'x/b1.csv')).toEqual(['consumes/high src/main.rs']);
+  });
+
+  it('csv WriterBuilder::new() chained to from_path generates its path', () => {
+    const map = analyze({
+      'Cargo.toml': CARGO,
+      'src/main.rs': [
+        'fn main() {',
+        '    let _w = csv::WriterBuilder::new().has_headers(true).from_path("x/b2.csv");',
+        '}',
+      ].join('\n'),
+    });
+    expect(highEdgesTo(map, 'x/b2.csv')).toEqual(['generates/high src/main.rs']);
+  });
+
+  it('a from_path on a builder not made by new() is not matched', () => {
+    const map = analyze({
+      'Cargo.toml': CARGO,
+      'src/main.rs': [
+        'fn read(b: csv::ReaderBuilder) {',
+        '    let _r = b.from_path("x/b3.csv");',
+        '}',
+        'fn main() {}',
+      ].join('\n'),
+    });
+    expect(highEdgesTo(map, 'x/b3.csv')).toEqual([]);
+  });
+
+  it('a Polars LazyCsvReader built from a path consumes it', () => {
+    const map = analyze({
+      'Cargo.toml': CARGO,
+      'src/main.rs': [
+        'use polars::prelude::LazyCsvReader;',
+        'fn main() { let _r = LazyCsvReader::new("x/b4.csv"); }',
+      ].join('\n'),
+    });
+    expect(highEdgesTo(map, 'x/b4.csv')).toEqual(['consumes/high src/main.rs']);
+  });
+
+  it('a Polars LazyFrame scan reads its path', () => {
+    const map = analyze({
+      'Cargo.toml': CARGO,
+      'src/main.rs': [
+        'use polars::prelude::LazyFrame;',
+        'fn main() { let _f = LazyFrame::scan_parquet("x/b5.parquet", Default::default()); }',
+      ].join('\n'),
+    });
+    expect(highEdgesTo(map, 'x/b5.parquet')).toEqual(['consumes/high src/main.rs']);
+  });
+
+  it('a Polars ParquetReader over a File opened on a path reads that path', () => {
+    const map = analyze({
+      'Cargo.toml': CARGO,
+      'src/main.rs': [
+        'fn main() {',
+        '    let _r = ParquetReader::new(std::fs::File::open("x/b6.parquet").unwrap());',
+        '}',
+      ].join('\n'),
+    });
+    expect(highEdgesTo(map, 'x/b6.parquet')).toEqual(['consumes/high src/main.rs']);
+  });
+
+  it('a Polars CsvWriter over a File created on a path generates that path', () => {
+    const map = analyze({
+      'Cargo.toml': CARGO,
+      'src/main.rs': [
+        'fn main() {',
+        '    let _w = CsvWriter::new(std::fs::File::create("x/b7.csv").unwrap());',
+        '}',
+      ].join('\n'),
+    });
+    expect(highEdgesTo(map, 'x/b7.csv')).toEqual(['generates/high src/main.rs']);
+  });
+
+  it('serde_json reads a file it is given as a handle opened on a path', () => {
+    const map = analyze({
+      'Cargo.toml': CARGO,
+      'src/main.rs': [
+        'fn load() -> serde_json::Value {',
+        '    serde_json::from_reader(std::fs::File::open("x/b8.json").unwrap()).unwrap()',
+        '}',
+        'fn main() {}',
+      ].join('\n'),
+    });
+    expect(highEdgesTo(map, 'x/b8.json')).toEqual(['consumes/high src/main.rs']);
+  });
+});

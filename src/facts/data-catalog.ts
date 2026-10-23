@@ -146,6 +146,10 @@ export const RUST_DATA_APIS: readonly DataApiEntry[] = [
   ...entriesFor('rusqlite::Connection', ['open'], 'reads', RUST),
   ...entriesFor('polars::prelude', ['scan_csv', 'scan_parquet'], 'consumes', RUST),
   ...entriesFor('polars::prelude::CsvReader', ['from_path'], 'consumes', RUST),
+  ...entriesFor('csv::ReaderBuilder', ['from_path'], 'consumes', RUST),
+  ...entriesFor('csv::WriterBuilder', ['from_path'], 'generates', RUST),
+  ...entriesFor('polars::prelude::LazyCsvReader', ['new'], 'consumes', RUST),
+  ...entriesFor('polars::prelude::LazyFrame', ['scan_csv', 'scan_parquet'], 'consumes', RUST),
 ];
 
 /**

@@ -253,11 +253,14 @@ function scanTrees(
     if (tree.kind !== 'ident') continue;
 
     if (isPunct(trees[i - 1], '.')) {
-      // A method call ends a chain: `OpenOptions::new().write(true).open(p)`.
+      // A method call ends a chain: `OpenOptions::new().write(true).open(p)`, or
+      // `csv::ReaderBuilder::new().delimiter(b',').from_path(p)`.
       const args = trees[i + 1];
-      const chain = tree.value === 'open' ? openChain(trees, i) : undefined;
+      const chain = CHAINED_METHODS.has(tree.value)
+        ? builderChain(trees, i, tree.value)
+        : undefined;
       if (chain !== undefined && isParenGroup(args)) {
-        visit({ segments: [...chain.root, 'open'], args, writes: chain.writes, scope });
+        visit({ segments: [...chain.root, tree.value], args, writes: chain.writes, scope });
       }
       continue;
     }
@@ -280,38 +283,51 @@ function scanTrees(
   }
 }
 
+/** The methods a builder chain can end with, each on the builder its path names. */
+const CHAINED_METHODS: ReadonlySet<string> = new Set(['open', 'from_path']);
+
+/** Whether a `new()` or `options()` call on this owner starts a chain that ends with the method. */
+function startsChain(method: string, previous: string, owner: string): boolean {
+  if (method === 'open') {
+    return (
+      (previous === 'new' && owner === 'OpenOptions') ||
+      (previous === 'options' && owner === 'File')
+    );
+  }
+  return previous === 'new' && (owner === 'ReaderBuilder' || owner === 'WriterBuilder');
+}
+
 /**
- * The `OpenOptions::new()` a `.open(…)` call is chained onto, as its path, and whether a chained
- * flag makes it a write. Undefined when the receiver is not an `OpenOptions` built with `new()`.
+ * The builder a chained method call is made on, as its path, and whether a chained flag makes it a
+ * write. `OpenOptions::new().write(true).open(p)` and `csv::ReaderBuilder::new().from_path(p)` are
+ * chains. Undefined when the receiver is not built by the `new()` or `options()` the method needs.
  */
-function openChain(
+function builderChain(
   trees: readonly TokenTree[],
-  openIndex: number,
+  methodIndex: number,
+  method: string,
 ): { root: string[]; writes: boolean } | undefined {
   let writes = false;
-  let method = openIndex;
+  let link = methodIndex;
   for (;;) {
-    const dot = method - 1;
+    const dot = link - 1;
     if (!isPunct(trees[dot], '.')) return undefined;
     const receiverArgs = trees[dot - 1];
     const previous = trees[dot - 2];
     if (!isParenGroup(receiverArgs) || !isIdent(previous)) return undefined;
 
     if (isPunct(trees[dot - 3], '::')) {
-      // The chain starts with `OpenOptions::new()` or `File::options()`.
+      // The chain starts with a `new()` or `options()` call on a path.
       const root: string[] = [];
       for (let k = dot - 3; isPunct(trees[k], '::') && isIdent(trees[k - 1]); k -= 2) {
         root.unshift((trees[k - 1] as RustToken).value);
       }
-      const owner = root[root.length - 1];
-      const builds =
-        (previous.value === 'new' && owner === 'OpenOptions') ||
-        (previous.value === 'options' && owner === 'File');
-      return builds ? { root, writes } : undefined;
+      const owner = root[root.length - 1] ?? '';
+      return startsChain(method, previous.value, owner) ? { root, writes } : undefined;
     }
     if (!isPunct(trees[dot - 3], '.')) return undefined;
     if (WRITE_FLAGS.has(previous.value) && isTrueArgument(receiverArgs)) writes = true;
-    method = dot - 2;
+    link = dot - 2;
   }
 }
 
