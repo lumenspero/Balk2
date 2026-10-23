@@ -17,7 +17,10 @@ export interface DataApiEntry {
   readonly name: string;
   readonly direction: CatalogDirection;
   readonly languages: readonly FactLanguage[];
-  /** The positional argument that holds the artifact path, counted from 0. */
+  /**
+   * The positional argument that holds the artifact path, counted from 0. `-1` names the receiver
+   * of a method call, so `Path('x.json').read_text()` reads the path the receiver holds (Phase 11.6).
+   */
   readonly argument: number;
 }
 
@@ -36,6 +39,7 @@ function entriesFor(
 }
 
 const FS_READ = ['readFile', 'readFileSync', 'createReadStream'];
+const MOVE = ['copyFile', 'copyFileSync', 'rename', 'renameSync'];
 const FS_WRITE = [
   'writeFile',
   'writeFileSync',
@@ -50,6 +54,11 @@ export const JS_TS_DATA_APIS: readonly DataApiEntry[] = [
   ...entriesFor('fs', FS_WRITE, 'generates', JS_TS),
   ...entriesFor('fs/promises', FS_READ, 'consumes', JS_TS),
   ...entriesFor('fs/promises', FS_WRITE, 'generates', JS_TS),
+  // A copy or rename reads its source (argument 0) and writes its destination (argument 1).
+  ...entriesFor('fs', MOVE, 'consumes', JS_TS, 0),
+  ...entriesFor('fs', MOVE, 'generates', JS_TS, 1),
+  ...entriesFor('fs/promises', MOVE, 'consumes', JS_TS, 0),
+  ...entriesFor('fs/promises', MOVE, 'generates', JS_TS, 1),
 ];
 
 /**
@@ -78,6 +87,17 @@ export const PYTHON_DATA_APIS: readonly DataApiEntry[] = [
   ...entriesFor('shutil', ['copy', 'copy2', 'copyfile'], 'consumes', PYTHON, 0),
   ...entriesFor('shutil', ['copy', 'copy2', 'copyfile'], 'generates', PYTHON, 1),
   ...entriesFor('sqlite3', ['connect'], 'reads', PYTHON),
+  // Methods on a `pathlib.Path` receiver read or write the path the receiver holds (Phase 11.6).
+  ...entriesFor('pathlib.Path', ['read_text', 'read_bytes'], 'consumes', PYTHON, -1),
+  ...entriesFor('pathlib.Path', ['write_text', 'write_bytes'], 'generates', PYTHON, -1),
+  // Writers on a DataFrame read by pandas take the destination as their first argument.
+  ...entriesFor(
+    'pandas.DataFrame',
+    ['to_csv', 'to_parquet', 'to_json', 'to_excel', 'to_feather'],
+    'generates',
+    PYTHON,
+    0,
+  ),
 ];
 
 /**
@@ -92,6 +112,9 @@ export const RUST_DATA_APIS: readonly DataApiEntry[] = [
   ...entriesFor('std::fs', ['copy'], 'generates', RUST, 1),
   ...entriesFor('std::fs::File', ['open'], 'consumes', RUST),
   ...entriesFor('std::fs::File', ['create'], 'generates', RUST),
+  // A chain `OpenOptions::new().write(true)…open(p)` takes its direction from its flags, which the
+  // resolver reads, so the entry here is the path's position only (Phase 11.6).
+  ...entriesFor('std::fs::OpenOptions', ['open'], 'consumes', RUST),
   ...entriesFor('csv::Reader', ['from_path'], 'consumes', RUST),
   ...entriesFor('csv::Writer', ['from_path'], 'generates', RUST),
   ...entriesFor('rusqlite::Connection', ['open'], 'reads', RUST),

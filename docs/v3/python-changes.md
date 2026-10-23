@@ -90,6 +90,14 @@ These come from the manifests in `pyproject.toml` projects. Each is new output. 
 
 A module-level constant whose name is upper-case and bound exactly once to a plain string literal now carries its value to catalog calls in the same file or to calls that import it by name (`from .cfg import DB`). `sqlite3.connect(DB)` therefore yields a `reads` edge at high confidence from the calling file to the artifact. The artifact is placed from the file that declares the constant, under the 11.4 rule. Constants with a `Final` annotation are accepted. A name bound twice, a lower-case name, or a non-literal value is not treated as a constant.
 
-The line-based keyword pass is unchanged. The declaration line of a constant (`DB = 'store.sqlite'`) still gets its existing low-confidence edge, placed at the repository root as before. Placing that edge by the 11.4 rule would change baseline output for every bare literal in Python, so it is left for a deliberate baseline change.
+The line-based keyword pass places its bare literals by the same 11.4 rule, from the file's directory, then the repository root. A literal such as `'cfg.json'` on a line with no catalog call now gives its low-confidence edge to `lib/cfg.json` when that file exists beside the caller, where it used to go to the root. This is a baseline change for Python: a bare literal next to an existing file of the same name is now placed beside its caller.
 
 Handle flows (`json.load(f)`, `pickle.load`, and similar) add no edges of their own. The artifact path is set at the `open` call, which the catalog already matches.
+
+## Phase 11.6 output change (Python method receivers)
+
+A method call on a value of known type gives a data edge at high confidence:
+- `Path(p).read_text()`, `read_bytes()`, `write_text()`, `write_bytes()`, and `Path(p).open(mode)` take the path the `Path` holds. A `Path` assigned to a name once in its scope is typed from that assignment, so `store = Path('data/cfg.json')` followed by `store.read_text()` reads it. A name assigned twice is not typed.
+- `df = pd.read_csv(...)` followed by `df.to_csv`, `to_parquet`, `to_json`, `to_excel` or `to_feather` writes the destination. The DataFrame is typed the same way: a single assignment from a pandas reader.
+
+A method on any other value is not a catalog call. `open` on a `Path` writes when its mode writes, as the builtin does.

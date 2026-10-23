@@ -394,3 +394,14 @@ This local run sets the provisional budget. The contract records the budget from
 - A bare path is placed from the package directory (the nearest `Cargo.toml`), then the repository root (11.4).
 - The write-then-read parity scenario (`src/testing/parity-corpus.ts`) now passes in Rust. Its `pending: '11.3'` marker is removed.
 - Not in 11.3: method chains such as `OpenOptions::new().write(true).open(p)`, handle flows (`serde_json::from_reader(File::open(p)?)` is matched at the `File::open` call, but the reader and writer calls are not), `use` items inside inline modules and function bodies, glob imports, and `const`/`static` flows (Phase 11.5 for Rust).
+
+
+## Phase 11.6 output change (gaps closed in the language passes)
+
+- **JavaScript and TypeScript.** `const fs = require('fs')` and `const { readFileSync } = require('fs')` bind their module as an import does. `copyFile`, `copyFileSync`, `rename` and `renameSync` read their first argument and write their second, on `fs` and `fs/promises`.
+- **Python.** The line-based keyword pass places bare literals by the 11.4 rule (see `python-changes.md`). `pathlib.Path` and pandas DataFrame receivers are typed from a single assignment (see `python-changes.md`).
+- **Rust.** `const` and `static` items with a plain string value are followed when a catalog call names them, including through `use crate::…` to a constant in another file. The fact then carries the declaring file, and the path is placed from there. `static mut` is not followed. `use` items are scoped to their block (an inline `mod` or a function body), so a `use` inside one block does not apply outside it. `OpenOptions::new()` chains take their direction from `write(true)`, `append(true)`, `create(true)`, `create_new(true)` and `truncate(true)`: any of these makes the chain a write, and only `read` leaves it a read. A chain on any other value is not matched.
+
+## Phase 11 exit criterion
+
+A repository with a Python writer of JSON, a Rust converter from that JSON to Parquet, and a TypeScript reader of the Parquet gives four high-confidence edges that meet at the same two artifact paths. `src/analyzer/data-lineage-pipeline.test.ts` checks this through the whole pipeline.

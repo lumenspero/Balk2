@@ -58,21 +58,117 @@ export function analyzePythonDataApis(
   for (const file of sources) {
     const info = infoOf(file.filePath);
     if (info === undefined) continue;
-    walkBody(info.body, (call) => facts.push(...factsOfCall(call, info, infoOf)));
+    walkBody(
+      info.body,
+      (call, scope) => facts.push(...factsOfCall(call, info, infoOf, scope)),
+      info.body,
+    );
   }
   return facts;
 }
 
-function walkBody(body: readonly Stmt[], visit: (call: Expr) => void): void {
+/** Visits every call with the body of its enclosing function, or the module body at top level. */
+function walkBody(
+  body: readonly Stmt[],
+  visit: (call: Expr, scope: readonly Stmt[]) => void,
+  scope: readonly Stmt[],
+): void {
   for (const st of body) {
-    for (const e of stmtOwnExprs(st)) walkExpr(e, visit);
-    for (const block of stmtBlocks(st)) walkBody(block, visit);
+    for (const e of stmtOwnExprs(st)) walkExpr(e, (call) => visit(call, scope));
+    if (st.kind === 'funcdef') {
+      walkBody(st.body, visit, st.body);
+      continue;
+    }
+    if (st.kind === 'classdef') walkBody(st.body, visit, scope);
+    for (const block of stmtBlocks(st)) walkBody(block, visit, scope);
   }
 }
 
 function walkExpr(e: Expr, visit: (call: Expr) => void): void {
   if (e.kind === 'call') visit(e);
   for (const child of exprChildren(e)) walkExpr(child, visit);
+}
+
+/** The names a binding target introduces: a name, or the names inside a tuple, list or star. */
+function boundNames(target: Expr): string[] {
+  if (target.kind === 'name') return [target.id];
+  if (target.kind === 'starred') return boundNames(target.value);
+  if (target.kind === 'tuple' || target.kind === 'list') {
+    return exprChildren(target).flatMap(boundNames);
+  }
+  return [];
+}
+
+/** How a name is bound within one body: how many times, and the value of a sole plain binding. */
+interface Binding {
+  readonly count: number;
+  readonly value?: Expr;
+}
+
+const bindingCache = new WeakMap<readonly Stmt[], Map<string, Binding>>();
+
+/**
+ * The bindings of a name in one scope, not counting nested functions and classes. A name bound
+ * once by `name = value` gives that value, which a method call's receiver is typed from (Phase 11.6).
+ */
+function bindingsOf(name: string, body: readonly Stmt[]): Binding {
+  let byName = bindingCache.get(body);
+  if (byName === undefined) {
+    byName = new Map();
+    bindingCache.set(body, byName);
+  }
+  const cached = byName.get(name);
+  if (cached !== undefined) return cached;
+
+  let count = 0;
+  let value: Expr | undefined;
+  const bind = (target: Expr, plain: Expr | undefined): void => {
+    if (!boundNames(target).includes(name)) return;
+    count++;
+    value = plain;
+  };
+  const visit = (stmts: readonly Stmt[]): void => {
+    for (const st of stmts) {
+      if (st.kind === 'assign') {
+        for (const target of st.targets)
+          bind(target, st.targets.length === 1 ? st.value : undefined);
+      } else if (st.kind === 'annassign') {
+        bind(st.target, st.value ?? undefined);
+      } else if (st.kind === 'for') {
+        bind(st.target, undefined);
+      } else if (st.kind === 'with') {
+        for (const item of st.items) if (item.target) bind(item.target, undefined);
+      } else if (st.kind === 'funcdef' || st.kind === 'classdef') {
+        if (st.name === name) {
+          count++;
+          value = undefined;
+        }
+      }
+      for (const block of stmtBlocks(st)) visit(block);
+    }
+  };
+  visit(body);
+
+  const result: Binding = { count, value: count === 1 ? value : undefined };
+  byName.set(name, result);
+  return result;
+}
+
+/**
+ * The call that made a method call's receiver: the receiver itself when it is a call, or the call
+ * a name is bound to once in its scope, falling back to the module for a name the function does not
+ * bind. Undefined for any other receiver.
+ */
+function receiverCall(
+  receiver: Expr,
+  scope: readonly Stmt[],
+  moduleBody: readonly Stmt[],
+): Expr | undefined {
+  if (receiver.kind === 'call') return receiver;
+  if (receiver.kind !== 'name') return undefined;
+  let found = bindingsOf(receiver.id, scope);
+  if (found.count === 0 && scope !== moduleBody) found = bindingsOf(receiver.id, moduleBody);
+  return found.value?.kind === 'call' ? found.value : undefined;
 }
 
 /**
@@ -114,6 +210,66 @@ function stringValue(e: Expr | undefined): { text: string; span: Expr['span'] } 
 function openMode(args: readonly CallArg[]): string | undefined {
   const modeArg = positionals(args)[1] ?? args.find((arg) => arg.name === 'mode')?.value;
   return stringValue(modeArg)?.text;
+}
+
+/** The mode of a `Path.open` call: its first positional argument or its `mode=` keyword. */
+function pathOpenMode(args: readonly CallArg[]): string | undefined {
+  const modeArg = positionals(args)[0] ?? args.find((arg) => arg.name === 'mode')?.value;
+  return stringValue(modeArg)?.text;
+}
+
+/**
+ * The facts of a method call whose receiver is a `pathlib.Path` or a DataFrame read by pandas
+ * (Phase 11.6). Undefined when the receiver's type is not known, so the call takes the usual path.
+ */
+function methodFacts(
+  call: Expr & { readonly kind: 'call' },
+  func: Expr & { readonly kind: 'attribute' },
+  info: FileInfo,
+  infoOf: (filePath: string) => FileInfo | undefined,
+  scope: readonly Stmt[],
+): DataReferenceFact[] | undefined {
+  const producer = receiverCall(func.value, scope, info.body);
+  if (producer === undefined || producer.kind !== 'call') return undefined;
+  const type = qualifiedName(producer.func, info);
+  if (type === undefined) return undefined;
+  const method = func.attr;
+
+  if (type === 'pathlib.Path') {
+    const source = pathSourceOf(positionals(producer.args)[0], info, infoOf);
+    if (method === 'open') {
+      const mode = pathOpenMode(call.args);
+      const direction = mode !== undefined && WRITE_MODE.test(mode) ? 'generates' : 'consumes';
+      const match: DataApiMatch = { module: 'pathlib.Path', name: 'open', direction };
+      return factAt(info, source, match, 'pathlib.Path.open');
+    }
+    const entry = lookupDataApi('python', 'pathlib.Path', method, -1);
+    if (entry === undefined) return [];
+    const match: DataApiMatch = {
+      module: entry.module,
+      name: entry.name,
+      direction: entry.direction,
+    };
+    return factAt(info, source, match, `pathlib.Path.${method}`);
+  }
+
+  if (type.startsWith('pandas.') && lookupDataApi('python', 'pandas', type.slice(7), 0)) {
+    const found: DataReferenceFact[] = [];
+    positionals(call.args).forEach((value, index) => {
+      const entry = lookupDataApi('python', 'pandas.DataFrame', method, index);
+      if (entry === undefined) return;
+      const match: DataApiMatch = {
+        module: entry.module,
+        name: entry.name,
+        direction: entry.direction,
+      };
+      found.push(
+        ...factAt(info, pathSourceOf(value, info, infoOf), match, `pandas.DataFrame.${method}`),
+      );
+    });
+    return found;
+  }
+  return undefined;
 }
 
 /** True for `Final`, `typing.Final`, and `Final[...]` annotations. */
@@ -198,8 +354,13 @@ function factsOfCall(
   call: Expr,
   info: FileInfo,
   infoOf: (filePath: string) => FileInfo | undefined,
+  scope: readonly Stmt[],
 ): DataReferenceFact[] {
   if (call.kind !== 'call') return [];
+  if (call.func.kind === 'attribute') {
+    const typed = methodFacts(call, call.func, info, infoOf, scope);
+    if (typed !== undefined) return typed;
+  }
   const api = qualifiedName(call.func, info);
   if (api === undefined) return [];
 

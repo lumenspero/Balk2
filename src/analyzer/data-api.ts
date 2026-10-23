@@ -22,8 +22,46 @@ function bareModule(specifier: string): string {
   return specifier.startsWith('node:') ? specifier.slice('node:'.length) : specifier;
 }
 
-/** The binding a declaration introduces when it is an import, or undefined otherwise. */
+/** The module a `require('m')` call names, or undefined for any other expression (Phase 11.6). */
+function requiredModule(expression: ts.Expression | undefined): string | undefined {
+  if (!expression || !ts.isCallExpression(expression)) return undefined;
+  if (!ts.isIdentifier(expression.expression) || expression.expression.text !== 'require') {
+    return undefined;
+  }
+  const [argument] = expression.arguments;
+  if (expression.arguments.length !== 1 || !argument || !ts.isStringLiteral(argument)) {
+    return undefined;
+  }
+  return bareModule(argument.text);
+}
+
+/**
+ * A binding a CommonJS `require` introduces: `const fs = require('fs')` binds the module, and
+ * `const { readFile } = require('fs')` binds one export (Phase 11.6).
+ */
+function requireBindingOf(declaration: ts.Declaration): ImportBinding | undefined {
+  if (ts.isVariableDeclaration(declaration) && ts.isIdentifier(declaration.name)) {
+    const module = requiredModule(declaration.initializer);
+    return module === undefined ? undefined : { module, imported: '*' };
+  }
+  if (
+    ts.isBindingElement(declaration) &&
+    ts.isObjectBindingPattern(declaration.parent) &&
+    ts.isIdentifier(declaration.name) &&
+    ts.isVariableDeclaration(declaration.parent.parent)
+  ) {
+    const module = requiredModule(declaration.parent.parent.initializer);
+    if (module === undefined) return undefined;
+    const imported = declaration.propertyName ?? declaration.name;
+    return ts.isIdentifier(imported) ? { module, imported: imported.text } : undefined;
+  }
+  return undefined;
+}
+
+/** The binding a declaration introduces when it is an import or a `require`, or undefined. */
 function importBindingOf(declaration: ts.Declaration): ImportBinding | undefined {
+  const required = requireBindingOf(declaration);
+  if (required) return required;
   if (ts.isNamespaceImport(declaration)) {
     return moduleBinding(declaration.parent.parent, '*');
   }

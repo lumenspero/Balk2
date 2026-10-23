@@ -180,10 +180,10 @@ describe('data catalog: negatives (Phase 11.1)', () => {
       apiOfEach({
         'a.ts': [
           "import * as fs from 'fs';",
-          "export function copy(): void { fs.copyFileSync('a.json', 'b.json'); }",
+          "export function check(): boolean { return fs.existsSync('a.json'); }",
         ].join('\n'),
       }),
-    ).toEqual([false, false]);
+    ).toEqual([false]);
   });
 
   it('a module outside the catalog with the same export name is not matched', () => {
@@ -316,5 +316,88 @@ describe('const bindings carry paths to catalog calls (Phase 11.5)', () => {
     expect(
       edgesTo(map, 'out.json').filter((e) => e.includes('consumes') || e.includes('generates')),
     ).toEqual([]);
+  });
+});
+
+describe('data catalog: require bindings and moves (Phase 11.6)', () => {
+  it('a namespace binding from require generates an artifact written with writeFileSync', () => {
+    withFixture(
+      {
+        'a.ts': [
+          "const fs = require('fs');",
+          "export function save(): void { fs.writeFileSync('out/report.json', '{}'); }",
+        ].join('\n'),
+      },
+      (fixture) => {
+        expect(dataEdges(build(fixture))).toEqual(['generates a.ts -> out/report.json']);
+      },
+    );
+  });
+
+  it('a destructured require binds one export, which reads its artifact', () => {
+    withFixture(
+      {
+        'a.ts': [
+          "const { readFileSync } = require('fs');",
+          'export const data = readFileSync("data/in.json");',
+        ].join('\n'),
+      },
+      (fixture) => {
+        expect(dataEdges(build(fixture))).toEqual(['consumes a.ts -> data/in.json']);
+      },
+    );
+  });
+
+  it('a local function named like an export is not a catalog call', () => {
+    const matched = withFixture(
+      {
+        'a.ts': [
+          'function readFileSync(p: string): string { return p; }',
+          'export const data = readFileSync("data/in.json");',
+        ].join('\n'),
+      },
+      (fixture) => {
+        const sourceFile = fixture.repository.sourceFiles.get('a.ts');
+        if (!sourceFile) throw new Error('a.ts missing');
+        return jsonLiterals(sourceFile).map(
+          (literal) =>
+            dataApiOfLiteral(literal, fixture.repository.checker, 'typescript') !== undefined,
+        );
+      },
+    );
+    expect(matched).toEqual([false]);
+  });
+
+  it('copyFileSync reads its source and writes its destination', () => {
+    withFixture(
+      {
+        'a.ts': ["import * as fs from 'fs';", "fs.copyFileSync('old/a.json', 'new/b.json');"].join(
+          '\n',
+        ),
+      },
+      (fixture) => {
+        expect(dataEdges(build(fixture))).toEqual([
+          'consumes a.ts -> old/a.json',
+          'generates a.ts -> new/b.json',
+        ]);
+      },
+    );
+  });
+
+  it('renameSync reads its source and writes its destination', () => {
+    withFixture(
+      {
+        'a.ts': [
+          "import { renameSync } from 'node:fs';",
+          "renameSync('tmp/x.json', 'final/x.json');",
+        ].join('\n'),
+      },
+      (fixture) => {
+        expect(dataEdges(build(fixture))).toEqual([
+          'consumes a.ts -> tmp/x.json',
+          'generates a.ts -> final/x.json',
+        ]);
+      },
+    );
   });
 });

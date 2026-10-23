@@ -20,22 +20,24 @@ export function addDataLiteralsOnLine(
   selfDirs: SelfDirs,
   graph: ConnectionGraph,
   claimed: (value: string) => boolean = () => false,
+  place: (value: string) => string = (value) => value,
 ): void {
   const selfJoins = selfJoinSpans(trimmed, selfDirs);
+  // A self-directory join already names a repository path; a bare literal is placed (Phase 11.4).
   const literals = [
-    ...selfJoins.map(({ value, index }) => ({ value, index })),
-    ...pathLiteralsInLine(trimmed).filter(
-      (lit) => !selfJoins.some((join) => lit.index >= join.index && lit.index < join.end),
-    ),
+    ...selfJoins.map(({ value, index }) => ({ value, index, target: value })),
+    ...pathLiteralsInLine(trimmed)
+      .filter((lit) => !selfJoins.some((join) => lit.index >= join.index && lit.index < join.end))
+      .map((lit) => ({ ...lit, target: place(lit.value) })),
   ];
-  for (const { value, index } of literals) {
+  for (const { value, index, target } of literals) {
     // A literal the AST catalog has already resolved takes its edge from there (Phase 11.2).
     if (claimed(value)) continue;
     if (isDataPathLiteral(value) && !isNonAccessBefore(trimmed.slice(0, index))) {
       const direction = inferDataDirection(trimmed);
       addDataRelationship(
         filePath,
-        value,
+        target,
         direction.type,
         graph,
         direction.certain ? 'high' : 'low',
@@ -227,6 +229,7 @@ export function addPythonMechanisms(
   graph: ConnectionGraph,
   knownFiles: ReadonlySet<string>,
   claimed: (line: number, value: string) => boolean = () => false,
+  place: (value: string) => string = (value) => value,
 ): void {
   const lines = content.replace(/\r\n/g, '\n').split('\n');
   const selfDirs = selfDirectories(lines);
@@ -248,7 +251,14 @@ export function addPythonMechanisms(
   for (const [index, line] of lines.entries()) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#')) continue;
-    addDataLiteralsOnLine(trimmed, filePath, selfDirs, graph, (value) => claimed(index + 1, value));
+    addDataLiteralsOnLine(
+      trimmed,
+      filePath,
+      selfDirs,
+      graph,
+      (value) => claimed(index + 1, value),
+      place,
+    );
   }
 
   const owners = ownersByLine(content, filePath);

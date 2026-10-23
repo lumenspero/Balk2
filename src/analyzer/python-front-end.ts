@@ -19,7 +19,7 @@ import type {
 import { addPythonMechanisms } from './python-mechanisms.js';
 import { applyDataEdges } from '../data/data-analyzer.js';
 import { runDataEngine } from '../facts/data-engine.js';
-import { defaultBareBases } from '../facts/path-value.js';
+import { defaultBareBases, resolveBarePath } from '../facts/path-value.js';
 import { analyzePythonDataApis } from './python/data-apis.js';
 import { collectPythonSourceAnnotations } from './python-source-apply.js';
 import { analyzePythonCalls } from './python/calls.js';
@@ -186,8 +186,17 @@ export function analyzePythonSources(
 
   // Non-fact mechanisms, until Phases 11 and 12.
   for (const { filePath, source } of sources) {
-    addPythonMechanisms(filePath, source, graph, knownFiles, (line, value) =>
-      claimed.has(`${filePath}:${line}:${value}`),
+    // A bare literal on a line with no catalog call is placed by the same 11.4 rule (Phase 11.6).
+    const bases = defaultBareBases('python', { file: dirOf(filePath) });
+    const place = (value: string): string =>
+      resolveBarePath(value, bases, (repoPath) => knownFiles.has(repoPath)) ?? value;
+    addPythonMechanisms(
+      filePath,
+      source,
+      graph,
+      knownFiles,
+      (line, value) => claimed.has(`${filePath}:${line}:${value}`),
+      place,
     );
   }
   return manifestProblems;

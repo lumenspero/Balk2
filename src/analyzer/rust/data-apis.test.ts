@@ -135,3 +135,114 @@ describe('Rust bare paths (Phase 11.3 with 11.4)', () => {
     expect(edgesTo(map, 'fixtures/a.json')).toEqual([]);
   });
 });
+
+/** The high-confidence data edges that point at one artifact, as `type/confidence from`. */
+function highEdgesTo(map: ConnectionMap, artifact: string): string[] {
+  return edgesTo(map, artifact).filter((e) => e.includes('/high'));
+}
+
+describe('Rust data catalog: chains, scopes and constants (Phase 11.6)', () => {
+  it('an OpenOptions chain with a write flag generates its path', () => {
+    const map = analyze({
+      'Cargo.toml': CARGO,
+      'src/main.rs': [
+        'use std::fs::OpenOptions;',
+        'fn save() { let _f = OpenOptions::new().write(true).create(true).open("out/a.json"); }',
+        'fn main() {}',
+      ].join('\n'),
+    });
+    expect(highEdgesTo(map, 'out/a.json')).toEqual(['generates/high src/main.rs']);
+  });
+
+  it('an OpenOptions chain with only a read flag consumes its path', () => {
+    const map = analyze({
+      'Cargo.toml': CARGO,
+      'src/main.rs': [
+        'use std::fs::OpenOptions;',
+        'fn load() { let _f = OpenOptions::new().read(true).open("in/b.json"); }',
+        'fn main() {}',
+      ].join('\n'),
+    });
+    expect(highEdgesTo(map, 'in/b.json')).toEqual(['consumes/high src/main.rs']);
+  });
+
+  it('a same-file const names the path a catalog call reads', () => {
+    const map = analyze({
+      'Cargo.toml': CARGO,
+      'src/main.rs': [
+        'const DB: &str = "data/store.json";',
+        'fn load() -> String { std::fs::read_to_string(DB).unwrap() }',
+        'fn main() {}',
+      ].join('\n'),
+    });
+    expect(highEdgesTo(map, 'data/store.json')).toEqual(['consumes/high src/main.rs']);
+  });
+
+  it('a static used through Path::new is followed to its string', () => {
+    const map = analyze({
+      'Cargo.toml': CARGO,
+      'src/main.rs': [
+        'use std::path::Path;',
+        'static OUT: &str = "out/s.json";',
+        'fn save() { std::fs::write(Path::new(OUT), "{}").ok(); }',
+        'fn main() {}',
+      ].join('\n'),
+    });
+    expect(highEdgesTo(map, 'out/s.json')).toEqual(['generates/high src/main.rs']);
+  });
+
+  it('a constant imported with use crate:: is followed to the file that declares it', () => {
+    const map = analyze({
+      'Cargo.toml': CARGO,
+      'src/config.rs': 'pub const DB: &str = "data/cfg.json";\n',
+      'src/main.rs': [
+        'mod config;',
+        'use crate::config::DB;',
+        'fn load() -> String { std::fs::read_to_string(DB).unwrap() }',
+        'fn main() {}',
+      ].join('\n'),
+    });
+    expect(highEdgesTo(map, 'data/cfg.json')).toEqual(['consumes/high src/main.rs']);
+  });
+
+  it('a use inside an inline mod applies only inside that mod', () => {
+    const map = analyze({
+      'Cargo.toml': CARGO,
+      'src/main.rs': [
+        'mod io {',
+        '    use std::fs;',
+        '    pub fn save() { fs::write("out/m.json", "{}").ok(); }',
+        '}',
+        'fn outside() { fs::write("x/n.json", "{}").ok(); }',
+        'fn main() {}',
+      ].join('\n'),
+    });
+    expect(highEdgesTo(map, 'out/m.json')).toEqual(['generates/high src/main.rs']);
+    expect(highEdgesTo(map, 'x/n.json')).toEqual([]);
+  });
+
+  it('a chain on a builder that is not OpenOptions::new() is not matched', () => {
+    const map = analyze({
+      'Cargo.toml': CARGO,
+      'src/main.rs': [
+        'fn save(builder: std::fs::OpenOptions) {',
+        '    let _f = builder.write(true).open("x/k.json");',
+        '}',
+        'fn main() {}',
+      ].join('\n'),
+    });
+    expect(highEdgesTo(map, 'x/k.json')).toEqual([]);
+  });
+
+  it('a static mut is not a constant, so its value is not followed', () => {
+    const map = analyze({
+      'Cargo.toml': CARGO,
+      'src/main.rs': [
+        'static mut DB: &str = "x/m2.json";',
+        'fn load() -> String { unsafe { std::fs::read_to_string(DB).unwrap() } }',
+        'fn main() {}',
+      ].join('\n'),
+    });
+    expect(highEdgesTo(map, 'x/m2.json')).toEqual([]);
+  });
+});

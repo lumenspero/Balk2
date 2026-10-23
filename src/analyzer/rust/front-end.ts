@@ -7,7 +7,7 @@
 import { applyDataEdges } from '../../data/data-analyzer.js';
 import { runDataEngine } from '../../facts/data-engine.js';
 import { defaultBareBases } from '../../facts/path-value.js';
-import { analyzeRustDataApis } from './data-apis.js';
+import { analyzeRustDataApis, rustConstantsOf, type RustConstantLookup } from './data-apis.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { ConnectionGraph } from '../../graph.js';
@@ -313,11 +313,39 @@ export class RustFrontEnd implements LanguageFrontEnd {
         spans: [location],
       });
     }
-    // Data lineage (Phase 11.3): catalog calls with a literal path. A bare path is placed from the
-    // package directory, then the repository root (11.4).
+    // Data lineage (Phase 11.3, with constants in 11.6): catalog calls with a path. A `use crate::`
+    // path to a constant in another file is followed to that file, which is where the path is
+    // placed from. A bare path is placed from that directory's package, then the repository root (11.4).
     const knownFiles = new Set(input.files.map(normalizePath));
+    const constantsOf = new Map<string, ReadonlyMap<string, string>>();
+    const constantsIn = (file: string): ReadonlyMap<string, string> => {
+      let found = constantsOf.get(file);
+      if (found === undefined) {
+        found = rustConstantsOf(sources.get(file) ?? '');
+        constantsOf.set(file, found);
+      }
+      return found;
+    };
+    const lookupFrom =
+      (filePath: string): RustConstantLookup =>
+      (modulePath, name) => {
+        if (modulePath[0] !== 'crate') return undefined;
+        const packageDir = nearestPackageDir(filePath, knownFiles);
+        if (packageDir === undefined) return undefined;
+        const base = packageDir === '' ? 'src' : `${packageDir}/src`;
+        const rest = modulePath.slice(1).join('/');
+        const candidates =
+          rest === ''
+            ? [`${base}/lib.rs`, `${base}/main.rs`]
+            : [`${base}/${rest}.rs`, `${base}/${rest}/mod.rs`];
+        const existing = candidates.filter((candidate) => knownFiles.has(candidate));
+        if (existing.length !== 1) return undefined;
+        const declaringFile = existing[0] ?? '';
+        const value = constantsIn(declaringFile).get(name);
+        return value === undefined ? undefined : { value, declaringFile };
+      };
     const dataFacts = [...sources].flatMap(([filePath, source]) =>
-      analyzeRustDataApis(filePath, source),
+      analyzeRustDataApis(filePath, source, lookupFrom(filePath)),
     );
     applyDataEdges(
       graph,
@@ -325,13 +353,14 @@ export class RustFrontEnd implements LanguageFrontEnd {
         facts: dataFacts,
         paths: {
           exists: (repoPath) => knownFiles.has(repoPath),
-          bases: (fact) =>
-            defaultBareBases('rust', {
-              file: dirOf(fact.filePath),
-              ...(nearestPackageDir(fact.filePath, knownFiles) === undefined
-                ? {}
-                : { package: nearestPackageDir(fact.filePath, knownFiles) }),
-            }),
+          bases: (fact) => {
+            const placedFrom = fact.pathFilePath ?? fact.filePath;
+            const packageDir = nearestPackageDir(placedFrom, knownFiles);
+            return defaultBareBases('rust', {
+              file: dirOf(placedFrom),
+              ...(packageDir === undefined ? {} : { package: packageDir }),
+            });
+          },
         },
       }),
     );
