@@ -24,7 +24,7 @@
  * source order. Two definitions in different `cfg` branches are the same symbol instead (twins),
  * so both declarations keep one id and their conditions.
  */
-import { blockKey, bodyBlocksOf } from './nested.js';
+import { blockKey, blocksOfTokens, bodyBlocksOf } from './nested.js';
 import type { Declaration, Visibility } from '../../facts/types.js';
 import type { SourceSpan, SymbolType } from '../../types.js';
 import type {
@@ -35,7 +35,7 @@ import type {
   Attribute,
   Visibility as RustVisibility,
 } from './items.js';
-import { isTokenGroup } from './token-tree.js';
+import { isTokenGroup, type TokenTree } from './token-tree.js';
 import {
   namespacesOf,
   recordName,
@@ -140,6 +140,24 @@ function walkFnBody(walk: Walk, item: FnItem, fnId: string, fnBase: string, scop
   }
 }
 
+/** Declares the items written inside a const's or static's value, under the value's name (9.8). */
+function walkValueBlocks(
+  walk: Walk,
+  value: { readonly tokens: readonly TokenTree[] } | null,
+  valueId: string,
+  valueBase: string,
+  scope: Scope,
+): void {
+  if (value === null) return;
+  for (const block of blocksOfTokens(value.tokens)) {
+    walkModule(walk, block.items, {
+      modulePath: `${valueBase}::`,
+      key: blockKey(valueId, block.position),
+      conditions: scope.conditions,
+    });
+  }
+}
+
 function walkModuleItem(walk: Walk, item: Item, scope: Scope): void {
   const visibility = toVisibility(item.vis);
   const ownCfg = cfgTexts(item.attrs);
@@ -149,8 +167,8 @@ function walkModuleItem(walk: Walk, item: Item, scope: Scope): void {
     name: string,
     symbolType: SymbolType,
     namespaces: readonly RustNamespace[],
-  ): void => {
-    declare(walk, {
+  ): string => {
+    return declare(walk, {
       bare: name,
       base: base(name),
       symbolType,
@@ -210,11 +228,16 @@ function walkModuleItem(walk: Walk, item: Item, scope: Scope): void {
       declareModuleItem(item.name, 'type', ['type']);
       return;
     case 'const':
-      if (item.name !== '_') declareModuleItem(item.name, 'constant', ['value']);
+      if (item.name !== '_') {
+        const constId = declareModuleItem(item.name, 'constant', ['value']);
+        walkValueBlocks(walk, item.value, constId, base(item.name), scope);
+      }
       return;
-    case 'static':
-      declareModuleItem(item.name, 'variable', ['value']);
+    case 'static': {
+      const staticId = declareModuleItem(item.name, 'variable', ['value']);
+      walkValueBlocks(walk, item.value, staticId, base(item.name), scope);
       return;
+    }
     case 'macro_rules':
       declare(walk, {
         bare: item.name,

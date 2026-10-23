@@ -98,3 +98,44 @@ describe('nested items in inner blocks', () => {
     expect(pairs).toEqual([]);
   });
 });
+
+describe('nested items in const and static values', () => {
+  it('names an item declared in a const value under the const', () => {
+    const ids = analyzeRustSymbols(
+      parseRustFile('const C: i32 = { fn helper() -> i32 { 1 } helper() };'),
+      'src/lib.rs',
+    ).declarations.map((declaration) => declaration.id);
+    expect(ids).toEqual(expect.arrayContaining(['src/lib.rs:C::helper']));
+  });
+
+  it('gives a reference from a nested item in a static value to its nested type', () => {
+    const results = bindReferences(
+      [
+        crateOf({
+          'src/lib.rs': 'static S: i32 = { struct T; fn make() -> T { T } 1 };',
+        }),
+      ],
+      ENV,
+    );
+    expect(results.edges.map((edge) => [edge.from, edge.to])).toEqual([
+      ['src/lib.rs:S::make', 'src/lib.rs:S::T'],
+    ]);
+  });
+});
+
+describe('nested items: extern blocks in a body', () => {
+  it('declares a function of an extern block in a body under the function', () => {
+    const ids = analyzeRustSymbols(
+      parseRustFile('fn outer() { extern "C" { fn puts(s: i32); } }'),
+      'src/lib.rs',
+    ).declarations.map((declaration) => declaration.id);
+    expect(ids).toEqual(expect.arrayContaining(['src/lib.rs:outer::puts']));
+  });
+
+  it('gives a call to that function from the body to the nested declaration', () => {
+    const pairs = callPairs({
+      'src/lib.rs': 'fn outer() { extern "C" { fn puts(s: i32); } unsafe { puts(1) } }',
+    });
+    expect(pairs).toEqual([['src/lib.rs:outer', 'src/lib.rs:outer::puts']]);
+  });
+});

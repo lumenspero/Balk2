@@ -1,7 +1,8 @@
 /**
- * Items declared inside function bodies (V3 Phase 9.8). A nested item is named under its function
- * (`file:outer::inner`). Its calls and references belong to it, not to the function around it, and
- * its names are visible only inside the `{ }` block where it is written, and the blocks in that block.
+ * Items declared inside function bodies and const or static values (V3 Phase 9.8). A nested item is
+ * named under its owner (`file:outer::inner`, `file:C::inner` for a const). Its calls and references
+ * belong to it, not to the function around it, and its names are visible only inside the `{ }` block
+ * where it is written, and the blocks in that block.
  *
  * Only items are read. A statement is an item when it starts with an item keyword (after any
  * attributes, `pub`, `unsafe`) at a statement start. `mod` items are not read.
@@ -23,6 +24,7 @@ const ITEM_KEYWORDS: ReadonlySet<string> = new Set([
   'const',
   'use',
   'mod',
+  'extern',
 ]);
 
 /** Items that end at their closing brace. The others end at a `;`. */
@@ -34,22 +36,23 @@ const BRACED: ReadonlySet<string> = new Set([
   'trait',
   'impl',
   'mod',
+  'extern',
 ]);
 
 /** A `{ }` block that declares items. Blocks are listed outermost first. */
 export interface BodyBlock {
-  /** The block's position in its file. With the function id, it names the block's scope. */
+  /** The block's position in its file. With the owner's id, it names the block's scope. */
   readonly position: string;
   readonly span: Span;
   readonly items: readonly Item[];
   /** The nearest enclosing block that declares items, or null. */
   readonly parent: BodyBlock | null;
-  /** True for the function's own body. */
+  /** True for a function's own body. */
   readonly top: boolean;
 }
 
 const itemCache = new WeakMap<TokenGroup, Item[]>();
-const blockCache = new WeakMap<TokenGroup, BodyBlock[]>();
+const blockCache = new WeakMap<object, BodyBlock[]>();
 
 /** The items declared directly in a group's statements, as the parser reads them. Cached per group. */
 export function nestedItemsOf(group: TokenGroup | null): Item[] {
@@ -79,25 +82,29 @@ export function nestedItemsOf(group: TokenGroup | null): Item[] {
 
 /** The blocks of a function body that declare items, including blocks inside other blocks. Cached per body. */
 export function bodyBlocksOf(body: TokenGroup): BodyBlock[] {
-  const cached = blockCache.get(body);
-  if (cached !== undefined) return cached;
-  const blocks: BodyBlock[] = [];
-  collectBlocks(body, null, blocks, true);
-  blockCache.set(body, blocks);
-  return blocks;
+  return blocksWithin(body, body.children, true);
+}
+
+/** The blocks of a const or static value that declare items. Cached per value. */
+export function blocksOfTokens(trees: readonly TokenTree[]): BodyBlock[] {
+  return blocksWithin(null, trees, false);
 }
 
 /** The facts of a function body that are not inside one of its nested items. */
 export function ownBodyFacts(body: TokenGroup): BodyFact[] {
-  const nested = bodyBlocksOf(body).flatMap((block) => block.items);
-  const facts = scanFunctionBody(body);
-  if (nested.length === 0) return facts;
+  return factsOutside(scanFunctionBody(body), bodyBlocksOf(body));
+}
+
+/** The facts that are not inside an item of one of the blocks. */
+export function factsOutside(facts: readonly BodyFact[], blocks: readonly BodyBlock[]): BodyFact[] {
+  const nested = blocks.flatMap((block) => block.items);
+  if (nested.length === 0) return [...facts];
   return facts.filter((fact) => !nested.some((item) => startsWithin(fact.span, item.span)));
 }
 
-/** The scope key of a block: its function's id and the block's position. */
-export function blockKey(fnId: string, position: string): string {
-  return `${fnId}{${position}}`;
+/** The scope key of a block: its owner's id and the block's position. */
+export function blockKey(ownerId: string, position: string): string {
+  return `${ownerId}{${position}}`;
 }
 
 /** True when a span starts inside another. */
@@ -109,30 +116,46 @@ export function startsWithin(inner: Span, outer: Span): boolean {
   return afterStart && beforeEnd;
 }
 
+function blocksWithin(
+  self: TokenGroup | null,
+  trees: readonly TokenTree[],
+  top: boolean,
+): BodyBlock[] {
+  const key: object = self ?? trees;
+  const cached = blockCache.get(key);
+  if (cached !== undefined) return cached;
+  const blocks: BodyBlock[] = [];
+  collectBlocks(self, trees, null, blocks, top);
+  blockCache.set(key, blocks);
+  return blocks;
+}
+
 function collectBlocks(
-  group: TokenGroup,
+  self: TokenGroup | null,
+  trees: readonly TokenTree[],
   enclosing: BodyBlock | null,
   out: BodyBlock[],
   top: boolean,
 ): void {
-  const items = group.delimiter === '{' ? nestedItemsOf(group) : [];
+  // Only a `{ }` group is a block. A value's own tokens are not, so they declare no items.
+  const items = self !== null && self.delimiter === '{' ? nestedItemsOf(self) : [];
   let here = enclosing;
-  if (items.length > 0) {
+  if (self !== null && items.length > 0) {
     here = {
-      position: `${group.line}:${group.column}`,
-      span: spanOf(group),
+      position: `${self.line}:${self.column}`,
+      span: spanOf(self),
       items,
       parent: enclosing,
       top,
     };
     out.push(here);
   }
-  for (const child of group.children) {
+  for (const child of trees) {
     if (!isTokenGroup(child)) continue;
     // A group inside a nested item belongs to that item, not to this block.
     const childSpan = spanOf(child);
     if (items.some((item) => startsWithin(childSpan, item.span))) continue;
-    collectBlocks(child, here, out, false);
+    collectBlocks(child, child.children, here, out, false);
   }
 }
 
@@ -164,6 +187,12 @@ function itemKeywordAt(trees: readonly TokenTree[], i: number): number | null {
   if (word === undefined || isTokenGroup(word) || word.kind !== 'ident') return null;
   if (!ITEM_KEYWORDS.has(word.value)) return null;
   const next = trees[j + 1];
+  if (word.value === 'extern') {
+    // `extern "C" { }`, `extern { }`, `extern "C" fn` and `extern crate`. Nothing else starts an item here.
+    if (next === undefined) return null;
+    if (isTokenGroup(next)) return next.delimiter === '{' ? j : null;
+    return next.kind === 'str' || next.kind === 'ident' ? j : null;
+  }
   // `const {` and `static ||` are expressions, not items, and a bare `union` is a name.
   if (word.value === 'const' || word.value === 'static' || word.value === 'union') {
     if (next === undefined || isTokenGroup(next) || next.kind !== 'ident') return null;

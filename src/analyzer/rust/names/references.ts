@@ -13,7 +13,7 @@
  * enclosing function; `impl` headers are not mentions; macro arguments are not scanned.
  */
 import { type BodyFact, scanTokens } from '../body.js';
-import { ownBodyFacts } from '../nested.js';
+import { blocksOfTokens, factsOutside, ownBodyFacts } from '../nested.js';
 import type { GenericParam, Span } from '../items.js';
 import { isTokenGroup, type TokenTree } from '../token-tree.js';
 import {
@@ -183,8 +183,9 @@ export function bindReferences(
         const src: Source = { ctx, owner: decl.id, file, generics: new Set() };
         if (item.ty !== null) mentionsIn(walk, src, item.ty.tokens, item.span);
         if (item.value !== null) {
-          const facts = scanTokens(item.value.tokens);
-          factMentions(walk, src, facts, new Map(), []);
+          const blocks = blocksOfTokens(item.value.tokens);
+          const facts = factsOutside(scanTokens(item.value.tokens), blocks);
+          factMentions(walk, src, facts, new Map(), decl.scopes);
         }
       }
     }

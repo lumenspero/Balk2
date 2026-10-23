@@ -250,7 +250,7 @@ This local run sets the provisional budget. The contract records the budget from
 - A nested function's calls and references belong to it. The enclosing function gets no edge for a call or mention that lies inside a nested item. The enclosing function does get edges for its own calls to its nested items.
 - `use` inside a function body now binds like a module-level `use`. The 9.3 note that deferred it to Phase 10 is superseded.
 - `mod` inside a function body is not read. Macro arguments are still not scanned (Phase 10).
-- Known limits: a const or static initializer with a block that contains an item is not scanned for that item; `extern "C"` blocks inside a body are not read.
+- Known limits: const and static initializers with items are handled by the 9.8 addendum below. `extern "C"` blocks inside a body are read by the 9.8 addendum below.
 
 ### 9.8 addendum: inner blocks
 
@@ -258,3 +258,11 @@ This local run sets the provisional budget. The contract records the budget from
 - A block's items are visible in that block and in the blocks nested inside it. They are not visible outside it.
 - Each call and mention resolves in the innermost block scope that holds it. A `let` annotation resolves in its own block too.
 - Items inside a block belong to the item, and their calls and references are not credited to the function around the block.
+
+### 9.8 addendum: const and static values, extern blocks
+
+- A `{ }` block inside a const or static value that declares items is a scope, keyed by the const's or static's id. Its items are named under the value (`file:C::helper`), and they follow the same visibility and ownership rules as items in a function body.
+- A `const` or `static` value's own mentions resolve in its innermost block scope, the same way a function body's do.
+- An `extern` block inside a function body is read, and its functions are declared under the function (`file:outer::puts`). A call from the body resolves to them.
+- `extern` items are read only at statement start, so `extern` as part of an expression is not an item.
+- Still not read: `mod` items inside a body (by design), and macro arguments (Phase 10). Calls inside a const value are not bound yet; this addendum only adds declarations and mentions for const values.

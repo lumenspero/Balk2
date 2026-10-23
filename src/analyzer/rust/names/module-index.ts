@@ -19,7 +19,7 @@ import { isModRsFile, moduleFileCandidates, type InlineModule } from '../modules
 import { pathAttrOf } from '../modules/tree.js';
 import type { RustNamespace, RustNamespaceTables } from './namespaces.js';
 import { analyzeRustSymbols } from '../symbols.js';
-import { blockKey, bodyBlocksOf, type BodyBlock } from '../nested.js';
+import { blockKey, blocksOfTokens, bodyBlocksOf, type BodyBlock } from '../nested.js';
 import { flattenUse, type UseEntry } from './use-tree.js';
 
 /** What a `use` binds a name to. `isPub` is true for `pub use`, which other modules can reach. */
@@ -132,6 +132,8 @@ export interface PendingDecl {
   readonly owner: RustModuleNode;
   readonly id: string;
   readonly item: PendingDeclItem;
+  /** The block scopes of a const's or static's value, outermost first (9.8). Empty otherwise. */
+  readonly scopes: readonly BodyScope[];
 }
 
 export interface RustCrateIndex {
@@ -255,18 +257,13 @@ function newNode(
   };
 }
 
-/**
- * The owner a function resolves its signature in, and the block scopes of its body (9.8). A block
- * scope has the block's items, and its parent is the nearest enclosing block that has items.
- */
-function bodyScopes(
+/** Scopes for blocks under an owner's id. A block's parent is its nearest enclosing block with items (9.8). */
+function blockScopes(
   build: Build,
   node: RustModuleNode,
-  item: PendingFunction['item'],
+  blocks: readonly BodyBlock[],
   id: string,
-): { owner: RustModuleNode; scopes: BodyScope[] } {
-  if (item.body === null) return { owner: node, scopes: [] };
-  const blocks = bodyBlocksOf(item.body);
+): BodyScope[] {
   const made = new Map<BodyBlock, RustModuleNode>();
   const scopes: BodyScope[] = [];
   for (const block of blocks) {
@@ -284,8 +281,35 @@ function bodyScopes(
     scopes.push({ span: block.span, owner: scope });
     visitItems(build, scope, block.items, '', [], true);
   }
-  const top = blocks.find((block) => block.top);
-  return { owner: top === undefined ? node : (made.get(top) ?? node), scopes };
+  return scopes;
+}
+
+/**
+ * The owner a function resolves its signature in, and the block scopes of its body (9.8). A block
+ * scope has the block's items, and its parent is the nearest enclosing block that has items.
+ */
+function bodyScopes(
+  build: Build,
+  node: RustModuleNode,
+  item: PendingFunction['item'],
+  id: string,
+): { owner: RustModuleNode; scopes: BodyScope[] } {
+  if (item.body === null) return { owner: node, scopes: [] };
+  const blocks = bodyBlocksOf(item.body);
+  const scopes = blockScopes(build, node, blocks, id);
+  const top = blocks.findIndex((block) => block.top);
+  return { owner: top === -1 ? node : (scopes[top]?.owner ?? node), scopes };
+}
+
+/** The block scopes of a const's or static's value (9.8). The value's own tokens are not a block. */
+function valueScopes(
+  build: Build,
+  node: RustModuleNode,
+  item: PendingDeclItem,
+  id: string,
+): BodyScope[] {
+  if ((item.kind !== 'const' && item.kind !== 'static') || item.value === null) return [];
+  return blockScopes(build, node, blocksOfTokens(item.value.tokens), id);
 }
 
 function addFunction(
@@ -372,7 +396,9 @@ function visitItems(
       item.kind === 'static'
     ) {
       const id = declIdOf(node, item);
-      if (id !== undefined) build.decls.push({ owner: node, id, item });
+      if (id !== undefined) {
+        build.decls.push({ owner: node, id, item, scopes: valueScopes(build, node, item, id) });
+      }
       continue;
     }
     if (item.kind !== 'mod') continue;
