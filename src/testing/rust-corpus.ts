@@ -44,7 +44,6 @@ export const RUST_CORPUS: readonly CorpusScenario[] = [
           symbols: ['src/lib.rs:run'],
           absent: ['calls src/lib.rs:run -> src/lib.rs:generated'],
         },
-        pending: '10.1',
       },
     },
   },
@@ -134,6 +133,7 @@ export const RUST_CORPUS: readonly CorpusScenario[] = [
         expect: {
           diagnostics: ['unreachable-module src/orphan.rs'],
         },
+        pending: '8.4',
       },
     },
   },
@@ -152,6 +152,7 @@ export const RUST_CORPUS: readonly CorpusScenario[] = [
         expect: {
           diagnostics: ['module-conflict src/lib.rs'],
         },
+        pending: '8.4',
       },
     },
   },
@@ -168,6 +169,23 @@ export const RUST_CORPUS: readonly CorpusScenario[] = [
         },
         expect: {
           symbols: ['src/lib.rs:Point[Display].fmt', 'src/lib.rs:Point[Debug].fmt'],
+        },
+      },
+    },
+  },
+  // A call through a dyn trait object reaches the trait's method.
+  {
+    name: 'a call through a dyn trait object reaches the trait method',
+    family: 'traits',
+    renditions: {
+      rust: {
+        files: {
+          'Cargo.toml': CARGO,
+          'src/lib.rs':
+            'pub trait Render {\n    fn render(&self) -> i32;\n}\n\npub struct A;\n\nimpl Render for A {\n    fn render(&self) -> i32 {\n        1\n    }\n}\n\npub fn show(item: &dyn Render) -> i32 {\n    item.render()\n}\n',
+        },
+        expect: {
+          relationships: ['calls src/lib.rs:show -> src/lib.rs:Render.render'],
         },
       },
     },

@@ -217,7 +217,7 @@ This local run sets the provisional budget. The contract records the budget from
 - `trait A: B + C` gives `extends` edges from A to each supertrait that resolves in the repository. Generic supertraits (`Source<u8>`) are read without splitting inside their arguments.
 - An inherent impl gives no edge. A blanket impl over its own type parameter (`impl<T> Trait for T`) gives none. A trait or type from outside the repository (`Display` after `use std::fmt::Display`) gives none and no observation.
 - A path that looks internal and does not resolve is reported as `unresolved-module-path`, linked from its file by an `implements` or `extends` edge at low confidence.
-- Not in 9.5: method owners are still named by the file of the impl (the naming rule of 9.1), and the `implements` edge is the record that links them to the type. `impl Trait for dyn Other` is read as an impl on `Other`, which is a known gap. Trait-method dispatch is 9.6.
+- Not in 9.5: method owners are still named by the file of the impl (the naming rule of 9.1), and the `implements` edge is the record that links them to the type. `impl Trait for dyn Other` is not read as an impl on `Other` (fixed in 9.9: the self type is checked for `dyn` first). Trait-method dispatch is 9.6.
 
 ## Phase 9.6 output change (Rust calls)
 
@@ -292,3 +292,14 @@ This local run sets the provisional budget. The contract records the budget from
 - **Ambiguous `export *` names draw no edge (D), fixed.** When a module gets a name from two `export *` declarations and does not declare it itself, no call edge is drawn to either. The check reads one level of re-export, the module the import names. Deeper chains are not checked.
 - **Known change.** A default-exported callee is named by its declaration (for example `file:foo`), not by the import name (`file:default`). This only changes edges whose target name was `default`.
 - **Snapshot effect.** Edges that moved from a re-export file to the definition, and edges removed for ambiguous names, change the JS/TS snapshot baselines. Each change is a false-positive correction, and the commit message lists them.
+
+### 9 closeout: remaining seed scenarios and pending markers
+
+- Added: a base-class method called through `super` (JS/TS, Python; Rust is not applicable because Rust has no class inheritance), and a call through a `dyn` trait object reaching the trait method (Rust).
+- Markers removed, because each rendition now passes: the Rust syntax-error recovery rendition (6.2), and the macro-generated-item negative (10.1). The 10.1 scenario checks only that nothing is invented. The invocation `calls` edge that 10.1 requires is not in it yet, so Phase 10 must add that expectation.
+- Markers kept, because the behaviour is missing:
+  - `2.5`: JS/TS method calls on typed receivers, constructor results and `super`. A JS/TS method call is matched by name only, so `user.save()` gets no edge to `User.save`.
+  - `12.3`: module-level shared state, in all three languages. No `writesState` edges are produced.
+  - `11.3`: Rust data lineage. No `generates` or `consumes` edges are produced.
+- Correction: the `8.4` markers stay. The unreachable-file and module-conflict renditions expect `unreachable-module` and `module-conflict` diagnostics, and the parity harness cannot yet report diagnostics, so both renditions fail. Phase 8.4's diagnostic reporting is missing, not complete.
+

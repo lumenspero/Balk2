@@ -207,7 +207,6 @@ export const PARITY_CORPUS: readonly CorpusScenario[] = [
           symbols: ['src/lib.rs:ok'],
           syntaxErrors: ['src/lib.rs'],
         },
-        pending: '6.2',
       },
     },
   },
@@ -528,6 +527,43 @@ export const PARITY_CORPUS: readonly CorpusScenario[] = [
           symbols: ['src/lib.rs:Square[Shape].area'],
         },
       },
+    },
+  },
+  // A base-class method called through super is connected to the base method.
+  {
+    name: 'a base-class method called through super is connected',
+    family: 'inheritance',
+    renditions: {
+      javascript: {
+        files: {
+          'base.ts': 'export class Base {\n  save(): void {}\n}\n',
+          'child.ts':
+            "import { Base } from './base.js';\n\nexport class Child extends Base {\n  save(): void {\n    super.save();\n  }\n}\n",
+        },
+        expect: {
+          relationships: [
+            'extends child.ts:Child -> base.ts:Base',
+            'calls child.ts:Child.save -> base.ts:Base.save',
+          ],
+        },
+        pending: '2.5',
+      },
+      python: {
+        files: {
+          'base.py': 'class Base:\n    def save(self):\n        return None\n',
+          'child.py':
+            'from base import Base\n\n\nclass Child(Base):\n    def save(self):\n        return super().save()\n',
+        },
+        expect: {
+          relationships: [
+            'extends child.py:Child -> base.py:Base',
+            'calls child.py:Child.save -> base.py:Base.save',
+          ],
+        },
+      },
+    },
+    notApplicable: {
+      rust: 'Rust has no class inheritance and no super method call. Trait default methods are covered by 9.6.',
     },
   },
 ];
