@@ -59,7 +59,10 @@ const READ_KEYWORDS = [
 /** Runs the data engine over every data-reference fact, in order. */
 export function runDataEngine(input: { readonly facts: readonly DataReferenceFact[] }): DataEdge[] {
   return input.facts.map((fact) => {
-    const direction = inferDataDirection(fact.context);
+    // A call the front end resolved to a catalog API has a known direction (Phase 11.1).
+    const direction: InferredDirection = fact.api
+      ? { type: fact.api.direction, certain: true }
+      : inferDataDirection(fact.context);
     const artifact = normalizePath(fact.path);
     return {
       source: normalizePath(fact.filePath),

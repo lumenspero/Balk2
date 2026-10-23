@@ -316,6 +316,18 @@ export interface DataReferenceFact extends FactBase {
   readonly path: string;
   /** The source text of the expression that uses the literal, with path helpers looked through. */
   readonly context: string;
+  /**
+   * The library API the literal is passed to, when the front end resolved that call to a catalog
+   * entry (Phase 11.1). When present, the direction comes from the catalog, not from the text.
+   */
+  readonly api?: DataApiMatch;
+}
+
+/** A resolved library call that the data catalog recognizes. */
+export interface DataApiMatch {
+  readonly module: string;
+  readonly name: string;
+  readonly direction: 'generates' | 'consumes';
 }
 
 /** A `# balk2:` or `// balk2:` source annotation, before it is applied. */

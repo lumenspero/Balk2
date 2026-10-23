@@ -122,7 +122,7 @@ export function accessContext(node: ts.Node, sourceFile: ts.SourceFile): string 
   return context.getText(sourceFile);
 }
 
-function isPathBuilderCall(node: ts.Node): boolean {
+export function isPathBuilderCall(node: ts.Node): boolean {
   if (!ts.isCallExpression(node)) return false;
   const callee = node.expression;
   return ts.isPropertyAccessExpression(callee) && PATH_BUILDERS.has(callee.name.text);

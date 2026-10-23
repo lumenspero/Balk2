@@ -29,7 +29,7 @@ import { normalizePath } from '../graph.js';
 import type { SymbolType } from '../types.js';
 import { applyDataEdges } from '../data/data-analyzer.js';
 import { runDataEngine } from '../facts/data-engine.js';
-import type { DataReferenceFact } from '../facts/types.js';
+import type { DataReferenceFact, FactLanguage } from '../facts/types.js';
 import { dataReferenceFact } from './data-facts.js';
 
 export interface RepositoryAnalysisOptions {
@@ -147,7 +147,7 @@ export class JsTsAnalyzer implements Analyzer {
     graph: ConnectionGraph,
     options?: AnalyzerOptions,
   ): void {
-    const language = isTypeScript(normalizedPath) ? 'typescript' : 'javascript';
+    const language: FactLanguage = isTypeScript(normalizedPath) ? 'typescript' : 'javascript';
 
     graph.addFile(normalizedPath, language);
 
@@ -157,6 +157,9 @@ export class JsTsAnalyzer implements Analyzer {
 
     // Pass 1: Discover imports, symbols, exports, extends/implements
     const dataFacts: DataReferenceFact[] = [];
+    const dataResolution = options?.repository
+      ? { checker: options.repository.checker, language }
+      : undefined;
     const visitFirstPass = (node: ts.Node): void => {
       // ── Imports & Re-exports ────────────────────────────────────────
       if (ts.isImportDeclaration(node)) {
@@ -261,7 +264,7 @@ export class JsTsAnalyzer implements Analyzer {
 
       // ── Data Artifact References ────────────────────────────────────
       if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
-        const fact = dataReferenceFact(node, sourceFile, normalizedPath);
+        const fact = dataReferenceFact(node, sourceFile, normalizedPath, dataResolution);
         if (fact) dataFacts.push(fact);
       }
 
