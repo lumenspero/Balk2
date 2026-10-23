@@ -186,3 +186,19 @@ describe('bindCalls: a macro name defined twice (V3 Phase 10.1)', () => {
     ]);
   });
 });
+
+describe('bindCalls: calls in macro arguments (V3 Phase 10.2)', () => {
+  it('links a call inside an expression-style macro to the function it names', () => {
+    const results = callsOf({
+      'src/lib.rs': 'fn helper() -> i32 { 1 }\nfn main() { println!("{}", helper()); }',
+    });
+    expect(edgesOf(results)).toEqual([['src/lib.rs:main', 'src/lib.rs:helper', 'high', false]]);
+  });
+
+  it('draws no edge for a call inside an unknown macro', () => {
+    const results = callsOf({
+      'src/lib.rs': 'fn helper() -> i32 { 1 }\nfn main() { foo!(helper()); }',
+    });
+    expect(results.edges).toEqual([]);
+  });
+});

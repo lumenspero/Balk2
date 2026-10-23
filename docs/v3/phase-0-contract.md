@@ -319,3 +319,11 @@ This local run sets the provisional budget. The contract records the budget from
 - A repeated name links to the definition in scope, using the id symbols.ts gave it, so a second definition is `file:m!#2`.
 - Tokens inside a `macro_rules!` body are not analyzed, so a call written in a macro body gets no edge. The macro-generated-item negative in `src/testing/rust-corpus.ts` now expects the invocation edge, and it still expects no edge from `run` to the generated item.
 - Not in 10.1: macros defined inside a function body (their symbols exist, but invocations do not link to them yet), `#[macro_use]` across files, and macro arguments (10.2).
+
+## Phase 10.2 output change (Rust expression-style macro arguments)
+
+- The arguments of the built-in expression-style macros are scanned like a function body, so calls, method calls and paths in them produce the same edges as elsewhere in the body (`src/analyzer/rust/body.ts`, `EXPRESSION_MACROS`). The list is `format`, the print family (`print`, `println`, `eprint`, `eprintln`), `write`, `writeln`, `panic`, the assert family (`assert`, `assert_eq`, `assert_ne` and the `debug_assert` forms), `vec`, `dbg`, `todo` and `unreachable`. A macro is matched by its last path segment, so `std::println!` counts.
+- `matches!` scans only its first argument. The rest is a pattern, and a pattern such as `Some(w)` must not be read as a call.
+- Every other macro's tokens are still not scanned. Its syntax is unknown, so a call inside it produces no edge.
+- A call inside an expression-style macro now gives `calls` and `references` edges from the enclosing function, with the same confidence as the same call written in the body.
+- Not in 10.2: `rust.macros.expressionLike`. The configuration loader has no `rust` section yet, so user-listed macros wait for Phase 15.3. Format-string inline arguments such as `{name}` are not read as paths.

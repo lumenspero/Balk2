@@ -7,7 +7,9 @@
  * The scan works on the token trees of a body. It reports only what the tokens show and never
  * evaluates anything. A keyword is never a path head, so `if (x)` gives a reference to `x`,
  * not a call. Nested items are skipped as whole statements; their bodies get their own scan.
- * Macro arguments are not scanned here (Phase 10). Struct literals come in part c.
+ * Macro arguments: the arguments of the built-in expression-style macros are scanned like a body,
+ * and the first argument of `matches!` (V3 Phase 10.2). Other macros' tokens are not scanned, since
+ * their syntax is not known. Struct literals come in part c.
  *
  * Positions are 1-based, as in the lexer.
  */
@@ -92,6 +94,41 @@ const ITEM_KEYWORDS: ReadonlySet<string> = new Set([
 ]);
 
 const ANGLE_DELTA: Readonly<Record<string, number>> = { '<': 1, '<<': 2, '>': -1, '>>': -2 };
+
+/**
+ * Built-in macros whose arguments are all expressions (V3 Phase 10.2). Matched by the last path
+ * segment, so `std::println!` counts. `rust.macros.expressionLike` (config, Phase 15.3) adds more.
+ */
+const EXPRESSION_MACROS: ReadonlySet<string> = new Set([
+  'format',
+  'print',
+  'println',
+  'eprint',
+  'eprintln',
+  'write',
+  'writeln',
+  'panic',
+  'assert',
+  'assert_eq',
+  'assert_ne',
+  'debug_assert',
+  'debug_assert_eq',
+  'debug_assert_ne',
+  'vec',
+  'dbg',
+  'todo',
+  'unreachable',
+]);
+
+/** Macros whose first argument is an expression and whose later arguments are patterns. */
+const FIRST_ARGUMENT_MACROS: ReadonlySet<string> = new Set(['matches']);
+
+/** The token trees of a macro's arguments that are expressions, to scan like a body (V3 Phase 10.2). */
+function expressionArgsOf(name: string, args: TokenGroup): readonly TokenTree[] {
+  if (EXPRESSION_MACROS.has(name)) return args.children;
+  if (FIRST_ARGUMENT_MACROS.has(name)) return splitTopLevel(args.children, ',')[0] ?? [];
+  return [];
+}
 
 function isPunct(tree: TokenTree | undefined, text: string): boolean {
   return tree !== undefined && !isTokenGroup(tree) && tree.kind === 'punct' && tree.text === text;
@@ -630,6 +667,8 @@ export function scanTokens(trees: readonly TokenTree[]): BodyFact[] {
         args: macroArgs,
         span: spanOfRange(trees, i, path.end + 2),
       });
+      const name = path.segments[path.segments.length - 1] ?? '';
+      for (const fact of scanTokens(expressionArgsOf(name, macroArgs))) facts.push(fact);
       i = path.end + 2;
       continue;
     }

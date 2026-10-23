@@ -75,8 +75,30 @@ describe('rust body scan: keywords, macros and items', () => {
     expect(summary(facts('fn f() { if (x) { y() } }'))).toEqual(['path:x', 'call:y']);
   });
 
-  it('records a macro invocation without scanning its tokens', () => {
-    expect(summary(facts('fn f() { println!("{}", f(x)); }'))).toEqual(['macro:println!']);
+  it('scans the arguments of an expression-style macro as a body', () => {
+    expect(summary(facts('fn f() { println!("{}", g(x)); }'))).toEqual([
+      'macro:println!',
+      'call:g',
+      'path:x',
+    ]);
+  });
+
+  it('scans the arguments of a macro named by a longer path', () => {
+    expect(summary(facts('fn f() { std::println!("{}", g()); }'))).toEqual([
+      'macro:std::println!',
+      'call:g',
+    ]);
+  });
+
+  it('scans only the first argument of matches!, because the rest is a pattern', () => {
+    expect(summary(facts('fn f() { matches!(v, Some(w)); }'))).toEqual([
+      'macro:matches!',
+      'path:v',
+    ]);
+  });
+
+  it('records a macro invocation without scanning the tokens of an unknown macro', () => {
+    expect(summary(facts('fn f() { foo!(g(x)); }'))).toEqual(['macro:foo!']);
   });
 
   it('skips nested items and leaves their bodies alone', () => {
