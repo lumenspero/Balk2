@@ -1,5 +1,5 @@
 import { lexRust } from './lexer.js';
-import { constantsIn, moduleBlocks, type ModulePosition } from './data-apis.js';
+import { constantsIn, moduleBlocks, publicUsesIn, type ModulePosition } from './data-apis.js';
 import { buildTokenTrees, type TokenTree } from './token-tree.js';
 
 /**
@@ -49,6 +49,12 @@ export class RustModuleTree {
   constantAt(module: ModulePosition, name: string): string | undefined {
     const block = this.blockAt(module);
     return block === undefined ? undefined : constantsIn(block).get(name);
+  }
+
+  /** The path a `pub use` in a module re-exports under a name, as written in that module. */
+  reexportAt(module: ModulePosition, name: string): readonly string[] | undefined {
+    const block = this.blockAt(module);
+    return block === undefined ? undefined : publicUsesIn(block).get(name);
   }
 
   /** The token trees of a module's body, or undefined when the file or the inline module is not there. */

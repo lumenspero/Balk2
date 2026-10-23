@@ -158,6 +158,42 @@ function untilSemicolon(trees: readonly TokenTree[], start: number): TokenTree[]
   return out;
 }
 
+/** The names a `use` item at this index binds, each with the path it names, as written. */
+function useBindingsAt(
+  trees: readonly TokenTree[],
+  useIndex: number,
+): Map<string, readonly string[]> {
+  const out = new Map<string, readonly string[]>();
+  const text = serialize(untilSemicolon(trees, useIndex + 1));
+  for (const item of parseRustFile(`use ${text};`).items) {
+    if (item.kind !== 'use') continue;
+    for (const entry of flattenUse(item.tree, item.span)) {
+      if (entry.bind !== null && !entry.glob) out.set(entry.bind, entry.path);
+    }
+  }
+  return out;
+}
+
+/**
+ * The `pub use` items of a block: the names it re-exports, each with the path it names (Phase 11.5).
+ * A `pub(…)` restriction counts as public, which is an approximation for crate-wide visibility.
+ */
+export function publicUsesIn(trees: readonly TokenTree[]): ReadonlyMap<string, readonly string[]> {
+  const out = new Map<string, readonly string[]>();
+  for (let i = 0; i < trees.length; i++) {
+    if (!isWord(trees[i], 'use') || !isPublicBefore(trees, i)) continue;
+    for (const [name, target] of useBindingsAt(trees, i)) out.set(name, target);
+  }
+  return out;
+}
+
+/** True when the token before a `use` is `pub`, or a `pub(…)` restriction. */
+function isPublicBefore(trees: readonly TokenTree[], useIndex: number): boolean {
+  if (isWord(trees[useIndex - 1], 'pub')) return true;
+  const before = trees[useIndex - 1];
+  return before !== undefined && isTokenGroup(before) && isWord(trees[useIndex - 2], 'pub');
+}
+
 /**
  * The scope a block's token trees open: the `use` items and the plain-string `const`/`static` items
  * it declares, and the `let` bindings that give a name a plain string (Phase 11.5), on top of the
@@ -169,13 +205,7 @@ function scopeOf(trees: readonly TokenTree[], inherited: Scope): Scope {
   const consts = new Map(inherited.consts);
   for (let i = 0; i < trees.length; i++) {
     if (isWord(trees[i], 'use')) {
-      const text = serialize(untilSemicolon(trees, i + 1));
-      for (const item of parseRustFile(`use ${text};`).items) {
-        if (item.kind !== 'use') continue;
-        for (const entry of flattenUse(item.tree, item.span)) {
-          if (entry.bind !== null && !entry.glob) uses.set(entry.bind, entry.path);
-        }
-      }
+      for (const [name, target] of useBindingsAt(trees, i)) uses.set(name, target);
     }
     if (isWord(trees[i], 'const') || isWord(trees[i], 'static')) {
       const name = trees[i + 1];

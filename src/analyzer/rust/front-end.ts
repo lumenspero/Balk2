@@ -8,7 +8,11 @@ import { applyDataEdges } from '../../data/data-analyzer.js';
 import { runDataEngine } from '../../facts/data-engine.js';
 import { defaultBareBases } from '../../facts/path-value.js';
 import { pathBaseOrder } from '../../config/path-base-config.js';
-import { analyzeRustDataApis, type RustConstantLookup } from './data-apis.js';
+import { analyzeRustDataApis, type RustConstant, type RustConstantLookup } from './data-apis.js';
+import type { ModulePosition } from './data-apis.js';
+
+/** Longest chain of `pub use` re-exports followed to a constant, which stops cycles. */
+const MAX_REEXPORTS = 8;
 import { RustModuleTree } from './module-tree.js';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -325,14 +329,22 @@ export class RustFrontEnd implements LanguageFrontEnd {
       source: (file): string | undefined => sources.get(file),
       crateRoot: (file): string | undefined => crateRootOf(file, knownFiles),
     });
-    const lookup: RustConstantLookup = (from, path) => {
+    // A constant a `pub use` re-exports is followed to the module that declares it (Phase 11.5).
+    const constantOf = (
+      from: ModulePosition,
+      path: readonly string[],
+      depth: number,
+    ): RustConstant | undefined => {
       const name = path[path.length - 1];
-      if (name === undefined) return undefined;
+      if (name === undefined || depth > MAX_REEXPORTS) return undefined;
       const module = modules.resolve(path.slice(0, -1), from);
       if (module === undefined) return undefined;
       const value = modules.constantAt(module, name);
-      return value === undefined ? undefined : { value, declaringFile: module.file };
+      if (value !== undefined) return { value, declaringFile: module.file };
+      const reexport = modules.reexportAt(module, name);
+      return reexport === undefined ? undefined : constantOf(module, reexport, depth + 1);
     };
+    const lookup: RustConstantLookup = (from, path) => constantOf(from, path, 0);
     const dataFacts = [...sources].flatMap(([filePath, source]) =>
       analyzeRustDataApis(filePath, source, lookup),
     );

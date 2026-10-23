@@ -507,3 +507,82 @@ describe('Rust data catalog: builders and handles (Phase 11.3)', () => {
     expect(highEdgesTo(map, 'x/b8.json')).toEqual(['consumes/high src/main.rs']);
   });
 });
+
+describe('Rust data catalog: pub use re-exports of constants (Phase 11.5)', () => {
+  it('a constant re-exported by pub use in another file is followed to its declaration', () => {
+    const map = analyze({
+      'Cargo.toml': CARGO,
+      'src/main.rs': [
+        'mod a;',
+        'mod b;',
+        'use crate::b::PATH;',
+        'fn load() -> String { std::fs::read_to_string(PATH).unwrap() }',
+        'fn main() {}',
+      ].join('\n'),
+      'src/a.rs': 'pub const PATH: &str = "x/r1.json";',
+      'src/b.rs': 'pub use crate::a::PATH;',
+    });
+    expect(highEdgesTo(map, 'x/r1.json')).toEqual(['consumes/high src/main.rs']);
+  });
+
+  it('a re-export through inline modules reaches the constant with super::', () => {
+    const map = analyze({
+      'Cargo.toml': CARGO,
+      'src/main.rs': [
+        'mod inner { pub const PATH: &str = "x/r2.json"; pub mod deep { pub use super::PATH; } }',
+        'use crate::inner::deep::PATH;',
+        'fn load() -> String { std::fs::read_to_string(PATH).unwrap() }',
+        'fn main() {}',
+      ].join('\n'),
+    });
+    expect(highEdgesTo(map, 'x/r2.json')).toEqual(['consumes/high src/main.rs']);
+  });
+
+  it('an aliased pub use is followed under the name it is given', () => {
+    const map = analyze({
+      'Cargo.toml': CARGO,
+      'src/main.rs': [
+        'mod a;',
+        'mod b;',
+        'use crate::b::P;',
+        'fn load() -> String { std::fs::read_to_string(P).unwrap() }',
+        'fn main() {}',
+      ].join('\n'),
+      'src/a.rs': 'pub const PATH: &str = "x/r3.json";',
+      'src/b.rs': 'pub use crate::a::PATH as P;',
+    });
+    expect(highEdgesTo(map, 'x/r3.json')).toEqual(['consumes/high src/main.rs']);
+  });
+
+  it('a private use is not a re-export, so the constant is not followed through it', () => {
+    const map = analyze({
+      'Cargo.toml': CARGO,
+      'src/main.rs': [
+        'mod a;',
+        'mod b;',
+        'use crate::b::PATH;',
+        'fn load() -> String { std::fs::read_to_string(PATH).unwrap() }',
+        'fn main() {}',
+      ].join('\n'),
+      'src/a.rs': 'pub const PATH: &str = "x/r4.json";',
+      'src/b.rs': 'use crate::a::PATH;',
+    });
+    expect(highEdgesTo(map, 'x/r4.json')).toEqual([]);
+  });
+
+  it('re-exports that point at each other end without a constant and without a cycle', () => {
+    const map = analyze({
+      'Cargo.toml': CARGO,
+      'src/main.rs': [
+        'mod a;',
+        'mod b;',
+        'use crate::a::X;',
+        'fn load() -> String { std::fs::read_to_string(X).unwrap() }',
+        'fn main() {}',
+      ].join('\n'),
+      'src/a.rs': 'pub use crate::b::X;',
+      'src/b.rs': 'pub use crate::a::X;',
+    });
+    expect(highEdgesTo(map, 'x/r5.json')).toEqual([]);
+  });
+});

@@ -508,7 +508,7 @@ Verify: `npx vitest run src/analyzer/rust src/analyzer/parity`.
 
 Exit criterion: the macro, include and build-script fixtures pass, `include_*` edges match the `rustc` oracle, and macro-generated items create no false edges.
 
-Verify: `npx vitest run src/analyzer/rust/macros src/analyzer/rust/build`.
+Verify: `npx vitest run src/analyzer/rust/names` (the macro, include and build-script code lives in `src/analyzer/rust/names/`).
 
 ## Phase 11 - Data Lineage Parity
 
@@ -528,7 +528,7 @@ The data engine (2.3) gets one catalog with an entry for each language, each mat
   - A bare relative path is checked against the most specific base first: the package directory for Cargo, or the script's directory and then the project root for Python and JS/TS. Then it is checked against the repository root.
   - If exactly one candidate exists, it is used. Otherwise the first candidate is used.
   - `data.pathBase` overrides the order for every language, and per language under `python`/`rust`/`javascript`.
-- 11.5 **Binding flow.** A path value flows through local single-assignment bindings and through `const`/`Final`/`static` items in the repository, in every language.
+- 11.5 **Binding flow.** A path value flows through local single-assignment bindings and through `const`/`Final`/`static` items in the repository, in every language A Rust constant re-exported by `pub use`, possibly under an alias or through inline modules, is followed to the module that declares it.
 
 Exit criterion: the parity scenario "data pipeline write → read" passes in all three languages. The full Python → JSON → Rust → Parquet → TS fixture is one connected path. JS/TS data snapshots are unchanged.
 
@@ -565,7 +565,7 @@ Each item adds per-language catalog entries for one shared engine. The JS/TS cat
 
 Exit criterion: every mechanism scenario in the parity corpus passes in every language where the matrix says Supported. The V2 negative tests have counterparts in Python and Rust: same key in two registries, same event name on two receivers, a shadowed global.
 
-Verify: `npx vitest run src/facts src/analyzer/parity src/analyzer/*-accuracy`.
+Verify: `npx vitest run src/facts src/analyzer/parity accuracy` (Vitest matches paths as substrings, so `accuracy` selects the `*-accuracy` suites).
 
 ## Phase 13 - Accuracy Sweep and Gap Closure
 
@@ -607,7 +607,7 @@ Verify: `npm run test:accuracy` (new script that prints the per-language metrics
 
 Exit criterion: the WASM, PyO3, napi-rs, Tauri-recipe and process-execution fixtures each form one navigable path. Every negative fixture (no binding dependency, a same-named module) produces no edge.
 
-Verify: `npx vitest run src/analyzer/bindings src/analyzer/mixed-accuracy`.
+Verify: `npx vitest run src/analyzer/bindings src/analyzer/mixed-accuracy` (`src/analyzer/bindings` is created by this phase).
 
 ## Phase 15 - Output, Queries, Configuration, and Documentation
 
@@ -696,7 +696,7 @@ Verify: `npx vitest run src/renderer src/query src/config && npm run verify`.
 
 Exit criterion: all three oracles, every corpus, the mutation tests, the determinism checks, the package tests and the performance budgets pass on Node 18/20/22, on Linux and Windows.
 
-Verify: `npm run verify && npm run test:accuracy` plus the `ts-oracle`, `python-oracle` and `rust-oracle` CI jobs.
+Verify: `npm run verify && npm run test:accuracy` plus the `ts-oracle`, `python-oracle` and `rust-oracle` CI jobs (`python-oracle` and `rust-oracle` exist; `ts-oracle` is created by this phase).
 
 ## Delivery Order
 

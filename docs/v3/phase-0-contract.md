@@ -443,3 +443,9 @@ A `use` of a constant is followed through the crate's module tree. `crate::`, `s
 - The catalog call that takes an anchored path claims its literal's last segment, so the keyword pass does not add a second edge.
 - Handle loads (`json`, `pickle`, `csv`, `yaml`, `tomllib`) have no catalog entries: their path is the `open` call that made the handle.
 - `self.<attr>` directory joins are carried over from 2.0.0 unchanged.
+
+## Phase 11.5 output change (Rust `pub use` re-exports)
+
+- A constant a `pub use` re-exports is followed to the module that declares it, including an aliased `pub use … as` and a re-export through inline modules (`super::`, `self::`). The edge is placed from the file that makes the call, under the 11.4 rule.
+- Only `pub` and `pub(…)` uses are followed. A private `use` is not a re-export, so a constant reached through it is not followed.
+- Re-exports are followed up to eight links, which also stops cycles. Glob re-exports (`pub use …::*`) are not followed.
