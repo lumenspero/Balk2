@@ -19,7 +19,7 @@ export function applyRegistryEdges(graph: ConnectionGraph, edges: readonly Regis
         graph.addRelationship('resolves', edge.owner, node.id, 'high', {
           evidence: 'config',
           spans: [edge.span],
-          metadata: { injection: 'constructor' },
+          metadata: { injection: edge.injection ?? 'constructor' },
         });
         break;
       }

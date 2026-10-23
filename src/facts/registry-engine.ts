@@ -38,6 +38,7 @@ export type RegistryEdge =
   | {
       readonly kind: 'inject';
       readonly owner: string;
+      readonly injection?: 'constructor' | 'parameter-name';
       readonly registry: string;
       readonly key: string;
       readonly keyType: RegistryKeyType;
@@ -172,6 +173,7 @@ export function runRegistryEngine(input: {
       edges.push({
         kind: 'inject',
         owner: fact.owner,
+        ...(fact.mechanism !== undefined ? { injection: fact.mechanism } : {}),
         registry: fact.registry,
         key: fact.key.name,
         keyType: fact.key.keyType,

@@ -27,6 +27,7 @@ import { collectPythonSourceAnnotations } from './python-source-apply.js';
 import { analyzePythonCalls, combineObservers } from './python/calls.js';
 import { createPythonRegistryCollector } from './python/registry-facts.js';
 import { applyRegistryEdges } from './registry-apply.js';
+import type { RegistryNameInjectionRule } from './registry-protocols.js';
 import { runRegistryEngine } from '../facts/registry-engine.js';
 import { createPythonEventCollector } from './python/event-facts.js';
 import { runEventEngine } from '../facts/event-engine.js';
@@ -63,6 +64,8 @@ export interface PythonSourceOptions {
   readonly roots?: readonly string[];
   /** Decorators that return their argument unchanged, from `python.identityDecorators`. */
   readonly identityDecorators?: readonly string[];
+  /** Fixture-style parameter injection from `protocols.registries.nameInjection`. */
+  readonly nameInjection?: readonly RegistryNameInjectionRule[];
   /** Package facts whose entry points resolve here, where the module index exists (V3 Phase 4.5) */
   readonly entryPoints?: {
     readonly packages: readonly PackageNode[];
@@ -130,7 +133,7 @@ export function analyzePythonSources(
   const events = createPythonEventCollector(sources, ctx);
 
   // Registries (Phase 12.2). Dictionary stores, loads and literal displays, read by the same walk.
-  const registries = createPythonRegistryCollector();
+  const registries = createPythonRegistryCollector(options.nameInjection);
 
   // Calls. The owner is the enclosing function or method, or the file for module-level code.
   for (const c of analyzePythonCalls(
@@ -271,6 +274,7 @@ export class PythonFrontEnd implements LanguageFrontEnd {
         roots: input.config?.python?.roots,
         pathBase: pathBaseOrder(input.config, 'python'),
         identityDecorators: input.config?.python?.identityDecorators,
+        nameInjection: input.config?.protocols?.registries?.nameInjection,
         entryPoints: input.packages
           ? {
               packages: input.packages.python.packages,

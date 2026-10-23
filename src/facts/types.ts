@@ -234,6 +234,8 @@ export interface RegistryDeclarationFact extends FactBase {
 /** A constructor parameter whose decorator names a dependency: the enclosing class looks the key up. */
 export interface RegistryInjectionFact extends FactBase {
   readonly kind: 'registry-injection';
+  /** How the key reaches the owner. Absent means a constructor parameter. */
+  readonly mechanism?: 'constructor' | 'parameter-name';
   readonly owner: string;
   readonly registry: string;
   readonly key: RegistryKeyFact;

@@ -20,6 +20,7 @@ import type {
   ObservedCall,
   ObservedDecorator,
   ObservedDictAssign,
+  ObservedFunction,
   ObservedStore,
   ObservedSubscript,
 } from './calls.js';
@@ -30,10 +31,13 @@ import type {
   RegistryCallFact,
   RegistryDeclarationFact,
   RegistryFact,
+  RegistryInjectionFact,
   RegistryKeyFact,
   RegistryReceiverFact,
 } from '../../facts/types.js';
 import type { RegistryRelationship } from '../../types.js';
+import type { RegistryNameInjectionRule } from '../registry-protocols.js';
+import { dottedName } from './expression-format.js';
 
 /** The collector: its observer feeds one walk, and `facts()` returns the facts it read. */
 export interface PythonRegistryCollector {
@@ -52,9 +56,12 @@ interface DictReceiver {
   readonly receiver: RegistryReceiverFact;
 }
 
-export function createPythonRegistryCollector(): PythonRegistryCollector {
+export function createPythonRegistryCollector(
+  nameInjection: readonly RegistryNameInjectionRule[] = [],
+): PythonRegistryCollector {
   const declarations: RegistryDeclarationFact[] = [];
   const calls: RegistryCallFact[] = [];
+  const injections: RegistryInjectionFact[] = [];
 
   const observer: CallObserver = {
     onCall: (site) => {
@@ -73,11 +80,32 @@ export function createPythonRegistryCollector(): PythonRegistryCollector {
       const declaration = decoratorOf(site);
       if (declaration !== undefined) declarations.push(declaration);
     },
+    onFunction: (site) => {
+      for (const rule of nameInjection) {
+        const declaration = fixtureDeclarationOf(site, rule);
+        if (declaration !== undefined) declarations.push(declaration);
+        injections.push(...parameterInjectionsOf(site, rule));
+      }
+    },
     onDictAssign: (site) => {
       declarations.push(...declarationsOf(site));
     },
   };
-  return { observer, facts: () => [...declarations, ...calls] };
+  return {
+    observer,
+    facts: (): RegistryFact[] => {
+      // A parameter is injected only when its registry declares a key of its name.
+      const declared = new Set(
+        declarations.flatMap((d) =>
+          d.key.kind === 'static' ? [registryKey(d.registry, d.key.name)] : [],
+        ),
+      );
+      const injected = injections.filter(
+        (i) => i.key.kind === 'static' && declared.has(registryKey(i.registry, i.key.name)),
+      );
+      return [...declarations, ...injected, ...calls];
+    },
+  };
 }
 
 /** A lookup: `REGISTRY.get('key')` on a dictionary, or a lookup method on a repository registry. */
@@ -309,4 +337,67 @@ function repoRegistry(value: Expr, site: CallContext): DictReceiver | undefined 
       internal: false,
     },
   };
+}
+
+function registryKey(registry: string, name: string): string {
+  return JSON.stringify([registry, name]);
+}
+
+/** A function decorated with the rule's decorator is declared in the rule's registry under its name. */
+function fixtureDeclarationOf(
+  site: ObservedFunction,
+  rule: RegistryNameInjectionRule,
+): RegistryDeclarationFact | undefined {
+  const decorated = site.def.decorators.some(
+    (d) => dottedName(d.kind === 'call' ? d.func : d) === rule.decorator,
+  );
+  if (!decorated || !site.declared.has(site.id)) return undefined;
+  return {
+    kind: 'registry-declaration',
+    filePath: site.info.filePath,
+    span: toSourceSpan(site.def.span, site.info.filePath),
+    source: 'decorator',
+    subject: `@${rule.decorator}`,
+    registry: rule.registry,
+    key: {
+      kind: 'static',
+      name: site.def.name,
+      keyType: 'string',
+      numericLiteral: false,
+      evidence: 'config',
+    },
+    target: site.id,
+    targetInGraph: true,
+    confidence: 'high',
+    evidence: 'config',
+  };
+}
+
+/** Each named parameter of a function asks its registry for the key of its own name. */
+function parameterInjectionsOf(
+  site: ObservedFunction,
+  rule: RegistryNameInjectionRule,
+): RegistryInjectionFact[] {
+  const out: RegistryInjectionFact[] = [];
+  for (const param of site.def.params) {
+    if (param.kind !== 'normal' || param.name === null) continue;
+    if (param.name === 'self' || param.name === 'cls') continue;
+    out.push({
+      kind: 'registry-injection',
+      filePath: site.info.filePath,
+      span: toSourceSpan(param.span, site.info.filePath),
+      owner: site.id,
+      registry: rule.registry,
+      key: {
+        kind: 'static',
+        name: param.name,
+        keyType: 'string',
+        numericLiteral: false,
+        evidence: 'config',
+      },
+      subject: param.name,
+      mechanism: 'parameter-name',
+    });
+  }
+  return out;
 }

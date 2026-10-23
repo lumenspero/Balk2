@@ -140,3 +140,25 @@ These are not yet produced by the fact passes. They keep their V2 behavior until
 - **Template and stylesheet imports.** These are not read from Python source.
 
 For the status of each mechanism family across languages, see `docs/v3/language-parity.md`.
+
+## Registries: pytest fixtures (recipe)
+
+Parameter-name injection is configured, not built in. A repository that uses pytest fixtures
+declares them as a registry and injects them into test parameters by name:
+
+```json
+{
+  "protocols": {
+    "registries": {
+      "nameInjection": [{ "registry": "fixtures", "decorator": "pytest.fixture" }]
+    }
+  }
+}
+```
+
+A function decorated with `@pytest.fixture` is declared in the `fixtures` registry under its own
+name. A function parameter named after a declared fixture injects it, and a parameter that names
+no declared fixture adds no edge. The decorator is matched as written, so `pytest.fixture` matches
+`@pytest.fixture` and `@pytest.fixture(scope=...)`, but not `@fixture` after
+`from pytest import fixture`. The rule applies to Python only. The JavaScript and TypeScript
+front end ignores `nameInjection`.

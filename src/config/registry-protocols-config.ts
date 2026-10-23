@@ -4,6 +4,7 @@ import {
   type RegistryDirection,
   type RegistryDiscoverRule,
   type RegistryManifestEntry,
+  type RegistryNameInjectionRule,
   type RegistryProtocol,
   type RegistryProtocolOptions,
   type RegistryRule,
@@ -28,10 +29,12 @@ const REGISTRY_KEYS = new Set([
   'methods',
   'decorators',
   'parameterDecorators',
+  'nameInjection',
   'manifest',
   'discover',
 ]);
 const DECORATOR_KEYS = new Set(['name', 'registry', 'keyArg']);
+const NAME_INJECTION_KEYS = new Set(['registry', 'decorator']);
 const MANIFEST_KEYS = new Set(['registry', 'key', 'target']);
 const DISCOVER_KEYS = new Set(['glob', 'registry']);
 const METHOD_KEYS = new Set(['method', 'direction', 'keyArg', 'keyFrom', 'valueArg', 'receiver']);
@@ -84,6 +87,13 @@ export function normalizeRegistries(
     problems,
     normalizeDecorator,
   );
+  const nameInjection = normalizeEntries(
+    value['nameInjection'],
+    'nameInjection' in value,
+    `${base}.nameInjection`,
+    problems,
+    normalizeNameInjection,
+  );
   const manifest = normalizeEntries(
     value['manifest'],
     'manifest' in value,
@@ -105,6 +115,7 @@ export function normalizeRegistries(
     ...(methods.length > 0 ? { methods } : {}),
     ...(decorators.length > 0 ? { decorators } : {}),
     ...(parameterDecorators.length > 0 ? { parameterDecorators } : {}),
+    ...(nameInjection.length > 0 ? { nameInjection } : {}),
     ...(manifest.length > 0 ? { manifest } : {}),
     ...(discover.length > 0 ? { discover } : {}),
   };
@@ -329,6 +340,22 @@ function normalizeEntries<T>(
     if (normalized !== undefined) entries.push(normalized);
   });
   return entries;
+}
+
+function normalizeNameInjection(
+  value: unknown,
+  path: string,
+  problems: ConfigProblem[],
+): RegistryNameInjectionRule | undefined {
+  if (!isRecord(value)) {
+    problems.push({ path, message: 'must be an object; entry ignored' });
+    return undefined;
+  }
+  reportUnknownKeys(value, NAME_INJECTION_KEYS, path, problems);
+  const registry = nonEmptyString(value['registry'], `${path}.registry`, problems);
+  const decorator = nonEmptyString(value['decorator'], `${path}.decorator`, problems);
+  if (registry === undefined || decorator === undefined) return undefined;
+  return { registry, decorator };
 }
 
 function normalizeDecorator(

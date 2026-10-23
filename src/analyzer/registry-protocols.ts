@@ -76,6 +76,17 @@ export interface RegistryParameterDecoratorRule {
   readonly keyArg?: number;
 }
 
+/**
+ * A pytest-style fixture recipe. A function decorated with `decorator` is declared in `registry`
+ * under its own name, and a parameter named after one of those declarations is injected from it.
+ */
+export interface RegistryNameInjectionRule {
+  /** The registry the functions are declared in, and the parameters are looked up in */
+  readonly registry: string;
+  /** The decorator that declares a function, as written, such as `pytest.fixture` */
+  readonly decorator: string;
+}
+
 /** One explicit registration: `key` in `registry` maps to `target`. */
 export interface RegistryManifestEntry {
   readonly registry: string;
@@ -105,6 +116,8 @@ export interface RegistryProtocolOptions {
    * `constructor(@Inject(UserRepo) r)` a lookup of `UserRepo` from the enclosing class.
    */
   readonly parameterDecorators?: readonly RegistryParameterDecoratorRule[];
+  /** Parameter-name injection from declarations, such as pytest fixtures (Python) */
+  readonly nameInjection?: readonly RegistryNameInjectionRule[];
   /** Explicit registrations, such as for generated code that no call site shows */
   readonly manifest?: readonly RegistryManifestEntry[];
   /** Files that register themselves under their name, found by glob */

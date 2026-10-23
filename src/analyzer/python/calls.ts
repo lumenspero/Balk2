@@ -134,6 +134,12 @@ export interface ObservedDictAssign extends CallContext {
   readonly owner: string | null;
 }
 
+/** A function definition, with the symbol id it declares. */
+export interface ObservedFunction extends CallContext {
+  readonly def: Extract<Stmt, { kind: 'funcdef' }>;
+  readonly id: string;
+}
+
 /** Reads the calls and subscripts a pass walks, without changing what it emits. */
 export interface CallObserver {
   readonly onCall?: (call: ObservedCall) => void;
@@ -141,6 +147,7 @@ export interface CallObserver {
   readonly onSubscript?: (subscript: ObservedSubscript) => void;
   readonly onStore?: (store: ObservedStore) => void;
   readonly onDictAssign?: (assign: ObservedDictAssign) => void;
+  readonly onFunction?: (fn: ObservedFunction) => void;
 }
 
 /** Several observers over one walk, called in the order given. */
@@ -151,6 +158,7 @@ export function combineObservers(...observers: readonly CallObserver[]): CallObs
     onSubscript: (subscript) => observers.forEach((o) => o.onSubscript?.(subscript)),
     onStore: (store) => observers.forEach((o) => o.onStore?.(store)),
     onDictAssign: (assign) => observers.forEach((o) => o.onDictAssign?.(assign)),
+    onFunction: (fn) => observers.forEach((o) => o.onFunction?.(fn)),
   };
 }
 
@@ -179,12 +187,15 @@ type OnDictAssign = (
   frame: Frame,
 ) => void;
 
+type OnFunction = (def: Extract<Stmt, { kind: 'funcdef' }>, id: string) => void;
+
 interface Visitor {
   readonly onCall: OnCall;
   readonly onDecorator: OnDecorator;
   readonly onSubscript: OnSubscript;
   readonly onStore: OnStore;
   readonly onDictAssign: OnDictAssign;
+  readonly onFunction: OnFunction;
 }
 
 const NO_STORES: ReadonlySet<Expr> = new Set();
@@ -210,6 +221,7 @@ function visitStmts(stmts: readonly Stmt[], frame: Frame, filePath: string, v: V
       if (!decorators.includes(e)) visitExpr(e, frame, v, stores);
     }
     if (chain !== undefined && st.kind === 'funcdef') {
+      v.onFunction(st, ownerIdOf(filePath, chain));
       const inClass = frame.chain[frame.chain.length - 1]?.kind === 'class';
       let method = frame.method;
       if (inClass) {
@@ -507,6 +519,8 @@ export function analyzePythonCalls(
           });
         }
       },
+      onFunction: (def, id) =>
+        observer.onFunction?.({ info, ctx, declared, types, mro, index, def, id }),
       onDecorator: (decorator, decoratedId, frame) => {
         if (!isIdentityDecorator(decorator, info, configured)) nonIdentity.add(decoratedId);
         observer.onDecorator?.({

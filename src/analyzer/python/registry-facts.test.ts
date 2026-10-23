@@ -2,18 +2,22 @@ import { describe, expect, it } from 'vitest';
 import type { RegistryFact, RegistryKeyFact } from '../../facts/types.js';
 import { analyzePythonCalls } from './calls.js';
 import { createPythonRegistryCollector } from './registry-facts.js';
+import type { RegistryNameInjectionRule } from '../registry-protocols.js';
 import { createImportResolver } from './modules/import-resolution.js';
 import { createSymbolResolver } from './modules/module-exports.js';
 import { ModuleIndex } from './modules/module-index.js';
 
-function collect(files: Record<string, string>): RegistryFact[] {
+function collect(
+  files: Record<string, string>,
+  nameInjection: readonly RegistryNameInjectionRule[] = [],
+): RegistryFact[] {
   const index = new ModuleIndex(Object.keys(files));
   const readText = (p: string): string => files[p] ?? '';
   const imports = createImportResolver(index, { roots: ['.'], readText });
   const symbols = createSymbolResolver({ resolver: imports, readText });
   const ctx = { symbols, imports };
   const sources = Object.entries(files).map(([filePath, source]) => ({ filePath, source }));
-  const collector = createPythonRegistryCollector();
+  const collector = createPythonRegistryCollector(nameInjection);
   analyzePythonCalls(sources, ctx, {}, collector.observer);
   return collector.facts();
 }
@@ -24,8 +28,13 @@ function keyText(key: RegistryKeyFact): string {
 }
 
 /** One line per fact: a declaration, or `owner relationship key registry [-> target] [internal]`. */
-function lines(files: Record<string, string>): string[] {
-  return collect(files).map((f) => {
+function lines(
+  files: Record<string, string>,
+  nameInjection: readonly RegistryNameInjectionRule[] = [],
+): string[] {
+  return collect(files, nameInjection).map((f) => {
+    if (f.kind === 'registry-injection')
+      return `${f.owner} injects ${keyText(f.key)} ${f.registry}`;
     if (f.kind === 'registry-declaration') {
       return `declare ${f.registry} ${keyText(f.key)} -> ${f.target}`;
     }
@@ -120,6 +129,45 @@ describe('python registry facts: repository registries', () => {
       lines({
         'm.py': `class Box:\n    def get(self, key):\n        return key\n\n\nbox = Box()\nvalue = box.get('x')\n`,
       }),
+    ).toEqual([]);
+  });
+});
+
+describe('python registry facts: parameter-name injection (pytest fixtures)', () => {
+  const FIXTURES: RegistryNameInjectionRule[] = [
+    { registry: 'fixtures', decorator: 'pytest.fixture' },
+  ];
+
+  it('declares a decorated function as a fixture and injects a parameter of its name', () => {
+    expect(
+      lines(
+        {
+          'test_app.py':
+            'import pytest\n\n\n@pytest.fixture\ndef user_repo():\n    return 1\n\n\ndef test_load(user_repo):\n    return user_repo\n',
+        },
+        FIXTURES,
+      ),
+    ).toEqual([
+      'declare fixtures user_repo -> test_app.py:user_repo',
+      'test_app.py:test_load injects user_repo fixtures',
+    ]);
+  });
+
+  it('injects nothing for a parameter that no fixture declares', () => {
+    expect(
+      lines({ 'test_app.py': 'def test_load(user_repo):\n    return user_repo\n' }, FIXTURES),
+    ).toEqual([]);
+  });
+
+  it('declares nothing for a function without the rule decorator', () => {
+    expect(
+      lines(
+        {
+          'test_app.py':
+            'def helper():\n    return 1\n\n\ndef test_load(helper):\n    return helper\n',
+        },
+        FIXTURES,
+      ),
     ).toEqual([]);
   });
 });

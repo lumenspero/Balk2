@@ -321,6 +321,12 @@
             "$ref": "#/$defs/decorator"
           }
         },
+        "nameInjection": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nameInjection"
+          }
+        },
         "manifest": {
           "type": "array",
           "items": {
@@ -394,6 +400,19 @@
         },
         "keyArg": {
           "$ref": "#/$defs/argIndex"
+        }
+      }
+    },
+    "nameInjection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["registry", "decorator"],
+      "properties": {
+        "registry": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "decorator": {
+          "$ref": "#/$defs/nonEmptyString"
         }
       }
     },
