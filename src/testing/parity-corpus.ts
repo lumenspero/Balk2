@@ -262,6 +262,274 @@ export const PARITY_CORPUS: readonly CorpusScenario[] = [
       },
     },
   },
+  // 9.9 A. A local binding shadows an imported function inside its own function only.
+  {
+    name: 'a local binding shadows an imported function',
+    family: 'shadowing',
+    renditions: {
+      javascript: {
+        files: {
+          'util.ts': 'export function helper(): number {\n  return 1;\n}\n',
+          'main.ts':
+            "import { helper } from './util.js';\n\nexport function run(): number {\n  const helper = (): number => 2;\n  return helper();\n}\n\nexport function direct(): number {\n  return helper();\n}\n",
+        },
+        expect: {
+          relationships: ['calls main.ts:direct -> util.ts:helper'],
+          absent: ['calls main.ts:run -> util.ts:helper'],
+        },
+      },
+      python: {
+        files: {
+          'util.py': 'def helper():\n    return 1\n',
+          'main.py':
+            'from util import helper\n\n\ndef run():\n    helper = lambda: 2\n    return helper()\n\n\ndef direct():\n    return helper()\n',
+        },
+        expect: {
+          relationships: ['calls main.py:direct -> util.py:helper'],
+          absent: ['calls main.py:run -> util.py:helper'],
+        },
+      },
+      rust: {
+        files: {
+          'Cargo.toml': '[package]\nname = "demo"\nversion = "0.1.0"\nedition = "2021"\n',
+          'src/lib.rs': 'pub mod util;\npub mod user;\n',
+          'src/util.rs': 'pub fn helper() -> i32 {\n    1\n}\n',
+          'src/user.rs':
+            'use crate::util::helper;\n\npub fn run() -> i32 {\n    let helper = || 2;\n    helper()\n}\n\npub fn direct() -> i32 {\n    helper()\n}\n',
+        },
+        expect: {
+          relationships: [
+            'imports src/user.rs -> src/util.rs',
+            'calls src/user.rs:direct -> src/util.rs:helper',
+          ],
+          absent: ['calls src/user.rs:run -> src/util.rs:helper'],
+        },
+      },
+    },
+  },
+
+  // 9.9 B. A method on a receiver of unknown type is not connected to any type (negative).
+  {
+    name: 'a method on a receiver of unknown type is not connected (negative)',
+    family: 'method calls',
+    renditions: {
+      javascript: {
+        files: {
+          'user.ts':
+            'export class User {\n  save(): void {}\n}\n\nexport class Other {\n  save(): void {}\n}\n',
+          'main.ts': 'export function run(thing: any): void {\n  thing.save();\n}\n',
+        },
+        expect: {
+          absent: [
+            'calls main.ts:run -> user.ts:User.save',
+            'calls main.ts:run -> user.ts:Other.save',
+          ],
+        },
+      },
+      python: {
+        files: {
+          'user.py': 'class User:\n    def save(self):\n        return None\n',
+          'other.py': 'class Other:\n    def save(self):\n        return None\n',
+          'main.py': 'def run(thing):\n    thing.save()\n',
+        },
+        expect: {
+          absent: [
+            'calls main.py:run -> user.py:User.save',
+            'calls main.py:run -> other.py:Other.save',
+          ],
+        },
+      },
+      rust: {
+        files: {
+          'Cargo.toml': '[package]\nname = "demo"\nversion = "0.1.0"\nedition = "2021"\n',
+          'src/lib.rs':
+            'pub struct User;\n\nimpl User {\n    pub fn save(&self) {}\n}\n\npub struct Other;\n\nimpl Other {\n    pub fn save(&self) {}\n}\n\npub fn run<T>(thing: T) {\n    thing.save();\n}\n',
+        },
+        expect: {
+          absent: [
+            'calls src/lib.rs:run -> src/lib.rs:User.save',
+            'calls src/lib.rs:run -> src/lib.rs:Other.save',
+          ],
+        },
+      },
+    },
+  },
+
+  // 9.9 C. A method called on the result of a constructor is connected to the type's method.
+  {
+    name: 'a method called on a constructor result is connected',
+    family: 'method calls',
+    renditions: {
+      javascript: {
+        files: {
+          'user.ts': 'export class User {\n  save(): void {}\n}\n',
+          'main.ts':
+            "import { User } from './user.js';\n\nexport function run(): void {\n  const user = new User();\n  user.save();\n}\n",
+        },
+        expect: {
+          relationships: ['calls main.ts:run -> user.ts:User.save'],
+          symbols: ['user.ts:User.save'],
+        },
+        pending: '2.5',
+      },
+      python: {
+        files: {
+          'user.py': 'class User:\n    def save(self):\n        return None\n',
+          'main.py': 'from user import User\n\n\ndef run():\n    user = User()\n    user.save()\n',
+        },
+        expect: {
+          relationships: ['calls main.py:run -> user.py:User.save'],
+          symbols: ['user.py:User.save'],
+        },
+      },
+      rust: {
+        files: {
+          'Cargo.toml': '[package]\nname = "demo"\nversion = "0.1.0"\nedition = "2021"\n',
+          'src/lib.rs':
+            'pub struct User;\n\nimpl User {\n    pub fn new() -> Self {\n        User\n    }\n\n    pub fn save(&self) {}\n}\n\npub fn run() {\n    let user = User::new();\n    user.save();\n}\n',
+        },
+        expect: {
+          relationships: ['calls src/lib.rs:run -> src/lib.rs:User.save'],
+          symbols: ['src/lib.rs:User.save'],
+        },
+      },
+    },
+  },
+
+  // 9.9 D. Two glob imports that supply one name leave the name unconnected (negative).
+  {
+    name: 'two globs that supply one name leave it unconnected (negative)',
+    family: 'shadowing',
+    renditions: {
+      javascript: {
+        files: {
+          'a.ts': 'export function make(): number {\n  return 1;\n}\n',
+          'b.ts': 'export function make(): number {\n  return 2;\n}\n',
+          'index.ts': "export * from './a.js';\nexport * from './b.js';\n",
+          'main.ts':
+            "import { make } from './index.js';\n\nexport function run(): number {\n  return make();\n}\n",
+        },
+        expect: {
+          absent: [
+            'calls main.ts:run -> a.ts:make',
+            'calls main.ts:run -> b.ts:make',
+            'calls main.ts:run -> index.ts:make',
+          ],
+        },
+      },
+      python: {
+        files: {
+          'a.py': 'def make():\n    return 1\n',
+          'b.py': 'def make():\n    return 2\n',
+          'main.py': 'from a import *\nfrom b import *\n\n\ndef run():\n    return make()\n',
+        },
+        expect: {
+          absent: ['calls main.py:run -> a.py:make', 'calls main.py:run -> b.py:make'],
+        },
+      },
+      rust: {
+        files: {
+          'Cargo.toml': '[package]\nname = "demo"\nversion = "0.1.0"\nedition = "2021"\n',
+          'src/lib.rs':
+            'pub mod a;\npub mod b;\n\nuse a::*;\nuse b::*;\n\npub fn run() -> i32 {\n    make()\n}\n',
+          'src/a.rs': 'pub fn make() -> i32 {\n    1\n}\n',
+          'src/b.rs': 'pub fn make() -> i32 {\n    2\n}\n',
+        },
+        expect: {
+          absent: [
+            'calls src/lib.rs:run -> src/a.rs:make',
+            'calls src/lib.rs:run -> src/b.rs:make',
+          ],
+        },
+      },
+    },
+  },
+
+  // 9.9 E. A name re-exported through three modules still connects to its definition.
+  {
+    name: 'a name re-exported through three modules connects to its definition',
+    family: 'imports and calls',
+    renditions: {
+      javascript: {
+        files: {
+          'c.ts': 'export function helper(): number {\n  return 1;\n}\n',
+          'b.ts': "export { helper } from './c.js';\n",
+          'a.ts': "export { helper } from './b.js';\n",
+          'main.ts':
+            "import { helper } from './a.js';\n\nexport function run(): number {\n  return helper();\n}\n",
+        },
+        expect: {
+          relationships: ['calls main.ts:run -> c.ts:helper'],
+          symbols: ['c.ts:helper'],
+        },
+      },
+      python: {
+        files: {
+          'c.py': 'def helper():\n    return 1\n',
+          'b.py': 'from c import helper as helper\n',
+          'a.py': 'from b import helper as helper\n',
+          'main.py': 'from a import helper\n\n\ndef run():\n    return helper()\n',
+        },
+        expect: {
+          relationships: ['calls main.py:run -> c.py:helper'],
+          symbols: ['c.py:helper'],
+        },
+      },
+      rust: {
+        files: {
+          'Cargo.toml': '[package]\nname = "demo"\nversion = "0.1.0"\nedition = "2021"\n',
+          'src/lib.rs':
+            'pub mod a;\npub mod b;\npub mod c;\n\npub fn run() -> i32 {\n    a::helper()\n}\n',
+          'src/a.rs': 'pub use crate::b::helper;\n',
+          'src/b.rs': 'pub use crate::c::helper;\n',
+          'src/c.rs': 'pub fn helper() -> i32 {\n    1\n}\n',
+        },
+        expect: {
+          relationships: ['calls src/lib.rs:run -> src/c.rs:helper'],
+          symbols: ['src/c.rs:helper'],
+        },
+      },
+    },
+  },
+
+  // 9.9 F. A type that implements a trait is linked to the trait.
+  {
+    name: 'a type that implements a trait is linked to it',
+    family: 'inheritance',
+    renditions: {
+      javascript: {
+        files: {
+          'shape.ts': 'export interface Shape {\n  area(): number;\n}\n',
+          'square.ts':
+            "import type { Shape } from './shape.js';\n\nexport class Square implements Shape {\n  area(): number {\n    return 1;\n  }\n}\n",
+        },
+        expect: {
+          relationships: ['implements square.ts:Square -> shape.ts:Shape'],
+        },
+      },
+      python: {
+        files: {
+          'iface.py': 'import abc\n\n\nclass Shape(abc.ABC):\n    pass\n',
+          'impl.py':
+            'from iface import Shape\n\n\nclass Square:\n    pass\n\n\nShape.register(Square)\n',
+        },
+        expect: {
+          relationships: ['implements impl.py:Square -> iface.py:Shape'],
+        },
+      },
+      rust: {
+        files: {
+          'Cargo.toml': '[package]\nname = "demo"\nversion = "0.1.0"\nedition = "2021"\n',
+          'src/lib.rs':
+            'pub trait Shape {\n    fn area(&self) -> f64;\n}\n\npub struct Square;\n\nimpl Shape for Square {\n    fn area(&self) -> f64 {\n        1.0\n    }\n}\n',
+        },
+        expect: {
+          relationships: ['implements src/lib.rs:Square -> src/lib.rs:Shape'],
+          symbols: ['src/lib.rs:Square[Shape].area'],
+        },
+      },
+    },
+  },
 ];
 
 assertUniqueNames(PARITY_CORPUS);

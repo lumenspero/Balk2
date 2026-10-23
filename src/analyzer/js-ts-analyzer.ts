@@ -288,7 +288,7 @@ export class JsTsAnalyzer implements Analyzer {
 
       if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
         const callerId = enclosingSymbolId ?? normalizedPath;
-        handleCall(node, callerId, graph, importsMap, topLevelSymbols);
+        handleCall(node, callerId, graph, importsMap, topLevelSymbols, options?.repository);
       }
 
       ts.forEachChild(node, (child) => visitSecondPass(child, enclosingSymbolId));
@@ -426,12 +426,115 @@ function getParentClassName(node: ts.MethodDeclaration): string | undefined {
   return undefined;
 }
 
+/**
+ * Whether an identifier refers to a module-level binding: an import, or a declaration that is a
+ * top-level statement. A local binding (a `const` inside a function, a parameter) shadows the
+ * module's names, so a call through it is not a call to them (9.9 A).
+ */
+function refersToModuleBinding(identifier: ts.Identifier, checker: ts.TypeChecker): boolean {
+  const declaration = checker.getSymbolAtLocation(identifier)?.declarations?.[0];
+  if (declaration === undefined) return true;
+  if (
+    ts.isImportSpecifier(declaration) ||
+    ts.isImportClause(declaration) ||
+    ts.isNamespaceImport(declaration) ||
+    ts.isImportEqualsDeclaration(declaration)
+  ) {
+    return true;
+  }
+  // A variable's statement is the declaration that sits in the module; other declarations (functions,
+  // classes, enums) are top-level when their own parent is the file.
+  let node: ts.Node = declaration;
+  while (
+    ts.isVariableDeclaration(node) ||
+    ts.isVariableDeclarationList(node) ||
+    ts.isBindingElement(node) ||
+    ts.isObjectBindingPattern(node) ||
+    ts.isArrayBindingPattern(node)
+  ) {
+    node = node.parent;
+  }
+  if (ts.isVariableStatement(node)) return ts.isSourceFile(node.parent);
+  return ts.isSourceFile(declaration.parent);
+}
+
+/** Repository path of each parsed file, by its source file. Built once per repository. */
+const sourcePathCache = new WeakMap<RepositoryProgram, Map<ts.SourceFile, string>>();
+
+function pathOfSourceFile(repository: RepositoryProgram, file: ts.SourceFile): string | undefined {
+  let paths = sourcePathCache.get(repository);
+  if (paths === undefined) {
+    paths = new Map([...repository.sourceFiles].map(([path, source]) => [source, path]));
+    sourcePathCache.set(repository, paths);
+  }
+  return paths.get(file);
+}
+
+/**
+ * Whether a module gets a name from two `export *` declarations and does not declare it itself.
+ * TypeScript then leaves the name unresolved, so no single symbol is the target (9.9 D).
+ */
+function ambiguousStarExport(
+  specifier: ts.Expression,
+  name: string,
+  checker: ts.TypeChecker,
+): boolean {
+  const moduleSymbol = checker.getSymbolAtLocation(specifier);
+  const file = moduleSymbol?.declarations?.find(ts.isSourceFile);
+  if (moduleSymbol === undefined || file === undefined) return false;
+  const own = checker.getExportsOfModule(moduleSymbol).find((symbol) => symbol.name === name);
+  if (own?.declarations?.some((declaration) => declaration.getSourceFile() === file)) return false;
+  let providers = 0;
+  for (const statement of file.statements) {
+    if (
+      !ts.isExportDeclaration(statement) ||
+      statement.exportClause !== undefined ||
+      statement.moduleSpecifier === undefined
+    ) {
+      continue;
+    }
+    const target = checker.getSymbolAtLocation(statement.moduleSpecifier);
+    if (target === undefined) continue;
+    if (checker.getExportsOfModule(target).some((symbol) => symbol.name === name)) providers += 1;
+  }
+  return providers > 1;
+}
+
+/**
+ * The repository symbol an imported name resolves to, followed through re-exports (9.9 E).
+ * Undefined when the identifier is not an import alias, so the caller keeps the import's own
+ * target. Null when the alias does not resolve to one repository symbol (an ambiguous `export *`,
+ * or a module outside the repository), so no edge is drawn.
+ */
+function aliasTarget(
+  identifier: ts.Identifier,
+  importedName: string,
+  checker: ts.TypeChecker,
+  repository: RepositoryProgram,
+): string | null | undefined {
+  const symbol = checker.getSymbolAtLocation(identifier);
+  if (symbol === undefined || !(symbol.flags & ts.SymbolFlags.Alias)) return undefined;
+  const importDecl = ts.findAncestor(symbol.declarations?.[0], ts.isImportDeclaration);
+  if (
+    importDecl !== undefined &&
+    ambiguousStarExport(importDecl.moduleSpecifier, importedName, checker)
+  ) {
+    return null;
+  }
+  const aliased = checker.getAliasedSymbol(symbol);
+  const declaration = aliased.declarations?.[0];
+  if (declaration === undefined) return null;
+  const file = pathOfSourceFile(repository, declaration.getSourceFile());
+  return file === undefined ? null : `${file}:${aliased.getName()}`;
+}
+
 function handleCall(
   node: ts.CallExpression | ts.NewExpression,
   callerId: string,
   graph: ConnectionGraph,
   importsMap: Map<string, { targetFile: string; importedName: string }>,
   topLevelSymbols: Map<string, { id: string; type: SymbolType }>,
+  repository?: RepositoryProgram,
 ): void {
   let calleeName = '';
 
@@ -449,9 +552,19 @@ function handleCall(
     return;
   }
 
+  const checker = repository?.checker;
+  if (checker !== undefined && ts.isIdentifier(node.expression)) {
+    if (!refersToModuleBinding(node.expression, checker)) return;
+  }
+
   const imported = importsMap.get(calleeName);
   if (imported) {
-    const targetSymbolId = `${imported.targetFile}:${imported.importedName}`;
+    const aliased =
+      checker !== undefined && repository !== undefined && ts.isIdentifier(node.expression)
+        ? aliasTarget(node.expression, imported.importedName, checker, repository)
+        : undefined;
+    if (aliased === null) return;
+    const targetSymbolId = aliased ?? `${imported.targetFile}:${imported.importedName}`;
     graph.addRelationship('calls', callerId, targetSymbolId);
     return;
   }

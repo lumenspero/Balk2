@@ -78,7 +78,10 @@ export class RustFrontEnd implements LanguageFrontEnd {
           const abi = abiById.get(edge.id);
           graph.addRelationship('exports', edge.from, edge.id, 'high', {
             evidence: 'ast',
-            metadata: { visibility: 'public', ...(abi === undefined ? {} : { abi }) },
+            metadata: {
+              visibility: crate.visibility.get(edge.id) ?? 'public',
+              ...(abi === undefined ? {} : { abi }),
+            },
           });
         }
       }

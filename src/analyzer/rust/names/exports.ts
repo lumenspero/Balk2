@@ -9,6 +9,9 @@
  *   the source is private, which is the usual `mod inner; pub use inner::*;` layout;
  * - every child module declared `pub`.
  *
+ * A `#[no_mangle]` function is exported whatever its visibility, because it is a C symbol the
+ * linker sees (9.9, 1c). Its edge keeps its declared visibility in the front end's metadata.
+ *
  * A module that is not reached this way contributes nothing, even when its items are declared
  * `pub`. The walk is over a set of modules, so it reaches its fixed point.
  *
@@ -34,6 +37,10 @@ export function computeExports(crate: RustCrateIndex): ExportEdge[] {
     const key = `${from}\u0000${id}`;
     if (!edges.has(key)) edges.set(key, { from, id });
   };
+
+  for (const fn of crate.functions) {
+    if (fn.noMangle && fn.container === null) add(fn.owner.file, fn.id);
+  }
 
   const visited = new Set<RustModuleNode>();
   const pending: RustModuleNode[] = [crate.root];

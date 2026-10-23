@@ -272,3 +272,23 @@ This local run sets the provisional budget. The contract records the budget from
 - Gap 8 closed. A glob import reaches a child module only when the child has some visibility (`pub`, `pub(crate)`, `pub(super)`, `pub(in ...)`), or when the importer is inside the module the glob names. A private child module is not brought in from outside its parent, as its items are not. `RustModuleNode.reachable` records this.
 - The Phase 9 `pending` markers are removed from the parity renditions for imported functions, the typed-receiver method call, the sibling-module negative (`src/testing/parity-corpus.ts`), and the Display/Debug `fmt` symbols (`src/testing/rust-corpus.ts`). They run in `npx vitest run src/analyzer/parity`.
 - Still open for Phase 9: `metadata.abi` on non-exported `#[no_mangle]` items (no edge carries it yet, because symbols have no metadata).
+
+### 9.9: exit items 1c and the seed scenarios
+
+- **1c, `#[no_mangle]` items.** A `#[no_mangle]` free function is exported whatever its visibility, because it is a C symbol the linker sees. Its `exports` edge's `metadata.visibility` is the item's declared visibility (`public`, `module` or `private`), and its `abi` is recorded when present. Exports in this crate were `pub` before and are unchanged. Symbol nodes still carry no metadata, so the `abi` lives on the edge only.
+- **Seed scenarios added to `src/testing/parity-corpus.ts`:**
+  - A. A local binding shadows an imported function, in JS/TS, Python and Rust.
+  - B. A method on a receiver of unknown type is not connected (negative).
+  - C. A method called on a constructor result is connected. The JS/TS rendition is `pending: '2.5'`, the same as the typed-receiver rendition it mirrors.
+  - D. Two globs that supply one name leave the name unconnected (negative).
+  - E. A name re-exported through three modules connects to its definition. Python uses the redundant-alias form (`import helper as helper`) so the re-export rule of 4.4 applies.
+  - F. A type that implements a trait is linked to it (`implements`), in all three languages.
+- Scenario expectations were traced by hand against the code and the existing corpus. They have not run yet, and the run is the check.
+
+### 9.9 JS/TS fixes found by the parity seed scenarios
+
+- **Shadowing (A), fixed.** A JS/TS call whose callee identifier refers to a local binding (a `const` or parameter inside a function) is no longer matched to a module-level name of the same spelling. The check uses the TypeScript checker's declaration. Calls without a checker keep the old name-based behaviour.
+- **Import aliases resolve to their definition (E), fixed.** A JS/TS call through an import is drawn to the symbol the checker resolves the import to, following re-exports. Before, it named the file the import came from, which often does not define the symbol, so the edge pointed nowhere in the graph. Such an alias is now drawn to the definition (`c.ts:helper`), not to the re-export file.
+- **Ambiguous `export *` names draw no edge (D), fixed.** When a module gets a name from two `export *` declarations and does not declare it itself, no call edge is drawn to either. The check reads one level of re-export, the module the import names. Deeper chains are not checked.
+- **Known change.** A default-exported callee is named by its declaration (for example `file:foo`), not by the import name (`file:default`). This only changes edges whose target name was `default`.
+- **Snapshot effect.** Edges that moved from a re-export file to the definition, and edges removed for ambiguous names, change the JS/TS snapshot baselines. Each change is a false-positive correction, and the commit message lists them.

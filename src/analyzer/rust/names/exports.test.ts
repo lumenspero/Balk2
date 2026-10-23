@@ -73,4 +73,10 @@ describe('computeExports', () => {
       exported({ 'src/lib.rs': 'mod a { pub mod b { pub fn f() {} } pub fn g() {} }' }),
     ).toEqual([]);
   });
+
+  it('exports a #[no_mangle] function whatever its visibility', () => {
+    expect(exported({ 'src/lib.rs': '#[no_mangle] extern "C" fn private_api() {}' })).toEqual([
+      { from: 'src/lib.rs', id: 'src/lib.rs:private_api' },
+    ]);
+  });
 });
