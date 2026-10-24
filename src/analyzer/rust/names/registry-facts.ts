@@ -7,12 +7,14 @@
  * A map qualifies when one `let` binds it, by its annotation (`HashMap<..>`) or by its constructor
  * (`HashMap::new()`, `with_capacity`), and no other binding in the function reuses its name. A
  * registration needs a repository symbol as its value. A key that is not a literal is dynamic.
- * Statics, struct fields and maps passed in as parameters are not read in this phase.
+ * A `static` whose initializer builds one map registers into that static, as in
+ * `LazyLock::new(|| { let mut m = HashMap::new(); m.insert("k", V); m })`. Struct fields and maps
+ * passed in as parameters are not read in this phase.
  */
 import type { RegistryCallFact, RegistryFact, RegistryKeyFact } from '../../../facts/types.js';
-import type { BodyFact } from '../body.js';
+import { scanTokens, type BodyFact } from '../body.js';
 import type { RustToken } from '../lexer.js';
-import { ownBodyFacts } from '../nested.js';
+import { blocksOfTokens, factsOutside, ownBodyFacts } from '../nested.js';
 import { sourceSpanOf } from '../source-span.js';
 import { isTokenGroup, type TokenGroup, type TokenTree } from '../token-tree.js';
 import { buildRepo, contextOf, scopeCtx, symbolOf, type Ctx } from './calls.js';
@@ -25,7 +27,7 @@ type MethodCall = Extract<BodyFact, { kind: 'method-call' }>;
 const MAP_TYPES: ReadonlySet<string> = new Set(['HashMap', 'BTreeMap']);
 const MAP_CONSTRUCTORS: ReadonlySet<string> = new Set(['new', 'with_capacity']);
 
-/** The registry facts of every function body in the crates. */
+/** The registry facts of every function body, and of every static that builds a map. */
 export function rustRegistryFacts(
   crates: readonly RustCrateIndex[],
   env: RustNameEnvironment,
@@ -36,7 +38,10 @@ export function rustRegistryFacts(
     const body = entry.fn.item.body;
     if (body === null) continue;
     const bodyFacts = ownBodyFacts(body);
-    const maps = mapLocalsOf(bodyFacts, entry.fn.id);
+    const maps = mapLocalsOf(bodyFacts, (name) => ({
+      scope: `${entry.fn.id}.${name}`,
+      internal: true,
+    }));
     if (maps.size === 0) continue;
     const ctx = contextOf(repo, entry);
     for (const fact of bodyFacts) {
@@ -46,11 +51,39 @@ export function rustRegistryFacts(
       if (call !== undefined) facts.push(call);
     }
   }
+
+  // A static whose value builds exactly one map: the map is the static, so it is not internal.
+  for (const crate of crates) {
+    for (const decl of crate.decls) {
+      const item = decl.item;
+      if (item.kind !== 'static' || item.value === null) continue;
+      const tokens = item.value.tokens;
+      const bodyFacts = factsOutside(scanTokens(tokens), blocksOfTokens(tokens));
+      const maps = mapLocalsOf(bodyFacts, () => ({ scope: decl.id, internal: false }));
+      if (maps.size !== 1) continue;
+      const ctx: Ctx = { repo, crate, owner: decl.owner, self: null, bounds: new Map() };
+      for (const fact of bodyFacts) {
+        if (fact.kind !== 'method-call') continue;
+        const site = scopeCtx(ctx, decl.scopes, fact.span);
+        const call = mapCallOf(fact, maps, site, decl.id, decl.owner.file);
+        if (call !== undefined) facts.push(call);
+      }
+    }
+  }
   return facts;
 }
 
-/** The map locals of a body: each name bound once, to a map, mapped to its registry scope. */
-function mapLocalsOf(facts: readonly BodyFact[], fnId: string): Map<string, string> {
+/** Where a map local's registrations go: its registry scope, and whether it is internal. */
+interface MapLocal {
+  readonly scope: string;
+  readonly internal: boolean;
+}
+
+/** The map locals of a body: each name bound once, to a map, mapped to its registry. */
+function mapLocalsOf(
+  facts: readonly BodyFact[],
+  registryOf: (name: string) => MapLocal,
+): Map<string, MapLocal> {
   const bindings = new Map<string, number>();
   const count = (name: string): void => {
     bindings.set(name, (bindings.get(name) ?? 0) + 1);
@@ -63,12 +96,12 @@ function mapLocalsOf(facts: readonly BodyFact[], fnId: string): Map<string, stri
     }
   }
 
-  const maps = new Map<string, string>();
+  const maps = new Map<string, MapLocal>();
   for (const fact of facts) {
     if (fact.kind !== 'let' || !fact.simple || fact.bindings.length !== 1) continue;
     const name = fact.bindings[0]?.name;
     if (name === undefined || bindings.get(name) !== 1 || !isMapBinding(fact)) continue;
-    maps.set(name, `${fnId}.${name}`);
+    maps.set(name, registryOf(name));
   }
   return maps;
 }
@@ -90,7 +123,7 @@ function isMapBinding(fact: Extract<BodyFact, { kind: 'let' }>): boolean {
 /** The registry fact of one method call on a map local, or undefined for any other call. */
 function mapCallOf(
   fact: MethodCall,
-  maps: ReadonlyMap<string, string>,
+  maps: ReadonlyMap<string, MapLocal>,
   site: Ctx,
   owner: string,
   file: string,
@@ -98,12 +131,12 @@ function mapCallOf(
   // `map.entry(k).or_insert(v)` registers `v` under `k`.
   const chained = fact.receiverCall;
   if (chained !== undefined && fact.method === 'or_insert' && chained.method === 'entry') {
-    const scope = maps.get(chained.receiver);
+    const local = maps.get(chained.receiver);
     const [keyTokens] = splitArgs(chained.args);
     const [valueTokens] = splitArgs(fact.args);
     const target = valueTokens === undefined ? undefined : symbolOfValue(valueTokens, site);
-    if (scope === undefined || target === undefined) return undefined;
-    return callFact(fact, file, owner, scope, `${chained.receiver}.entry().or_insert`, {
+    if (local === undefined || target === undefined) return undefined;
+    return callFact(fact, file, owner, local, `${chained.receiver}.entry().or_insert`, {
       relationship: 'registers',
       key: keyOf(keyTokens),
       target,
@@ -111,15 +144,15 @@ function mapCallOf(
   }
 
   if (fact.receiver === null) return undefined;
-  const scope = maps.get(fact.receiver);
-  if (scope === undefined) return undefined;
+  const local = maps.get(fact.receiver);
+  if (local === undefined) return undefined;
   const args = splitArgs(fact.args);
   const subject = `${fact.receiver}.${fact.method}`;
   if (fact.method === 'insert') {
     const [keyTokens, valueTokens] = args;
     const target = valueTokens === undefined ? undefined : symbolOfValue(valueTokens, site);
     if (target === undefined) return undefined;
-    return callFact(fact, file, owner, scope, subject, {
+    return callFact(fact, file, owner, local, subject, {
       relationship: 'registers',
       key: keyOf(keyTokens),
       target,
@@ -127,7 +160,7 @@ function mapCallOf(
   }
   if (fact.method === 'get' || fact.method === 'contains_key') {
     const [keyTokens] = args;
-    return callFact(fact, file, owner, scope, subject, {
+    return callFact(fact, file, owner, local, subject, {
       relationship: 'resolves',
       key: keyOf(keyTokens),
     });
@@ -139,7 +172,7 @@ function callFact(
   fact: MethodCall,
   file: string,
   owner: string,
-  scope: string,
+  local: MapLocal,
   subject: string,
   fields: {
     readonly relationship: 'registers' | 'resolves';
@@ -158,10 +191,10 @@ function callFact(
     protocolSource: 'built-in',
     configuredReceiver: false,
     receiver: {
-      identity: { kind: 'resolved', scope, confidence: 'high' },
+      identity: { kind: 'resolved', scope: local.scope, confidence: 'high' },
       qualifies: true,
       qualificationEvidence: 'ast',
-      internal: true,
+      internal: local.internal,
     },
     key: fields.key,
     ...(fields.target !== undefined ? { target: fields.target } : {}),

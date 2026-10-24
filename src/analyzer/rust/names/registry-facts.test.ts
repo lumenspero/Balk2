@@ -32,6 +32,8 @@ function lines(source: string): string[] {
   ]);
   const fnIds = index.functions.map((f) => [f.item.name, f.id] as const);
   const label = (scope: string): string => {
+    const decl = index.decls.find((d) => d.id === scope);
+    if (decl !== undefined) return decl.item.name;
     const hit = fnIds.find(([, id]) => scope.startsWith(id));
     return hit === undefined ? scope : `${hit[0]}${scope.slice(hit[1].length)}`;
   };
@@ -112,5 +114,37 @@ describe('rust registry facts: local maps (V3 Phase 12.2)', () => {
         'pub fn lookup() {\n    let mut map = HashMap::new();\n    map.insert("user", 1);\n}\n',
       ),
     ).toEqual([]);
+  });
+});
+
+describe('rust registry facts: statics that build a map (V3 Phase 12.2)', () => {
+  const LAZY = 'pub struct User;\n';
+
+  it('reads inserts in a LazyLock initializer as registrations into the static', () => {
+    expect(
+      lines(
+        `${LAZY}pub static REGISTRY: LazyLock<HashMap<&str, User>> = LazyLock::new(|| {\n    let mut m = HashMap::new();\n    m.insert("user", User);\n    m\n});\n`,
+      ),
+    ).toEqual(['registers user REGISTRY -> User']);
+  });
+
+  it('gives no fact for a static whose value builds no map', () => {
+    expect(lines(`${LAZY}pub static NAME: &str = "x";\n`)).toEqual([]);
+  });
+
+  it('reads nothing for a static that builds two maps, which is ambiguous', () => {
+    expect(
+      lines(
+        `${LAZY}pub static REGISTRY: LazyLock<(HashMap<&str, User>, HashMap<&str, User>)> = LazyLock::new(|| {\n    let mut a = HashMap::new();\n    let mut b = HashMap::new();\n    a.insert("user", User);\n    b.insert("admin", User);\n    (a, b)\n});\n`,
+      ),
+    ).toEqual([]);
+  });
+
+  it('reads a non-literal key in a static initializer as a dynamic key', () => {
+    expect(
+      lines(
+        `${LAZY}pub static REGISTRY: LazyLock<HashMap<&str, User>> = LazyLock::new(|| {\n    let mut m = HashMap::new();\n    m.insert(name(), User);\n    m\n});\n`,
+      ),
+    ).toEqual(['registers dynamic:key is not a literal REGISTRY -> User']);
   });
 });

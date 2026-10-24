@@ -19,7 +19,24 @@ fn build() -> Option<&'static str> {
 
 `insert` and `entry(k).or_insert(v)` register `v` under `k`. `get` and `contains_key` look `k` up. Only
 a literal string or integer key is static; any other key is dynamic. Only a single `let`, bound
-once, is read. Not read: maps in struct fields, `self.map`, parameters, and `static` maps.
+once, is read. Not read: maps in struct fields, `self.map`, and maps passed in as parameters.
+
+## Static maps
+
+A `static` whose initializer builds exactly one local map registers into the static itself. This is the
+form used with `LazyLock`, `OnceLock` and `Lazy`:
+
+```rust
+pub static REGISTRY: LazyLock<HashMap<&str, Handler>> = LazyLock::new(|| {
+    let mut m = HashMap::new();
+    m.insert("user", Handler);
+    m
+});
+```
+
+The inserts register under the static, so the registry is `REGISTRY`, not the local `m`. A static that
+builds two maps is not read, because the registry it names is ambiguous. `phf` tables and `lazy_static!`
+blocks are not read.
 
 ## Attributes (registration by declaration)
 
