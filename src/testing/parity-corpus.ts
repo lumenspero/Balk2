@@ -332,6 +332,54 @@ export const PARITY_CORPUS: readonly CorpusScenario[] = [
   },
 
   {
+    name: 'configured singleton field written from another module is shared state',
+    family: 'module-level state (D8)',
+    renditions: {
+      javascript: {
+        files: {
+          'store.ts': 'export const store = { count: 0 };\n',
+          'main.ts':
+            "import { store } from './store';\n\nexport function bump(): void {\n  store.count += 1;\n}\n",
+        },
+        config: { state: { singletons: [{ module: 'store.ts', export: 'store' }] } },
+        expect: {
+          relationships: [
+            'readsState main.ts:bump -> state:store.ts:store#count',
+            'writesState main.ts:bump -> state:store.ts:store#count',
+          ],
+        },
+      },
+      python: {
+        files: {
+          'store.py': 'class Store:\n    count = 0\n\n\nstore = Store()\n',
+          'main.py': 'from store import store\n\n\ndef bump():\n    store.count += 1\n',
+        },
+        config: { state: { singletons: [{ module: 'store.py', export: 'store' }] } },
+        expect: {
+          relationships: [
+            'readsState main.py:bump -> state:store.py:store#count',
+            'writesState main.py:bump -> state:store.py:store#count',
+          ],
+        },
+      },
+      rust: {
+        files: {
+          'Cargo.toml': '[package]\nname = "demo"\nversion = "0.1.0"\nedition = "2021"\n',
+          'src/lib.rs':
+            'pub struct State {\n    pub count: u32,\n}\n\npub static mut STORE: State = State { count: 0 };\n\npub fn bump() {\n    unsafe {\n        STORE.count += 1;\n    }\n}\n',
+        },
+        config: { state: { singletons: [{ module: 'src/lib.rs', export: 'STORE' }] } },
+        expect: {
+          relationships: [
+            'readsState src/lib.rs:bump -> state:src/lib.rs:STORE#count',
+            'writesState src/lib.rs:bump -> state:src/lib.rs:STORE#count',
+          ],
+        },
+      },
+    },
+  },
+
+  {
     name: 'syntax error does not hide the rest of the file',
     family: 'syntax diagnostics',
     renditions: {
