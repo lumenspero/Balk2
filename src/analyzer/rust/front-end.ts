@@ -35,6 +35,13 @@ import { bindProcMacros } from './names/proc-macros.js';
 import { attributeRegistrations } from './names/attribute-registrations.js';
 import { rustRegistryFacts } from './names/registry-facts.js';
 import { rustStateFacts } from './names/state-facts.js';
+import {
+  RUST_CALLBACK_CATALOG,
+  rustCallbackFacts,
+  rustCallbackFiles,
+} from './names/callback-facts.js';
+import { applyCallbackEdges } from '../callback-apply.js';
+import { runCallbackEngine } from '../../facts/callback-engine.js';
 import { applyStateEdges } from '../state-apply.js';
 import { runStateEngine, statePathFiles } from '../../facts/state-engine.js';
 import { applyRegistryEdges } from '../registry-apply.js';
@@ -323,6 +330,19 @@ export class RustFrontEnd implements LanguageFrontEnd {
           env,
           input.config?.protocols?.registries?.methods ?? [],
         ),
+      }),
+    );
+    // Callbacks passed to `thread::spawn` or an iterator method (Phase 12.4).
+    applyCallbackEdges(
+      graph,
+      runCallbackEngine({
+        files: rustCallbackFiles(
+          rustCallbackFacts(
+            crates.map((c) => c.index),
+            env,
+          ),
+        ),
+        catalog: RUST_CALLBACK_CATALOG,
       }),
     );
     // Shared state (Phase 12.3): writes to a `static mut`.
