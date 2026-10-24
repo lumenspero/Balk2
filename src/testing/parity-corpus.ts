@@ -914,7 +914,6 @@ export const PARITY_CORPUS: readonly CorpusScenario[] = [
     family: 'type references',
     renditions: {
       javascript: {
-        pending: '13',
         files: {
           'model.ts': 'export class User {\n  id = 1;\n}\n',
           'main.ts':
@@ -1004,7 +1003,6 @@ export const PARITY_CORPUS: readonly CorpusScenario[] = [
         expect: { relationships: ['packageRoot package:npm:. -> src/index.ts'] },
       },
       python: {
-        pending: '13',
         files: {
           'pyproject.toml': '[project]\nname = "app"\nversion = "1.0.0"\n',
           'src/app/__init__.py': 'x = 1\n',
