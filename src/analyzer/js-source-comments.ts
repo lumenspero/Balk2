@@ -1,5 +1,9 @@
 import * as ts from 'typescript';
-import { readDirectives, type FoundComment, type SourceAnnotationScan } from './source-annotation-engine.js';
+import {
+  readDirectives,
+  type FoundComment,
+  type SourceAnnotationScan,
+} from './source-annotation-engine.js';
 
 /**
  * Read `// balk2: confidence=<level> <from> <type> <to>` directives from a TypeScript or JavaScript

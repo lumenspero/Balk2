@@ -59,7 +59,6 @@ const RELATIONSHIP_TYPES: ReadonlySet<string> = new Set([
   'transforms',
 ]);
 
-
 /**
  * Turn comments into directives. Shared by every language: a comment becomes a directive when its
  * body starts with `balk2:`, and the directive must sit directly above the next token. `nextLine`

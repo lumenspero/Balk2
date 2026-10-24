@@ -31,6 +31,7 @@ import { parseRustFile } from './items.js';
 import { bindCalls } from './names/calls.js';
 import { bindBuildScripts } from './names/build-scripts.js';
 import { bindIncludes } from './names/includes.js';
+import { collectRustSourceAnnotations } from './source-annotations-apply.js';
 import { bindProcMacros } from './names/proc-macros.js';
 import { attributeRegistrations } from './names/attribute-registrations.js';
 import { rustRegistryFacts } from './names/registry-facts.js';
@@ -454,7 +455,15 @@ export class RustFrontEnd implements LanguageFrontEnd {
         },
       }),
     );
-    return { problems: [], syntaxErrors };
+    // Source directives in comments (12.7), owned by the function that holds each statement.
+    return {
+      problems: [],
+      syntaxErrors,
+      sourceAnnotations: collectRustSourceAnnotations(
+        sources,
+        crates.flatMap(({ index }) => index.functions),
+      ),
+    };
   }
 }
 

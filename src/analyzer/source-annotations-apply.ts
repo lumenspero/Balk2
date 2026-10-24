@@ -1,6 +1,10 @@
 import * as ts from 'typescript';
 import type { Annotation } from './annotations.js';
-import { collectAnnotations, type AnnotatedFile, type SourceAnnotationResult } from './source-annotation-engine.js';
+import {
+  collectAnnotations,
+  type AnnotatedFile,
+  type SourceAnnotationResult,
+} from './source-annotation-engine.js';
 import { enclosingOwner } from './owner.js';
 import type { RepositoryProgram } from './repository-program.js';
 import { scanSourceAnnotations } from './js-source-comments.js';

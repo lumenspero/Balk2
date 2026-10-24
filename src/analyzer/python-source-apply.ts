@@ -2,7 +2,11 @@ import type { Annotation } from './annotations.js';
 import { ownersByLine } from './python-mechanisms.js';
 import { normalizePath } from '../graph.js';
 import { scanPythonSourceAnnotations } from './python-source-comments.js';
-import { collectAnnotations, type AnnotatedFile, type SourceAnnotationResult } from './source-annotation-engine.js';
+import {
+  collectAnnotations,
+  type AnnotatedFile,
+  type SourceAnnotationResult,
+} from './source-annotation-engine.js';
 
 export type PythonSourceAnnotationResult = SourceAnnotationResult;
 

@@ -191,7 +191,7 @@ export function buildConnectionGraphDetailed(rootDir: string, config?: Balk2Conf
   }
 
   // 8. Project annotations, last, so they see the final edges and no detector overwrites them.
-  //    Source comments (JS and Python) take priority over .balk2.json annotations for the same edge.
+  //    Source comments (JS, Python and Rust) take priority over .balk2.json annotations for the same edge.
   //    A repository with no JS/TS files gets the config annotations back as its JS/TS source
   //    annotations. This is the former behavior, kept for zero diff. It makes each config
   //    annotation report a false "set in a source comment" problem. Fixing that is a separate change.
@@ -203,13 +203,18 @@ export function buildConnectionGraphDetailed(rootDir: string, config?: Balk2Conf
     annotations: [],
     problems: [],
   };
+  const rustSource: FrontEndSourceAnnotations = rustResult.sourceAnnotations ?? {
+    annotations: [],
+    problems: [],
+  };
   const sourceAnnotations = mergeSourceAnnotations(
-    [...jsTsSource.annotations, ...pythonSource.annotations],
+    [...jsTsSource.annotations, ...pythonSource.annotations, ...rustSource.annotations],
     configAnnotations,
   );
   for (const problem of [
     ...jsTsSource.problems,
     ...pythonSource.problems,
+    ...rustSource.problems,
     ...sourceAnnotations.problems,
   ]) {
     problems.push({ path: problem.path, message: problem.message });
