@@ -428,6 +428,80 @@ export const RUST_CORPUS: readonly CorpusScenario[] = [
       },
     },
   },
+  {
+    name: 'an inherited edition with no workspace in the scan still resolves bare module paths',
+    family: 'modules and imports',
+    renditions: {
+      rust: {
+        files: {
+          'Cargo.toml': '[package]\nname = "demo"\nversion = "0.1.0"\nedition.workspace = true\n',
+          'src/lib.rs': 'mod ipc;\n\npub fn run() -> i32 {\n    1\n}\n',
+          'src/ipc/mod.rs': 'mod authority;\n\npub use authority::Scope;\n',
+          'src/ipc/authority.rs': 'pub struct Scope;\n',
+        },
+        expect: {
+          relationships: ['imports src/ipc/mod.rs -> src/ipc/authority.rs'],
+          absentObservations: ['unresolved-module-path'],
+        },
+      },
+    },
+  },
+  {
+    name: 'a struct literal with a cfg-gated field still resolves to its struct',
+    family: 'modules and imports',
+    renditions: {
+      rust: {
+        files: {
+          'Cargo.toml': CARGO,
+          'src/lib.rs': 'pub mod manager;\n',
+          'src/manager.rs':
+            'pub mod webview;\n\npub fn make() -> webview::Manager {\n    webview::Manager {\n        count: 1,\n        #[cfg(any())]\n        gated: 2,\n    }\n}\n',
+          'src/manager/webview.rs':
+            'pub struct Manager {\n    pub count: i32,\n    pub gated: i32,\n}\n',
+        },
+        expect: {
+          relationships: ['references src/manager.rs:make -> src/manager/webview.rs:Manager'],
+          absentObservations: ['unresolved-module-path'],
+        },
+      },
+    },
+  },
+  {
+    name: 'a local module shadows a dependency of the same name in a type path',
+    family: 'modules and imports',
+    renditions: {
+      rust: {
+        files: {
+          'Cargo.toml':
+            '[package]\nname = "demo"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\nimage = "0.25"\n',
+          'src/lib.rs': 'pub mod image;\n\npub fn make() -> Option<image::Image> {\n    None\n}\n',
+          'src/image.rs': 'pub struct Image;\n',
+        },
+        expect: {
+          relationships: ['references src/lib.rs:make -> src/image.rs:Image'],
+          absentObservations: ['unresolved-module-path'],
+        },
+      },
+    },
+  },
+  {
+    name: 'a bench reaches a re-export of its package library',
+    family: 'packages',
+    renditions: {
+      rust: {
+        files: {
+          'Cargo.toml': CARGO,
+          'src/lib.rs': 'mod shapes;\n\npub use shapes::Circle;\n',
+          'src/shapes.rs': 'pub struct Circle;\n',
+          'benches/main.rs': 'use demo::Circle;\n\nfn main() {\n    let _c = Circle;\n}\n',
+        },
+        expect: {
+          relationships: ['imports benches/main.rs -> src/shapes.rs'],
+          absentObservations: ['unresolved-module-path'],
+        },
+      },
+    },
+  },
 ];
 
 assertUniqueNames(RUST_CORPUS);

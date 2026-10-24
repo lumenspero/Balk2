@@ -118,6 +118,7 @@ export function resolveName(
   from: RustModuleNode,
   crate: RustCrateIndex,
   env: RustNameEnvironment,
+  importPath = false,
 ): Resolution {
   const { segments } = path;
   const [first] = segments;
@@ -153,7 +154,8 @@ export function resolveName(
     // A uniform path: the first segment is a local name in the current module, or a crate.
     const local = lookupScoped(from, first, segments.length === 1 ? ns : 'type', from, new Set());
     const entry = crateEntry(first, crate, env);
-    if (local !== undefined && local.kind !== 'extern' && entry !== undefined) {
+    // In a `use` the two names conflict, which Rust rejects. Elsewhere the local item shadows the crate.
+    if (importPath && local !== undefined && local.kind !== 'extern' && entry !== undefined) {
       return failure(`\`${first}\` names both a local item and an extern crate`);
     }
     if (local === undefined) {

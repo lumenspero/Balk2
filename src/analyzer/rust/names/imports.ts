@@ -119,7 +119,7 @@ function tryBind(use: PendingUse, crate: RustCrateIndex, env: RustNameEnvironmen
   const path = { global: entry.global, segments: entry.path };
 
   if (entry.glob) {
-    const resolution = resolveName(path, 'type', from, crate, env);
+    const resolution = resolveName(path, 'type', from, crate, env, true);
     if (resolution.kind === 'module') {
       if (!owner.globs.some((glob) => glob.source === resolution.node)) {
         owner.globs.push({ source: resolution.node, isPub: use.isPub });
@@ -148,7 +148,7 @@ function tryBind(use: PendingUse, crate: RustCrateIndex, env: RustNameEnvironmen
   let target: string | null = null;
   let last: Resolution = { kind: 'not-found' };
   for (const ns of NAMESPACES) {
-    const resolution = resolveName(path, ns, from, crate, env);
+    const resolution = resolveName(path, ns, from, crate, env, true);
     if (resolution.kind === 'not-found' || resolution.kind === 'unresolved') {
       if (resolution.kind === 'unresolved' || last.kind === 'not-found') last = resolution;
       continue;

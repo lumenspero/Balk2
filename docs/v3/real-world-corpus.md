@@ -68,3 +68,16 @@ Rust repositories only. Same checkouts.
 | pydantic_pydantic-core | 251   | 121               | 96 → 96                                          |
 
 The drop in ripgrep is the enum-glob fix. The other counts are open findings in `docs/v3/phase-13-gap-register.md`.
+
+## Third run (after the Rust resolver fixes)
+
+Rust repositories only. Same checkouts. The count is `unresolved-module-path` entries.
+
+| Repository             | Second run | Third run | What changed                                                                                                                      |
+| ---------------------- | ---------- | --------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| BurntSushi_ripgrep     | 94         | 87        | Library crates bound first                                                                                                        |
+| dtolnay_async-trait    | 57         | 57        | No change. Proc-macro attribute paths (open)                                                                                      |
+| tauri-apps__tauri      | 121        | 38        | Inherited edition 2021 fallback (66 paths), `cfg` field literals, type-position shadowing, library-first ordering                 |
+| pydantic_pydantic-core | 96         | 94        | Library-first ordering. Remaining paths are macro-generated items (`error_types!`, `serialization_mode!`, `combined_serializer!`) |
+
+The remaining Tauri paths are macro-generated (`gen_wrappers!`, `swift!`), the `quote!` and proc-macro cases, and an open umbrella-crate case. Each is listed in `docs/v3/phase-13-gap-register.md`.

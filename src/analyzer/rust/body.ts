@@ -588,6 +588,13 @@ function fieldNameOf(tree: TokenTree): RustToken | undefined {
  * every comma-separated part is `name`, `name: value` or `..base`, so a block such as `{ f(); }`
  * is never read as a literal.
  */
+/** The field's tokens with any leading `#[...]` attributes removed. */
+function withoutFieldAttributes(segment: TokenTree[]): TokenTree[] {
+  let rest = segment;
+  while (isPunct(rest[0], '#') && groupOf(rest[1], '[') !== undefined) rest = rest.slice(2);
+  return rest;
+}
+
 function structFields(
   children: readonly TokenTree[],
 ): { fields: StructField[]; values: TokenTree[][] } | undefined {
@@ -595,7 +602,9 @@ function structFields(
   if (segments.at(-1)?.length === 0) segments.pop();
   const fields: StructField[] = [];
   const values: TokenTree[][] = [];
-  for (const segment of segments) {
+  for (const rawSegment of segments) {
+    // Outer attributes such as `#[cfg(...)]` only gate the field, so the field is what follows them.
+    const segment = withoutFieldAttributes(rawSegment);
     const first = segment[0];
     if (first === undefined) return undefined;
     if (isPunct(first, '..')) {

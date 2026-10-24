@@ -103,7 +103,7 @@ export class RustFrontEnd implements LanguageFrontEnd {
         if (fn.noMangle && fn.abi !== null) abiById.set(fn.id, fn.abi.replace(/^"|"$/g, ''));
       }
     }
-    for (const { index: crate, exporting } of crates) {
+    for (const { index: crate, exporting } of librariesFirst(crates)) {
       if (exporting) {
         for (const edge of computeExports(crate)) {
           const abi = abiById.get(edge.id);
@@ -555,6 +555,14 @@ function buildCrates(
     if (index !== undefined && !repoCrates.has(node.name)) repoCrates.set(node.name, index);
   }
   return { crates, env };
+}
+
+/**
+ * Library crates come first, so a bench, test or example that names a library sees the library's
+ * re-exports already bound. The sort is stable, so the order within each group is unchanged.
+ */
+function librariesFirst(crates: readonly CrateEntry[]): CrateEntry[] {
+  return [...crates].sort((a, b) => Number(b.exporting) - Number(a.exporting));
 }
 
 /** The repository-relative directory holding a package's manifest, or undefined when unknown. */
