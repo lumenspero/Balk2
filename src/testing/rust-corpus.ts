@@ -10,7 +10,7 @@ const CARGO = '[package]\nname = "demo"\nversion = "0.1.0"\nedition = "2021"\n';
 export const RUST_CORPUS: readonly CorpusScenario[] = [
   {
     name: 'cfg twin modules are both declared',
-    family: 'modules',
+    family: 'modules and imports',
     renditions: {
       rust: {
         files: {
@@ -281,7 +281,7 @@ export const RUST_CORPUS: readonly CorpusScenario[] = [
 
   {
     name: 'file no crate reaches is reported (negative)',
-    family: 'modules',
+    family: 'modules and imports',
     renditions: {
       rust: {
         files: {
@@ -298,7 +298,7 @@ export const RUST_CORPUS: readonly CorpusScenario[] = [
 
   {
     name: 'foo.rs and foo/mod.rs together are a conflict, and neither is chosen',
-    family: 'modules',
+    family: 'modules and imports',
     renditions: {
       rust: {
         files: {

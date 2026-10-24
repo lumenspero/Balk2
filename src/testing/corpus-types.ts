@@ -32,6 +32,10 @@ export interface Expectation {
   readonly noSyntaxErrors?: boolean;
   /** Diagnostics that must be reported, as `"<kind> <path>"`, for example `"unreachable-module src/x.rs"`. */
   readonly diagnostics?: readonly string[];
+  /** Relationships whose confidence must be a given level, as `"<types> <from> -> <to> = <level>"`. */
+  readonly confidence?: readonly string[];
+  /** Reasons of unresolved references that must be reported, for example `"unresolved-callback"`. */
+  readonly observations?: readonly string[];
 }
 
 export interface Rendition {

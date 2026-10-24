@@ -73,11 +73,19 @@ export function analyzeFiles(
   }
 }
 
-export function hasRelationship(map: ConnectionMap, expectation: string): boolean {
+/** The relationships that match an expectation's types and endpoints. */
+export function relationshipsMatching(
+  map: ConnectionMap,
+  expectation: string,
+): ConnectionMap['relationships'] {
   const wanted = parseRelationship(expectation);
-  return map.relationships.some(
+  return map.relationships.filter(
     (rel) => wanted.types.includes(rel.type) && rel.from === wanted.from && rel.to === wanted.to,
   );
+}
+
+export function hasRelationship(map: ConnectionMap, expectation: string): boolean {
+  return relationshipsMatching(map, expectation).length > 0;
 }
 
 /**
@@ -89,7 +97,9 @@ function positiveCount(want: Expectation): number {
     (want.relationships?.length ?? 0) +
     (want.symbols?.length ?? 0) +
     (want.syntaxErrors?.length ?? 0) +
-    (want.diagnostics?.length ?? 0)
+    (want.diagnostics?.length ?? 0) +
+    (want.confidence?.length ?? 0) +
+    (want.observations?.length ?? 0)
   );
 }
 
@@ -148,6 +158,21 @@ export function evaluate(entry: CorpusEntry): Evaluation {
   }
   for (const diagnostic of want.diagnostics ?? []) {
     if (!diagnostics.has(diagnostic)) missing.push(`missing diagnostic: ${diagnostic}`);
+  }
+
+  for (const text of want.confidence ?? []) {
+    const split = text.lastIndexOf(' = ');
+    const edge = text.slice(0, split);
+    const level = text.slice(split + 3);
+    const found = relationshipsMatching(map, edge);
+    if (!found.some((rel) => rel.confidence === level)) {
+      missing.push(`missing confidence ${level}: ${edge}`);
+    }
+  }
+  for (const reason of want.observations ?? []) {
+    if (!Object.values(map.unresolved).some((node) => node.reason === reason)) {
+      missing.push(`missing observation: ${reason}`);
+    }
   }
 
   return {
