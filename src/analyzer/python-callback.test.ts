@@ -119,4 +119,58 @@ describe('python callbacks passed to threading.Thread (V3 Phase 12.4)', () => {
 
     expect(callbackEdges(map)).toEqual([]);
   });
+
+  it('links the cleanup function passed to atexit.register', () => {
+    const map = mapOf({
+      'main.py':
+        'import atexit\n\n\ndef cleanup():\n    pass\n\n\ndef setup():\n    atexit.register(cleanup)\n',
+    });
+
+    expect(callbackEdges(map)).toEqual(['passesCallback main.py:setup -> main.py:cleanup']);
+  });
+
+  it('links the handler passed to signal.signal, and gives no edge for SIG_IGN', () => {
+    const map = mapOf({
+      'main.py':
+        'import signal\n\n\ndef on_term(signum, frame):\n    pass\n\n\ndef setup():\n    signal.signal(signal.SIGTERM, on_term)\n\n\ndef ignore():\n    signal.signal(signal.SIGINT, signal.SIG_IGN)\n',
+    });
+
+    expect(callbackEdges(map)).toEqual(['passesCallback main.py:setup -> main.py:on_term']);
+  });
+
+  it('links the function given to functools.partial', () => {
+    const map = mapOf({
+      'main.py':
+        'from functools import partial\n\n\ndef add(a, b):\n    return a + b\n\n\ndef setup():\n    return partial(add, 1)\n',
+    });
+
+    expect(callbackEdges(map)).toEqual(['passesCallback main.py:setup -> main.py:add']);
+  });
+
+  it('links the key function of sorted, passed by keyword', () => {
+    const map = mapOf({
+      'main.py':
+        'def by_name(item):\n    return item\n\n\ndef setup(items):\n    return sorted(items, key=by_name)\n',
+    });
+
+    expect(callbackEdges(map)).toEqual(['passesCallback main.py:setup -> main.py:by_name']);
+  });
+
+  it('links the function passed to map as its first argument', () => {
+    const map = mapOf({
+      'main.py':
+        'def double(x):\n    return x * 2\n\n\ndef setup(xs):\n    return list(map(double, xs))\n',
+    });
+
+    expect(callbackEdges(map)).toEqual(['passesCallback main.py:setup -> main.py:double']);
+  });
+
+  it('gives no edge for a builtin name that a repository function shadows', () => {
+    const map = mapOf({
+      'main.py':
+        'def map(f, xs):\n    return xs\n\n\ndef double(x):\n    return x * 2\n\n\ndef setup(xs):\n    return map(double, xs)\n',
+    });
+
+    expect(callbackEdges(map)).toEqual([]);
+  });
 });
