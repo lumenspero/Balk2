@@ -135,4 +135,31 @@ describe('rust static mut writes as shared state (V3 Phase 12.3)', () => {
 
     expect(stateEdges(map)).toEqual([]);
   });
+
+  it('records a lock acquisition on a lazy_static Mutex as a read', () => {
+    const map = mapOf({
+      'src/lib.rs':
+        'use std::sync::Mutex;\n\nlazy_static! {\n    static ref LOG: Mutex<Vec<u8>> = Mutex::new(Vec::new());\n}\n\npub fn push(byte: u8) {\n    let mut guard = LOG.lock().unwrap();\n    guard.push(byte);\n}\n',
+    });
+
+    expect(stateEdges(map)).toEqual(['readsState src/lib.rs:push -> state:src/lib.rs:LOG']);
+  });
+
+  it('reads the inner Mutex of a LazyLock static', () => {
+    const map = mapOf({
+      'src/lib.rs':
+        'use std::sync::{LazyLock, Mutex};\n\npub static LOG: LazyLock<Mutex<Vec<u8>>> = LazyLock::new(|| Mutex::new(Vec::new()));\n\npub fn push(byte: u8) {\n    let mut guard = LOG.lock().unwrap();\n    guard.push(byte);\n}\n',
+    });
+
+    expect(stateEdges(map)).toEqual(['readsState src/lib.rs:push -> state:src/lib.rs:LOG']);
+  });
+
+  it('gives no state for a method named like an inherited property', () => {
+    const map = mapOf({
+      'src/lib.rs':
+        'use std::sync::atomic::AtomicUsize;\n\npub static COUNTER: AtomicUsize = AtomicUsize::new(0);\n\npub fn named() -> usize {\n    COUNTER.constructor()\n}\n',
+    });
+
+    expect(stateEdges(map)).toEqual([]);
+  });
 });

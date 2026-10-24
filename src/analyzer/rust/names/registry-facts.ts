@@ -30,6 +30,7 @@ import { blocksOfTokens, factsOutside, ownBodyFacts } from '../nested.js';
 import { sourceSpanOf } from '../source-span.js';
 import { isTokenGroup, type TokenGroup, type TokenTree } from '../token-tree.js';
 import { buildRepo, contextOf, scopeCtx, symbolOf, type Ctx } from './calls.js';
+import { lazyStaticsOf } from './lazy-statics.js';
 import type { BodyScope, RustCrateIndex, RustModuleNode } from './module-index.js';
 import type { RustNameEnvironment } from './resolve.js';
 import { pathOfTokens, readPath } from './type-paths.js';
@@ -189,42 +190,6 @@ function staticSourcesOf(crates: readonly RustCrateIndex[]): StaticSource[] {
     }
   }
   return out;
-}
-
-/** The `static [ref] NAME: TYPE = VALUE;` items inside a `lazy_static!` block. */
-function lazyStaticsOf(trees: readonly TokenTree[]): Array<{ name: string; tokens: TokenTree[] }> {
-  const out: Array<{ name: string; tokens: TokenTree[] }> = [];
-  let i = 0;
-  while (i < trees.length) {
-    if (!isWord(trees[i], 'static')) {
-      i += 1;
-      continue;
-    }
-    let j = i + 1;
-    if (isWord(trees[j], 'ref')) j += 1;
-    const name = trees[j];
-    if (name === undefined || isTokenGroup(name) || name.kind !== 'ident') {
-      i = j;
-      continue;
-    }
-    j += 1;
-    if (!isPunct(trees[j], ':')) {
-      i = j;
-      continue;
-    }
-    while (j < trees.length && !isPunct(trees[j], '=')) j += 1;
-    if (j >= trees.length) break;
-    j += 1;
-    const start = j;
-    while (j < trees.length && !isPunct(trees[j], ';')) j += 1;
-    out.push({ name: name.value, tokens: trees.slice(start, j) });
-    i = j + 1;
-  }
-  return out;
-}
-
-function isWord(tree: TokenTree | undefined, word: string): boolean {
-  return tree !== undefined && !isTokenGroup(tree) && tree.kind === 'ident' && tree.value === word;
 }
 
 function isPunct(tree: TokenTree | undefined, text: string): boolean {

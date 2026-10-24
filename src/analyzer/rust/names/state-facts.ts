@@ -14,13 +14,13 @@
  * calls. A name the function binds itself (`let`, a pattern, a closure parameter) is a local. Writes
  * through a field or an index are not read.
  */
-import type { Fragment } from '../items.js';
 import type { StatePathFact } from '../../../facts/types.js';
 import type { BodyFact } from '../body.js';
 import type { RustToken } from '../lexer.js';
 import { bodyBlocksOf, ownBodyFacts, startsWithin } from '../nested.js';
 import { sourceSpanOf } from '../source-span.js';
 import { isTokenGroup, type TokenTree } from '../token-tree.js';
+import { lazyStaticsOf } from './lazy-statics.js';
 import { buildRepo, contextOf, scopeCtx, symbolOf } from './calls.js';
 import type { RustCrateIndex } from './module-index.js';
 import type { RustNameEnvironment } from './resolve.js';
@@ -120,13 +120,26 @@ export function rustStateFacts(
   env: RustNameEnvironment,
 ): StatePathFact[] {
   const mutable = new Set<string>();
-  const interior = new Map<string, Category>();
+  const interior = new Map<string, Category[]>();
+  // A `lazy_static!` static is not in the symbol namespace, so it is found by its file and name.
+  const lazyNames = new Map<string, string | null>();
   for (const crate of crates) {
     for (const decl of crate.decls) {
       if (decl.item.kind !== 'static') continue;
       if (decl.item.mutable) mutable.add(decl.id);
-      const category = categoryOf(decl.item.ty);
-      if (category !== undefined) interior.set(decl.id, category);
+      const categories = categoriesOf(decl.item.ty?.tokens ?? null);
+      if (categories.length > 0) interior.set(decl.id, categories);
+    }
+    for (const call of crate.macroCalls) {
+      if (call.path[call.path.length - 1] !== 'lazy_static') continue;
+      const file = call.owner.file;
+      for (const lazy of lazyStaticsOf(call.args.children)) {
+        const id = `${file}:${lazy.name}`;
+        const key = nameKey(file, lazy.name);
+        lazyNames.set(key, lazyNames.has(key) ? null : id);
+        const categories = categoriesOf(lazy.type);
+        if (categories.length > 0) interior.set(id, categories);
+      }
     }
   }
   if (mutable.size === 0 && interior.size === 0) return [];
@@ -146,9 +159,11 @@ export function rustStateFacts(
         return undefined;
       }
       const path = pathOfTokens([token]);
-      if (path === null) return undefined;
       const site = scopeCtx(ctx, entry.fn.scopes, token);
-      return symbolOf(path, 'value', site.owner, site.crate, site.repo.env);
+      const found =
+        path === null ? undefined : symbolOf(path, 'value', site.owner, site.crate, site.repo.env);
+      if (found !== undefined) return found;
+      return lazyNames.get(nameKey(file, token.value)) ?? undefined;
     };
 
     for (const assignment of assignmentsIn(body.children)) {
@@ -159,9 +174,9 @@ export function rustStateFacts(
     for (const call of methodCallsIn(body.children)) {
       const target = staticNamed(call.name);
       if (target === undefined) continue;
-      const category = interior.get(target);
-      if (category === undefined) continue;
-      const effect = EFFECTS[category][call.method.value];
+      const categories = interior.get(target);
+      if (categories === undefined) continue;
+      const effect = effectOf(categories, call.method.value);
       if (effect === undefined) continue;
       facts.push(...callFacts(call, effect, target, entry.fn.id, file));
     }
@@ -169,14 +184,52 @@ export function rustStateFacts(
   return facts;
 }
 
-/** The category of a static's declared type: `Atomic*`, or one of the listed interior types. */
-function categoryOf(ty: Fragment | null): Category | undefined {
-  if (ty === null) return undefined;
-  const segments = readPath(ty.tokens).path?.segments ?? [];
-  const last = segments[segments.length - 1];
-  if (last === undefined) return undefined;
-  if (last.startsWith('Atomic')) return 'atomic';
-  return TYPE_CATEGORY[last];
+function nameKey(file: string, name: string): string {
+  return JSON.stringify([file, name]);
+}
+
+/** The category a type name stands for: `Atomic*`, or one of the listed interior types. */
+function categoryNamed(name: string | undefined): Category | undefined {
+  if (name === undefined) return undefined;
+  if (name.startsWith('Atomic')) return 'atomic';
+  return own(TYPE_CATEGORY, name);
+}
+
+/**
+ * The categories of a static's declared type. The outer type counts, and a lazy wrapper's own
+ * argument counts too, so `LazyLock<Mutex<T>>` is both `lazy` and `lock`.
+ */
+function categoriesOf(tokens: readonly TokenTree[] | null): Category[] {
+  if (tokens === null) return [];
+  const outer = categoryNamed(lastSegment(tokens));
+  if (outer === undefined) return [];
+  const out: Category[] = [outer];
+  if (outer === 'lazy') {
+    const open = tokens.findIndex((t) => !isTokenGroup(t) && t.kind === 'punct' && t.text === '<');
+    const inner = categoryNamed(lastSegment(tokens.slice(open + 1)));
+    if (open >= 0 && inner !== undefined) out.push(inner);
+  }
+  return out;
+}
+
+/** The last segment of the path at the start of a token list, such as `Mutex` in `Mutex<T>`. */
+function lastSegment(tokens: readonly TokenTree[]): string | undefined {
+  const segments = readPath(tokens).path?.segments ?? [];
+  return segments[segments.length - 1];
+}
+
+/** The effect of a method on the first category whose catalogue names it. */
+function effectOf(categories: readonly Category[], method: string): Effect | undefined {
+  for (const category of categories) {
+    const effect = own(EFFECTS[category], method);
+    if (effect !== undefined) return effect;
+  }
+  return undefined;
+}
+
+/** A table lookup that ignores inherited keys, so a method called `constructor` finds nothing. */
+function own<T>(table: Readonly<Record<string, T>>, key: string): T | undefined {
+  return Object.hasOwn(table, key) ? table[key] : undefined;
 }
 
 /** The names a body binds to locals: `let`, `for`, match arms and closure parameters. */
