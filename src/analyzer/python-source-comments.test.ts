@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { scanPythonSourceAnnotations } from './python-source-annotations.js';
-import type { SourceAnnotationScan } from './source-annotations.js';
+import { scanPythonSourceAnnotations } from './python-source-comments.js';
+import type { SourceAnnotationScan } from './source-annotation-engine.js';
 
 const scan = (text: string): SourceAnnotationScan => scanPythonSourceAnnotations('app.py', text);
 

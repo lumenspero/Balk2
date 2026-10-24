@@ -2,7 +2,7 @@ import {
   readDirectives,
   type FoundComment,
   type SourceAnnotationScan,
-} from './source-annotations.js';
+} from './source-annotation-engine.js';
 
 /**
  * Read `# balk2: confidence=<level> <from> <type> <to>` directives from a Python file. Only `#`
