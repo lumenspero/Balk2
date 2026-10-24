@@ -45,6 +45,7 @@ This matrix holds JavaScript/TypeScript, Python and Rust to the same standard. E
 
 - **Row 11, Rust.** Rust has no implicit global object. Its equivalent shared state is `static`, which is covered by row 12.
 - **Row 11, Python.** Python has no global object. The `builtins` module is the nearest equivalent. Assignments to `builtins.x` are the global root, covered by row 11 and row 12.
+- **Row 11, JS/TS (traversal).** Named access to the global object, such as `window.x` or `globalThis.x`, is recorded under rows 11 and 12. Enumerating the global object, such as `Object.keys(globalThis)` or `for (const k in window)`, names no fixed symbol, so it is not recorded.
 - **Row 18, Python and Rust.** Neither language has a runtime metadata API that reads string-keyed values from declarations. Python decorators and Rust attributes, which are the usual carriers of this information, are covered by row 10.
 - **Row 6, Rust (field and call-result receivers).** A receiver that is a field (`self.store.save()`) or a call result (`make().save()`) has no type. V3 gives receivers types only from annotated bindings and constructor results (2.4), and inference through fields and call results is outside the V3 scope. This is a scope decision, recorded so the cell is not Deferred. The same limit applies to Python.
 - **Row 13, Rust.** Name-keyed event channels do not exist in Rust. Channels connect by passing values. Configured method protocols still apply to types that declare both a subscribe and an emit method, using the same `event-like` rule as JS/TS.
