@@ -1,19 +1,21 @@
 /**
- * Python callbacks (V3 Phase 12.4). Reads library and builtin calls that take a callback, such as
- * `threading.Thread(target=worker)`, `atexit.register(cleanup)`, `sorted(items, key=by_name)` and
- * `map(double, xs)`. Each one becomes a call fact, which the callback engine turns into
- * `passesCallback` edges, the same way it does for JS/TS.
+ * Python callbacks (V3 Phase 12.4). Reads library, builtin and receiver calls that take a callback,
+ * such as `threading.Thread(target=worker)`, `atexit.register(cleanup)`, `sorted(items, key=by_name)`,
+ * `map(double, xs)` and `pool.submit(worker)`. Each one becomes a call fact, which the callback engine
+ * turns into `passesCallback` edges, the same way it does for JS/TS.
  *
  * A library callee is read only when its module is imported (`import threading`) or its member is
  * imported by name (`from threading import Thread`). A builtin is read by its bare name, only when
  * the file does not bind that name by an import and no repository function of that name is
- * declared. The callback is resolved with the call pass's own name resolution: a repository
- * function or method is a symbol, and anything else is an unresolved observation.
+ * declared. An executor method (`submit`, `map`) is read on a receiver whose type is a library
+ * executor, from `pool = ThreadPoolExecutor()` or `with ThreadPoolExecutor() as pool:`. The callback
+ * is resolved with the call pass's own name resolution: a repository function or method is a
+ * symbol, and anything else is an unresolved observation.
  *
  * `signal.SIG_DFL` and `signal.SIG_IGN` are constants, not handlers, so they give no edge.
  *
- * Not yet read: a bound method such as `self.run` (unresolved for now), `executor.submit(f)` and
- * `executor.map(f, xs)`, which need the receiver's type, and `loop.call_soon(f)`.
+ * Not yet read: a bound method such as `self.run` (unresolved for now), and `loop.call_soon(f)`,
+ * whose loop is not typed by its constructor.
  */
 import type { ArgValue, CallSite, CallbackResolution, FileFacts } from '../../facts/types.js';
 import type { CallbackCatalogEntry } from '../../facts/callback-engine.js';
@@ -22,6 +24,7 @@ import type { CallObserver, ObservedCall } from './calls.js';
 import { dottedName } from './expression-format.js';
 import { resolveBase, toSourceSpan } from './inheritance.js';
 import type { ModuleBinding } from './state-facts.js';
+import { EXECUTOR_TYPES, localTypeOf } from './typed-receivers.js';
 
 /** Where a sink takes its callback: a positional index, or a keyword argument. */
 type CallbackPlace = { readonly position: number } | { readonly keyword: string };
@@ -47,17 +50,31 @@ const SINKS: readonly Sink[] = [
   { module: 'builtins', attribute: 'filter', place: { position: 0 }, builtin: true },
 ];
 
+/** Executor methods that call the function they are given, read on a typed executor receiver. */
+const EXECUTOR_METHODS: readonly Sink[] = ['submit', 'map'].map((attribute) => ({
+  module: 'concurrent.futures',
+  attribute,
+  place: { position: 0 },
+}));
+
 /** The `signal` module's handler constants, which are not functions. */
 const SIGNAL_CONSTANTS: ReadonlySet<string> = new Set(['SIG_DFL', 'SIG_IGN']);
 
-/** The catalog the callback engine reads for the Python sinks. */
-export const PYTHON_CALLBACK_CATALOG: readonly CallbackCatalogEntry[] = SINKS.map((sink) => ({
-  function: sink.attribute,
-  ...('keyword' in sink.place
-    ? { keyword: sink.place.keyword }
-    : { callbackArg: sink.place.position }),
-  languages: ['python'],
-}));
+function entryOf(sink: Sink): CallbackCatalogEntry {
+  const place = sink.place;
+  return {
+    function: sink.attribute,
+    ...('keyword' in place ? { keyword: place.keyword } : { callbackArg: place.position }),
+    languages: ['python'],
+  };
+}
+
+/** The catalog the callback engine reads for the Python sinks, with one entry per callee name. */
+const CATALOG: CallbackCatalogEntry[] = [];
+for (const sink of [...SINKS, ...EXECUTOR_METHODS]) {
+  if (!CATALOG.some((entry) => entry.function === sink.attribute)) CATALOG.push(entryOf(sink));
+}
+export const PYTHON_CALLBACK_CATALOG: readonly CallbackCatalogEntry[] = CATALOG;
 
 export interface PythonCallbackOptions {
   /** Per file, the names its imports bind, from the import resolver. */
@@ -98,7 +115,7 @@ function callbackFactOf(
   site: ObservedCall,
   bindings: ReadonlyMap<string, ModuleBinding> | undefined,
 ): CallSite | undefined {
-  const sink = sinkOf(site, bindings);
+  const sink = sinkOf(site, bindings) ?? executorSinkOf(site);
   if (sink === undefined) return undefined;
   const place = sink.place;
   const arg = argumentAt(site.call.args, place);
@@ -159,6 +176,18 @@ function sinkOf(
   return SINKS.find(
     (s) => s.builtin !== true && s.module === binding.name && s.attribute === func.attr,
   );
+}
+
+/** An executor method, when its receiver is typed as a library executor. */
+function executorSinkOf(site: ObservedCall): Sink | undefined {
+  const func = site.call.func;
+  if (func.kind !== 'attribute' || func.value.kind !== 'name') return undefined;
+  const method = EXECUTOR_METHODS.find((s) => s.attribute === func.attr);
+  if (method === undefined) return undefined;
+  const typed = localTypeOf(func.value, site.info, site.index);
+  const name = typed?.name;
+  if (name?.kind !== 'external' || !EXECUTOR_TYPES.has(name.name)) return undefined;
+  return method;
 }
 
 /**

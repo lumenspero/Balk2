@@ -277,6 +277,16 @@ function topLevelNames(st: Stmt): string[] {
       : [];
 }
 
+/**
+ * Library executors (Phase 12.4). Their `__enter__` returns the executor itself, so `with
+ * ThreadPoolExecutor() as pool:` gives `pool` the executor's type.
+ */
+export const EXECUTOR_TYPES: ReadonlySet<string> = new Set([
+  'concurrent.futures.ThreadPoolExecutor',
+  'concurrent.futures.ProcessPoolExecutor',
+  'concurrent.futures.Executor',
+]);
+
 /** The bindings a statement makes in its own scope, each with the type it gives the name. */
 function sourcesOf(
   st: Stmt,
@@ -310,7 +320,17 @@ function sourcesOf(
       untyped(namesIn(st.target));
       break;
     case 'with':
-      for (const item of st.items) if (item.target !== null) untyped(namesIn(item.target));
+      for (const item of st.items) {
+        const target = item.target;
+        const contextType = typeOf(item.context);
+        const isExecutor =
+          contextType?.name.kind === 'external' && EXECUTOR_TYPES.has(contextType.name.name);
+        if (target?.kind === 'name' && isExecutor) {
+          out.push({ name: target.id, type: contextType });
+        } else if (target !== null) {
+          untyped(namesIn(target));
+        }
+      }
       break;
     case 'try':
       for (const h of st.handlers) if (h.name !== null) untyped([h.name]);

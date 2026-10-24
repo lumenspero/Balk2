@@ -173,4 +173,31 @@ describe('python callbacks passed to threading.Thread (V3 Phase 12.4)', () => {
 
     expect(callbackEdges(map)).toEqual([]);
   });
+
+  it('links the function submitted to a ThreadPoolExecutor', () => {
+    const map = mapOf({
+      'main.py':
+        'from concurrent.futures import ThreadPoolExecutor\n\n\ndef worker():\n    pass\n\n\ndef setup():\n    executor = ThreadPoolExecutor(max_workers=2)\n    executor.submit(worker)\n',
+    });
+
+    expect(callbackEdges(map)).toEqual(['passesCallback main.py:setup -> main.py:worker']);
+  });
+
+  it('links the function mapped over a pool bound by a with statement', () => {
+    const map = mapOf({
+      'main.py':
+        'from concurrent.futures import ThreadPoolExecutor\n\n\ndef double(x):\n    return x * 2\n\n\ndef setup(items):\n    with ThreadPoolExecutor() as pool:\n        return list(pool.map(double, items))\n',
+    });
+
+    expect(callbackEdges(map)).toEqual(['passesCallback main.py:setup -> main.py:double']);
+  });
+
+  it('gives no edge for submit on a receiver that is not a library executor', () => {
+    const map = mapOf({
+      'main.py':
+        'class Pool:\n    def submit(self, f):\n        pass\n\n\ndef worker():\n    pass\n\n\ndef setup():\n    pool = Pool()\n    pool.submit(worker)\n',
+    });
+
+    expect(callbackEdges(map)).toEqual([]);
+  });
 });
