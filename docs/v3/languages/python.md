@@ -186,3 +186,34 @@ under the string or number literal in the decorator call's argument at that posi
 applies to it. A decorator matches by its name as written, and only symbols declared in the
 repository are declared. The same form applies to Rust attributes on free functions and type declarations. Methods in an
 `impl` or `trait` are not read.
+
+## Registries: route decorators and bare calls (recipe)
+
+A route decorator declares the path it serves, and a configured method looks the path up. Both use
+the registry named in the configuration, so the lookup emits `routesTo` to the decorated function:
+
+```json
+{
+  "protocols": {
+    "registries": {
+      "attributes": [{ "name": "app.route", "key": { "arg": 0 }, "registry": "routes" }],
+      "methods": [{ "method": "navigate", "direction": "route", "keyArg": 0, "registry": "routes" }]
+    }
+  }
+}
+```
+
+```python
+@app.route('/users')
+def users():
+    return []
+
+def go():
+    return navigate('/users')   # routesTo the /users key, which declares users
+```
+
+A method with a `registry` is matched only as a bare call (`navigate(...)`), never as a method on a
+receiver (`page.navigate(...)`), so a method of a common name cannot connect by accident. The
+decorator name is matched as written, so `app.route` matches `@app.route(...)` but not `@route(...)`.
+The Python lookup is a bare call of a name the configuration lists; it does not infer the route
+framework's own client calls.

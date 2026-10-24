@@ -10,8 +10,7 @@
  * A store or registration is a fact only when its value is a repository symbol. A non-literal key
  * is dynamic, and the engine reports it only when the registry is trusted.
  *
- * Not yet read: receivers that are not plain names (`self.REGISTRY`), `setdefault` and `update`,
- * parameter-name injection, and attribute registrations.
+ * Not yet read: receivers that are not plain names (`self.REGISTRY`), `setdefault` and `update`.
  */
 import type { Expr } from './ast.js';
 import type {
@@ -36,7 +35,12 @@ import type {
   RegistryReceiverFact,
 } from '../../facts/types.js';
 import type { RegistryRelationship } from '../../types.js';
-import type { RegistryAttributeRule, RegistryNameInjectionRule } from '../registry-protocols.js';
+import {
+  registryRelationshipOf,
+  type RegistryAttributeRule,
+  type RegistryNameInjectionRule,
+  type RegistryProtocol,
+} from '../registry-protocols.js';
 import { dottedName } from './expression-format.js';
 
 /** The collector: its observer feeds one walk, and `facts()` returns the facts it read. */
@@ -60,6 +64,8 @@ interface DictReceiver {
 export interface PythonRegistryRules {
   readonly nameInjection?: readonly RegistryNameInjectionRule[];
   readonly attributes?: readonly RegistryAttributeRule[];
+  /** Methods the configuration names with a registry; only bare calls of them are read. */
+  readonly methods?: readonly RegistryProtocol[];
 }
 
 export function createPythonRegistryCollector(
@@ -67,13 +73,14 @@ export function createPythonRegistryCollector(
 ): PythonRegistryCollector {
   const nameInjection = rules.nameInjection ?? [];
   const attributes = rules.attributes ?? [];
+  const methods = (rules.methods ?? []).filter((m) => m.registry !== undefined);
   const declarations: RegistryDeclarationFact[] = [];
   const calls: RegistryCallFact[] = [];
   const injections: RegistryInjectionFact[] = [];
 
   const observer: CallObserver = {
     onCall: (site) => {
-      const lookup = lookupOf(site) ?? registerOf(site);
+      const lookup = configuredCallOf(site, methods) ?? lookupOf(site) ?? registerOf(site);
       if (lookup !== undefined) calls.push(lookup);
     },
     onSubscript: (site) => {
@@ -113,6 +120,49 @@ export function createPythonRegistryCollector(
         (i) => i.key.kind === 'static' && declared.has(registryKey(i.registry, i.key.name)),
       );
       return [...declarations, ...injected, ...calls];
+    },
+  };
+}
+
+/**
+ * A bare call of a method the configuration names with a registry, such as `navigate('/users')`
+ * for `routes`. A method called on a receiver is not matched, as in the JS/TS catalog.
+ */
+function configuredCallOf(
+  site: ObservedCall,
+  methods: readonly RegistryProtocol[],
+): RegistryCallFact | undefined {
+  const { func, args } = site.call;
+  if (func.kind !== 'name') return undefined;
+  const protocol = methods.find((m) => m.method === func.id);
+  if (protocol?.registry === undefined) return undefined;
+  const keyArg = args[protocol.keyArg ?? 0];
+  if (keyArg?.kind !== 'positional') return undefined;
+  let target: string | undefined;
+  if (protocol.direction === 'register') {
+    const valueArg = protocol.valueArg === undefined ? undefined : args[protocol.valueArg];
+    if (valueArg?.kind !== 'positional') return undefined;
+    target = symbolOf(valueArg.value, site);
+    if (target === undefined) return undefined;
+  }
+  const fact = callFact(site, site.call, site.owner, configuredRegistry(protocol.registry), {
+    relationship: registryRelationshipOf(protocol.direction),
+    assignment: false,
+    key: keyOf(keyArg.value),
+    ...(target !== undefined ? { target } : {}),
+  });
+  return { ...fact, protocolSource: 'config', configuredReceiver: true };
+}
+
+/** A registry named by configuration: its identity is the configured name. */
+function configuredRegistry(name: string): DictReceiver {
+  return {
+    scope: name,
+    receiver: {
+      identity: { kind: 'resolved', scope: name, confidence: 'high' },
+      qualifies: true,
+      qualificationEvidence: 'config',
+      internal: false,
     },
   };
 }

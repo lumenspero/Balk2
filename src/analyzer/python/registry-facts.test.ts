@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 import type { RegistryFact, RegistryKeyFact } from '../../facts/types.js';
 import { analyzePythonCalls } from './calls.js';
 import { createPythonRegistryCollector } from './registry-facts.js';
-import type { RegistryAttributeRule, RegistryNameInjectionRule } from '../registry-protocols.js';
+import type {
+  RegistryAttributeRule,
+  RegistryNameInjectionRule,
+  RegistryProtocol,
+} from '../registry-protocols.js';
 import { createImportResolver } from './modules/import-resolution.js';
 import { createSymbolResolver } from './modules/module-exports.js';
 import { ModuleIndex } from './modules/module-index.js';
@@ -11,6 +15,7 @@ function collect(
   files: Record<string, string>,
   nameInjection: readonly RegistryNameInjectionRule[] = [],
   attributes: readonly RegistryAttributeRule[] = [],
+  methods: readonly RegistryProtocol[] = [],
 ): RegistryFact[] {
   const index = new ModuleIndex(Object.keys(files));
   const readText = (p: string): string => files[p] ?? '';
@@ -18,7 +23,7 @@ function collect(
   const symbols = createSymbolResolver({ resolver: imports, readText });
   const ctx = { symbols, imports };
   const sources = Object.entries(files).map(([filePath, source]) => ({ filePath, source }));
-  const collector = createPythonRegistryCollector({ nameInjection, attributes });
+  const collector = createPythonRegistryCollector({ nameInjection, attributes, methods });
   analyzePythonCalls(sources, ctx, {}, collector.observer);
   return collector.facts();
 }
@@ -33,8 +38,9 @@ function lines(
   files: Record<string, string>,
   nameInjection: readonly RegistryNameInjectionRule[] = [],
   attributes: readonly RegistryAttributeRule[] = [],
+  methods: readonly RegistryProtocol[] = [],
 ): string[] {
-  return collect(files, nameInjection, attributes).map((f) => {
+  return collect(files, nameInjection, attributes, methods).map((f) => {
     if (f.kind === 'registry-injection')
       return `${f.owner} injects ${keyText(f.key)} ${f.registry}`;
     if (f.kind === 'registry-declaration') {
@@ -204,5 +210,48 @@ describe('python registry facts: attribute registrations', () => {
     expect(
       lines({ 'app.py': `${ROUTE_SOURCE}@route\ndef greet():\n    return 1\n` }, [], BY_ARG),
     ).toEqual([]);
+  });
+});
+
+describe('python registry facts: route decorators and configured bare calls', () => {
+  const ROUTE_DECORATOR: readonly RegistryAttributeRule[] = [
+    { name: 'app.route', key: { arg: 0 }, registry: 'routes' },
+  ];
+  const NAVIGATE: readonly RegistryProtocol[] = [
+    { method: 'navigate', direction: 'route', keyArg: 0, registry: 'routes' },
+  ];
+  const APP = [
+    'from flask import Flask',
+    'app = Flask(__name__)',
+    '',
+    '',
+    "@app.route('/users')",
+    'def users():',
+    '    return []',
+    '',
+    '',
+    'def go():',
+    "    return navigate('/users')",
+    '',
+    '',
+    'def other(page):',
+    "    return page.navigate('/users')",
+    '',
+  ].join('\n');
+
+  it('declares a route decorator under its path and emits routesTo for a bare call', () => {
+    expect(lines({ 'm.py': APP }, [], ROUTE_DECORATOR, NAVIGATE)).toEqual([
+      'declare routes /users -> m.py:users',
+      'm.py:go routesTo /users routes',
+    ]);
+  });
+
+  it('does not match a method called on a receiver', () => {
+    const out = lines({ 'm.py': APP }, [], ROUTE_DECORATOR, NAVIGATE);
+    expect(out.some((line) => line.startsWith('m.py:other'))).toBe(false);
+  });
+
+  it('reads nothing when the configuration names neither the decorator nor the method', () => {
+    expect(lines({ 'm.py': APP })).toEqual([]);
   });
 });

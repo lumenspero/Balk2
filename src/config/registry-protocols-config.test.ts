@@ -144,3 +144,35 @@ describe('registry configuration: rejected', () => {
     ]);
   });
 });
+
+describe('registry configuration: attributes, name injection and method registries', () => {
+  it('keeps attribute rules, a name-injection rule and a method with a registry', () => {
+    const section = {
+      attributes: [
+        { name: 'tauri::command', key: 'fn-name', registry: 'commands' },
+        { name: 'app.route', key: { arg: 0 }, registry: 'routes' },
+      ],
+      nameInjection: [{ registry: 'fixtures', decorator: 'pytest.fixture' }],
+      methods: [method({ method: 'invoke', direction: 'resolve', registry: 'commands' })],
+    };
+
+    const result = registries(section);
+
+    expect(result.config).toEqual({ registries: section });
+    expect(result.problems).toEqual([]);
+  });
+
+  it('reports an attribute key that is neither fn-name nor an argument index', () => {
+    const result = registries({ attributes: [{ name: 'x', key: 'other', registry: 'r' }] });
+
+    expect(problemsOf(result).length).toBeGreaterThan(0);
+    expect(JSON.stringify(result.config ?? null)).not.toContain('"other"');
+  });
+
+  it('reports a method registry that is not a non-empty string and keeps no registry for it', () => {
+    const result = registries({ methods: [method({ registry: '' })] });
+
+    expect(problemsOf(result).length).toBeGreaterThan(0);
+    expect(JSON.stringify(result.config ?? null)).not.toContain('"registry"');
+  });
+});

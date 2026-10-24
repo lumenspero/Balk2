@@ -27,7 +27,11 @@ import { collectPythonSourceAnnotations } from './python-source-apply.js';
 import { analyzePythonCalls, combineObservers } from './python/calls.js';
 import { createPythonRegistryCollector } from './python/registry-facts.js';
 import { applyRegistryEdges } from './registry-apply.js';
-import type { RegistryAttributeRule, RegistryNameInjectionRule } from './registry-protocols.js';
+import type {
+  RegistryAttributeRule,
+  RegistryNameInjectionRule,
+  RegistryProtocol,
+} from './registry-protocols.js';
 import { runRegistryEngine } from '../facts/registry-engine.js';
 import { createPythonEventCollector } from './python/event-facts.js';
 import { runEventEngine } from '../facts/event-engine.js';
@@ -68,6 +72,8 @@ export interface PythonSourceOptions {
   readonly nameInjection?: readonly RegistryNameInjectionRule[];
   /** Attributes and decorators that register the item they sit on, from `protocols.registries`. */
   readonly attributes?: readonly RegistryAttributeRule[];
+  /** Methods with a configured registry, from `protocols.registries.methods`. */
+  readonly methods?: readonly RegistryProtocol[];
   /** Package facts whose entry points resolve here, where the module index exists (V3 Phase 4.5) */
   readonly entryPoints?: {
     readonly packages: readonly PackageNode[];
@@ -138,6 +144,7 @@ export function analyzePythonSources(
   const registries = createPythonRegistryCollector({
     nameInjection: options.nameInjection,
     attributes: options.attributes,
+    methods: options.methods,
   });
 
   // Calls. The owner is the enclosing function or method, or the file for module-level code.
@@ -281,6 +288,7 @@ export class PythonFrontEnd implements LanguageFrontEnd {
         identityDecorators: input.config?.python?.identityDecorators,
         nameInjection: input.config?.protocols?.registries?.nameInjection,
         attributes: input.config?.protocols?.registries?.attributes,
+        methods: input.config?.protocols?.registries?.methods,
         entryPoints: input.packages
           ? {
               packages: input.packages.python.packages,
