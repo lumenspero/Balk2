@@ -12,7 +12,11 @@ import {
   type RegistryKeyResolution,
 } from './registry-keys.js';
 import type { RegistryProtocolCatalog, ResolvedRegistryProtocol } from './registry-protocols.js';
-import { qualifyRegistryReceiver, type RegistryContainer } from './registry-receivers.js';
+import {
+  qualifyRegistryReceiver,
+  type RegistryContainer,
+  type RegistryQualification,
+} from './registry-receivers.js';
 import { symbolTargetOf } from './registry-targets.js';
 import { snippetOf, spanOf } from './spans.js';
 import { unwrapExpression } from './static-keys.js';
@@ -33,7 +37,8 @@ interface RegistryCall {
   readonly filePath: string;
   /** The call expression, or the assignment expression */
   readonly node: ts.Expression;
-  readonly receiver: ts.Expression;
+  /** The receiver of a method call. Absent for a bare call, which looks in the protocol's registry. */
+  readonly receiver: ts.Expression | undefined;
   /** The key argument, when the protocol reads its key from an argument */
   readonly keyExpression: ts.Expression | undefined;
   /** The type argument, when the protocol reads its key from the type (`keyFrom: 'typeArgument'`) */
@@ -79,13 +84,20 @@ export function extractCallFacts(
 }
 
 function callFact(call: RegistryCall, ctx: CallContext): RegistryCallFact {
-  const identity = ctx.receivers.resolve(call.receiver);
-  const qualification = qualifyRegistryReceiver(
-    call.protocol.receiver,
-    call.receiver,
-    ctx.catalog,
-    ctx.checker,
-  );
+  // A bare call has no receiver: it looks in the registry its configured protocol names.
+  const identity: ReceiverIdentity =
+    call.receiver === undefined
+      ? {
+          kind: 'resolved',
+          scope: call.protocol.registry ?? '',
+          confidence: 'high',
+          evidence: 'config',
+        }
+      : ctx.receivers.resolve(call.receiver);
+  const qualification: RegistryQualification =
+    call.receiver === undefined
+      ? { qualifies: true, evidence: 'config', container: 'object', internal: false }
+      : qualifyRegistryReceiver(call.protocol.receiver, call.receiver, ctx.catalog, ctx.checker);
   const target = call.valueExpression
     ? symbolTargetOf(call.valueExpression, ctx.checker, ctx.graph, ctx.pathOf)
     : undefined;
@@ -160,10 +172,18 @@ function collectRegistryCalls(
         ) {
           method = callee.argumentExpression.text;
           receiver = callee.expression;
+        } else if (ts.isIdentifier(callee)) {
+          method = callee.text;
         }
 
+        // A protocol with a configured registry matches a bare call only; any other protocol
+        // matches a method call only.
         const protocol = method !== undefined ? catalog.forMethod(method) : undefined;
-        if (protocol && receiver) {
+        const matches =
+          receiver === undefined
+            ? protocol?.registry !== undefined
+            : protocol?.registry === undefined;
+        if (protocol && matches) {
           const fromType = protocol.keyFrom === 'typeArgument';
           const typeArgument = fromType ? node.typeArguments?.[0] : undefined;
           const keyExpression =

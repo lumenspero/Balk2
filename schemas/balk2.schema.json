@@ -355,6 +355,9 @@
         {
           "required": ["keyArg"],
           "properties": {
+            "registry": {
+              "$ref": "#/$defs/nonEmptyString"
+            },
             "keyArg": true
           }
         },

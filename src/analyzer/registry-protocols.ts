@@ -50,6 +50,11 @@ export interface RegistryProtocol {
    * `any`, because naming a method there states the intent to map it.
    */
   readonly receiver?: RegistryRule;
+  /**
+   * A registry the method looks in when it is called with no receiver, such as `invoke('greet')`
+   * for `commands`. A method call on a receiver is not matched by this protocol.
+   */
+  readonly registry?: string;
 }
 
 /** A decorator convention: a call to `name` registers the decorated class or method. */
@@ -150,6 +155,8 @@ export interface RegistryProtocolOptions {
 /** A protocol with every default applied, plus where it came from. */
 export interface ResolvedRegistryProtocol {
   readonly method: string;
+  /** The registry a bare call to the method looks in. See `RegistryProtocol.registry`. */
+  readonly registry?: string;
   readonly direction: RegistryDirection;
   readonly relationship: RegistryRelationship;
   readonly keyArg?: number;
@@ -260,6 +267,7 @@ function resolveProtocol(
     ...(protocol.keyArg !== undefined ? { keyArg: protocol.keyArg } : {}),
     ...(protocol.keyFrom !== undefined ? { keyFrom: protocol.keyFrom } : {}),
     ...(protocol.valueArg !== undefined ? { valueArg: protocol.valueArg } : {}),
+    ...(protocol.registry !== undefined ? { registry: protocol.registry } : {}),
     receiver: protocol.receiver ?? (source === 'built-in' ? 'registry-like' : 'any'),
     source,
   };

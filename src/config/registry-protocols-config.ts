@@ -40,7 +40,15 @@ const NAME_INJECTION_KEYS = new Set(['registry', 'decorator']);
 const ATTRIBUTE_KEYS = new Set(['name', 'key', 'registry']);
 const MANIFEST_KEYS = new Set(['registry', 'key', 'target']);
 const DISCOVER_KEYS = new Set(['glob', 'registry']);
-const METHOD_KEYS = new Set(['method', 'direction', 'keyArg', 'keyFrom', 'valueArg', 'receiver']);
+const METHOD_KEYS = new Set([
+  'method',
+  'direction',
+  'keyArg',
+  'keyFrom',
+  'valueArg',
+  'receiver',
+  'registry',
+]);
 const DIRECTIONS: readonly RegistryDirection[] = ['register', 'resolve', 'route'];
 const KEY_FROM_VALUES = ['typeArgument'] as const;
 const BUILT_IN_METHODS = new Set(BUILT_IN_REGISTRY_PROTOCOLS.map((protocol) => protocol.method));
@@ -255,6 +263,13 @@ function normalizeMethod(
   const receiver = normalizeReceiver(value, path, problems);
   if (receiver === null) return undefined;
 
+  let registry: string | undefined;
+  if ('registry' in value) {
+    const raw = nonEmptyString(value['registry'], `${path}.registry`, problems);
+    if (raw === undefined) return undefined;
+    registry = raw;
+  }
+
   const valueArg = argField(
     value,
     'valueArg',
@@ -273,6 +288,7 @@ function normalizeMethod(
 
   return {
     method,
+    ...(registry !== undefined ? { registry } : {}),
     direction,
     ...(keyArg !== undefined ? { keyArg } : {}),
     ...(keyFrom !== undefined ? { keyFrom } : {}),
