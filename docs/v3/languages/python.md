@@ -184,5 +184,5 @@ A decorator can register the item it sits on, configured under `protocols.regist
 under the string or number literal in the decorator call's argument at that position, so
 `@route('/x')` declares `/x`. A bare decorator such as `@route` has no argument, so only `fn-name`
 applies to it. A decorator matches by its name as written, and only symbols declared in the
-repository are declared. The rule applies to Python only for now. Rust attributes use the same
-form and are not yet read.
+repository are declared. The same form applies to Rust attributes on free functions and type declarations. Methods in an
+`impl` or `trait` are not read.

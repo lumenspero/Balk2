@@ -142,7 +142,7 @@ function uniqueProvider(
 }
 
 /** The raw argument text of an attribute, without its outer parentheses, split at top-level commas. */
-function argumentParts(attr: Attribute): string[] {
+export function argumentParts(attr: Attribute): string[] {
   let text = attr.raw.trim();
   if (text.startsWith('(')) text = text.slice(1);
   if (text.endsWith(')')) text = text.slice(0, -1);

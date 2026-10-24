@@ -32,6 +32,9 @@ import { bindCalls } from './names/calls.js';
 import { bindBuildScripts } from './names/build-scripts.js';
 import { bindIncludes } from './names/includes.js';
 import { bindProcMacros } from './names/proc-macros.js';
+import { attributeRegistrations } from './names/attribute-registrations.js';
+import { applyRegistryEdges } from '../registry-apply.js';
+import { runRegistryEngine } from '../../facts/registry-engine.js';
 import { bindReferences } from './names/references.js';
 import { computeExports } from './names/exports.js';
 import { bindImports } from './names/imports.js';
@@ -295,6 +298,17 @@ export class RustFrontEnd implements LanguageFrontEnd {
         metadata: { mechanism: edge.mechanism },
       });
     }
+    // Attribute registrations (12.2): an attribute named in `protocols.registries.attributes` declares its item.
+    applyRegistryEdges(
+      graph,
+      runRegistryEngine({
+        configured: [],
+        facts: attributeRegistrations(
+          crates.map((c) => ({ index: c.index })),
+          input.config?.protocols?.registries?.attributes ?? [],
+        ),
+      }),
+    );
     const references = bindReferences(
       crates.map((c) => c.index),
       env,
