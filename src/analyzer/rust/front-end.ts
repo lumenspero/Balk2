@@ -34,6 +34,9 @@ import { bindIncludes } from './names/includes.js';
 import { bindProcMacros } from './names/proc-macros.js';
 import { attributeRegistrations } from './names/attribute-registrations.js';
 import { rustRegistryFacts } from './names/registry-facts.js';
+import { rustStateFacts } from './names/state-facts.js';
+import { applyStateEdges } from '../state-apply.js';
+import { runStateEngine, statePathFiles } from '../../facts/state-engine.js';
 import { applyRegistryEdges } from '../registry-apply.js';
 import { runRegistryEngine } from '../../facts/registry-engine.js';
 import { bindReferences } from './names/references.js';
@@ -320,6 +323,20 @@ export class RustFrontEnd implements LanguageFrontEnd {
           env,
           input.config?.protocols?.registries?.methods ?? [],
         ),
+      }),
+    );
+    // Shared state (Phase 12.3): writes to a `static mut`.
+    applyStateEdges(
+      graph,
+      runStateEngine({
+        files: statePathFiles(
+          rustStateFacts(
+            crates.map((c) => c.index),
+            env,
+          ),
+          'rust',
+        ),
+        dynamicPaths: 'off',
       }),
     );
     const references = bindReferences(

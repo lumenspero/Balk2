@@ -327,7 +327,6 @@ export const PARITY_CORPUS: readonly CorpusScenario[] = [
         expect: {
           relationships: ['writesState src/lib.rs:bump -> state:src/lib.rs:COUNT'],
         },
-        pending: '12.3',
       },
     },
   },

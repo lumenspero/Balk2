@@ -28,8 +28,7 @@ import { analyzePythonCalls, combineObservers } from './python/calls.js';
 import { createPythonRegistryCollector } from './python/registry-facts.js';
 import { createPythonStateCollector, type ModuleBinding } from './python/state-facts.js';
 import { applyStateEdges } from './state-apply.js';
-import { runStateEngine } from '../facts/state-engine.js';
-import type { FileFacts, StatePathFact } from '../facts/types.js';
+import { runStateEngine, statePathFiles } from '../facts/state-engine.js';
 import { applyRegistryEdges } from './registry-apply.js';
 import type {
   RegistryAttributeRule,
@@ -192,7 +191,7 @@ export function analyzePythonSources(
   applyStateEdges(
     graph,
     runStateEngine({
-      files: groupByFile(state.facts()),
+      files: statePathFiles(state.facts(), 'python'),
       dynamicPaths: 'off',
     }),
   );
@@ -348,15 +347,4 @@ function dirOf(filePath: string): string {
 
 function lastSegment(path: string): string {
   return path.slice(path.lastIndexOf('/') + 1);
-}
-
-/** The state-path facts of each file, grouped as the state engine takes them. */
-function groupByFile(facts: readonly StatePathFact[]): FileFacts[] {
-  const byFile = new Map<string, StatePathFact[]>();
-  for (const fact of facts) {
-    const list = byFile.get(fact.filePath);
-    if (list === undefined) byFile.set(fact.filePath, [fact]);
-    else list.push(fact);
-  }
-  return [...byFile].map(([filePath, list]) => ({ filePath, language: 'python', facts: list }));
 }

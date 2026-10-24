@@ -7,7 +7,7 @@ import type {
   StateRelationship,
   StateRootKind,
 } from '../types.js';
-import type { FileFacts, StatePathFact } from './types.js';
+import type { FactLanguage, FileFacts, StatePathFact } from './types.js';
 
 /**
  * The state engine (Phase 2.7, state). It reads state-path facts and returns edge descriptions. A
@@ -95,4 +95,18 @@ function metadataOf(fact: StatePathFact): RelationshipMetadata {
   return fact.method !== undefined
     ? { operation: fact.operation, method: fact.method }
     : { operation: fact.operation };
+}
+
+/** The state-path facts of each file, grouped as `runStateEngine` takes them. */
+export function statePathFiles(
+  facts: readonly StatePathFact[],
+  language: FactLanguage,
+): FileFacts[] {
+  const byFile = new Map<string, StatePathFact[]>();
+  for (const fact of facts) {
+    const list = byFile.get(fact.filePath);
+    if (list === undefined) byFile.set(fact.filePath, [fact]);
+    else list.push(fact);
+  }
+  return [...byFile].map(([filePath, list]) => ({ filePath, language, facts: list }));
 }
