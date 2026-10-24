@@ -380,6 +380,43 @@ export const PARITY_CORPUS: readonly CorpusScenario[] = [
   },
 
   {
+    name: 'a function passed to a call that runs it later is linked from the caller',
+    family: 'callbacks',
+    renditions: {
+      javascript: {
+        files: {
+          'bus.ts': 'export function onReady(handler: () => void): void {\n  handler();\n}\n',
+          'app.ts':
+            "import { onReady } from './bus';\n\nexport function ready(): void {}\n\nexport function setup(): void {\n  onReady(ready);\n}\n",
+        },
+        config: { protocols: { callbacks: [{ function: 'onReady', callbackArg: 0 }] } },
+        expect: {
+          relationships: ['passesCallback app.ts:setup -> app.ts:ready'],
+        },
+      },
+      python: {
+        files: {
+          'main.py':
+            'import threading\n\n\ndef worker():\n    pass\n\n\ndef setup():\n    threading.Thread(target=worker).start()\n',
+        },
+        expect: {
+          relationships: ['passesCallback main.py:setup -> main.py:worker'],
+        },
+      },
+      rust: {
+        files: {
+          'Cargo.toml': '[package]\nname = "demo"\nversion = "0.1.0"\nedition = "2021"\n',
+          'src/lib.rs':
+            'use std::thread;\n\nfn worker() {}\n\npub fn setup() {\n    thread::spawn(worker);\n}\n',
+        },
+        expect: {
+          relationships: ['passesCallback src/lib.rs:setup -> src/lib.rs:worker'],
+        },
+      },
+    },
+  },
+
+  {
     name: 'syntax error does not hide the rest of the file',
     family: 'syntax diagnostics',
     renditions: {
