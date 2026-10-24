@@ -71,7 +71,6 @@ export const PARITY_CORPUS: readonly CorpusScenario[] = [
           relationships: ['imports main.ts -> user.ts', 'calls main.ts:run -> user.ts:User.save'],
           symbols: ['user.ts:User.save'],
         },
-        pending: '2.5',
       },
       python: {
         files: {
@@ -608,7 +607,6 @@ export const PARITY_CORPUS: readonly CorpusScenario[] = [
           relationships: ['calls main.ts:run -> user.ts:User.save'],
           symbols: ['user.ts:User.save'],
         },
-        pending: '2.5',
       },
       python: {
         files: {
@@ -785,7 +783,6 @@ export const PARITY_CORPUS: readonly CorpusScenario[] = [
             'calls child.ts:Child.save -> base.ts:Base.save',
           ],
         },
-        pending: '2.5',
       },
       python: {
         files: {
@@ -871,6 +868,43 @@ export const PARITY_CORPUS: readonly CorpusScenario[] = [
             'routesTo src/lib.rs:go -> registry:routes#/users',
           ],
           absent: ['routesTo src/lib.rs:other -> registry:routes#/users'],
+        },
+      },
+    },
+  },
+  {
+    name: 'a local binding of a shared name is not shared state (negative)',
+    family: 'shadowing',
+    renditions: {
+      javascript: {
+        files: {
+          'store.ts':
+            'export let count = 0;\n\nexport function reset(): void {\n  count = 0;\n}\n\nexport function bump(): void {\n  let count = 0;\n  count += 1;\n}\n',
+        },
+        expect: {
+          relationships: ['writesState store.ts:reset -> state:store.ts:count'],
+          absent: ['writesState store.ts:bump -> state:store.ts:count'],
+        },
+      },
+      python: {
+        files: {
+          'store.py':
+            'count = 0\n\n\ndef reset():\n    global count\n    count = 0\n\n\ndef bump():\n    count = 0\n    count += 1\n',
+        },
+        expect: {
+          relationships: ['writesState store.py:reset -> state:store.py:count'],
+          absent: ['writesState store.py:bump -> state:store.py:count'],
+        },
+      },
+      rust: {
+        files: {
+          'Cargo.toml': '[package]\nname = "demo"\nversion = "0.1.0"\nedition = "2021"\n',
+          'src/lib.rs':
+            'pub static mut COUNT: i32 = 0;\n\npub fn reset() {\n    unsafe {\n        COUNT = 0;\n    }\n}\n\npub fn bump() -> i32 {\n    let mut COUNT = 0;\n    COUNT += 1;\n    COUNT\n}\n',
+        },
+        expect: {
+          relationships: ['writesState src/lib.rs:reset -> state:src/lib.rs:COUNT'],
+          absent: ['writesState src/lib.rs:bump -> state:src/lib.rs:COUNT'],
         },
       },
     },

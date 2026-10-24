@@ -167,7 +167,6 @@ export const PYTHON_CORPUS: readonly CorpusScenario[] = [
         expect: {
           relationships: ['imports loader.py:load_fixed -> plugins/alpha.py'],
         },
-        pending: '12.5',
       },
     },
   },

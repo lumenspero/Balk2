@@ -32,6 +32,13 @@ event:bus.ts:bus#ready
 # nodes: unresolved
 # relationships
 calls bus.ts -> bus.ts:Emitter [high]
+calls log.ts:logReady -> bus.ts:Emitter.once [high]
+calls net.ts:connect -> bus.ts:Emitter.emit [high]
+calls net.ts:disconnect -> bus.ts:Emitter.emit [high]
+calls ui.ts:cleanup -> bus.ts:Emitter.off [high]
+calls ui.ts:init -> bus.ts:Emitter.on [high]
+calls ui.ts:onReady -> bus.ts:Emitter.emit [high]
+calls view.ts:mount -> bus.ts:Emitter.on [high]
 emits net.ts:connect -> event:bus.ts:bus#ready [high]
 emits net.ts:disconnect -> event:bus.ts:bus#closed [high]
 emits ui.ts:onReady -> event:bus.ts:bus#loaded [high]

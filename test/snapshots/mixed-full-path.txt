@@ -32,6 +32,8 @@ state:global#appState.orders
 # nodes: unresolved
 # relationships
 calls emitter.ts -> emitter.ts:Emitter [high]
+calls publisher.ts:place -> emitter.ts:Emitter.emit [high]
+calls subscriber.ts:wire -> emitter.ts:Emitter.on [high]
 emits publisher.ts:place -> event:emitter.ts:bus#order:placed [high]
 exports emitter.ts -> emitter.ts:Emitter [high]
 exports emitter.ts -> emitter.ts:bus [high]

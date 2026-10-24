@@ -95,15 +95,16 @@ strings are values, not types. Only the first argument of `Annotated` is a type.
 
 ## Mechanisms
 
-These are not yet produced by the fact passes. They keep their V2 behavior until Phases 11 and 12.
+Data artifact literals on a line are not yet produced by the fact passes. They keep their V2 behavior.
 
 - **Data artifact literals.** A path literal that names a data file (`open('out/x.json', 'w')`,
   `self.dir / 'x.json'`) produces a `generates`, `consumes` or `reads` edge, with high confidence
   when the access mode is certain.
-- **`importlib.import_module`.** A string literal naming a repository module produces an `imports`
-  edge from the owner, with `metadata.loadKind: "import-module"`. A computed name produces a
-  `dynamic-module-specifier` observation at low confidence. A bare `import_module` is recognized only
-  when a from-import bound it.
+- **Dynamic module loads.** `importlib.import_module`, `runpy.run_module`, `runpy.run_path`,
+  `importlib.util.spec_from_file_location` and the builtin `__import__` link to the repository module
+  or file their literal name or path names, with `metadata.loadKind` set to the form. A computed name
+  is a `dynamic-module-specifier` observation at low confidence. A name or path the repository does not
+  hold is silent.
 - **Source annotations.** A `# balk2:` comment directly above a statement can set the confidence or
   add an edge. It must name the enclosing owner. A directive inside a triple-quoted string is text.
 
@@ -121,6 +122,30 @@ These are not yet produced by the fact passes. They keep their V2 behavior until
 ```
 
 The limits of shared-state recording are listed in `docs/v3/language-parity.md`.
+
+## Callbacks
+
+A function passed to a call that runs it later is linked from the caller with `passesCallback`. These
+calls are read:
+
+- `threading.Thread(target=f)`, `atexit.register(f)`, `signal.signal(sig, f)` and `functools.partial(f, ...)`;
+- `sorted`, `min` and `max` (the `key` keyword), and `map` and `filter` (the function argument);
+- `submit` and `map` on an executor, and `call_soon`, `call_soon_threadsafe`, `call_later`, `call_at` and
+  `run_in_executor` on an event loop.
+
+An executor is typed from its `concurrent.futures` constructor or a `with` block over one. A loop is
+typed from `asyncio.get_event_loop()`, `get_running_loop()` or `new_event_loop()`. A bound method written
+`self.run` resolves to the method in the class or its bases. A `lambda` is an unresolved observation at
+low confidence.
+
+## Resources
+
+`importlib.resources.files(pkg)`, joined with `/` or `.joinpath(...)` and read with `read_text`,
+`read_bytes`, `open_text`, `open_binary` or `open`; `importlib.resources.read_text`, `read_binary`,
+`open_text` and `open_binary` with a package and a resource name; and `pkgutil.get_data(pkg, name)` each
+link to the resource file they name, with `mechanism: "api"`. A configured loader (`protocols.resources`,
+such as `env.get_template('x.html')`) links with `mechanism: "loader"`. A package or path that is not a
+string literal is a `dynamic-resource-specifier` observation.
 
 ## Limits
 
@@ -142,6 +167,13 @@ The limits of shared-state recording are listed in `docs/v3/language-parity.md`.
   no type checker run at generate time.
 - A syntax error is reported as a syntax diagnostic at its line and column, and the parser recovers
   past it, so the rest of the file is still analyzed.
+- A `files()` chain is read only where it is written inline. A variable that holds one, such as
+  `base = files('pkg')`, is not followed.
+- `__import__` is read as the builtin unless the file imports or defines that name. A local variable
+  that shadows the builtin is not checked.
+- A relative `import_module` name without a `package=` argument is not resolved, and records nothing.
+- A `spec_from_file_location` or `run_path` path resolves only when it is a literal path inside the
+  repository.
 - `PythonAnalyzer.analyzeFile` analyzes one file. Facts that depend on another file's contents are
   missing unless that file is passed in or readable under `rootDir`. Use `PythonFrontEnd` for a
   repository. `PythonAnalyzer` is deprecated.

@@ -144,3 +144,24 @@ A call whose path has more than one segment, such as `module::navigate(..)`, is 
 ```
 
 The limits of shared-state recording are listed in `docs/v3/language-parity.md`.
+
+## Callbacks
+
+- `thread::spawn(f)` and `std::thread::spawn(f)` are read when no repository symbol has that path.
+- `map`, `filter`, `for_each`, `filter_map` and `flat_map` are read by method name, whatever the
+  receiver is. The receiver's type is not checked.
+- A closure is inline. A path that names a repository function links to it. Any other argument is an
+  unresolved observation at low confidence.
+
+## Native libraries
+
+`libloading::Library::new(path)` loads a shared library at run time, and the library's code is not
+analyzed. A string-literal path is recorded as an `unresolved-module-path` observation, and any other
+path as a `dynamic-module-specifier` observation, both from the function that makes the load. Only the
+full path is read. A `Library::new` reached through `use libloading::Library` is not read yet.
+
+## Source annotations
+
+A `// balk2:` line comment directly above a statement can set confidence, and must name the innermost
+function that holds the statement, or the file at top level. Doc comments (`///`, `//!`) and text inside
+a string are not directives.

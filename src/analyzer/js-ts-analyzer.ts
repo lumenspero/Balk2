@@ -562,6 +562,29 @@ function aliasTarget(
   return file === undefined ? null : `${file}:${aliased.getName()}`;
 }
 
+/**
+ * The method a call on a typed receiver names, as a symbol id, or null (Phase 2.5). The receiver's
+ * type comes from the checker, so `user.save()` after `const user = new User()` names `User.save`,
+ * and `super.save()` names the base class method. Only a method of a repository class counts.
+ */
+function typedMethodTarget(
+  access: ts.PropertyAccessExpression,
+  checker: ts.TypeChecker,
+  repository: RepositoryProgram,
+): string | null {
+  const receiverType = checker.getTypeAtLocation(access.expression);
+  const classSymbol = receiverType.getSymbol();
+  if (classSymbol === undefined || (classSymbol.flags & ts.SymbolFlags.Class) === 0) return null;
+  const member = checker.getPropertyOfType(receiverType, access.name.text);
+  const declaration = member?.valueDeclaration ?? member?.declarations?.[0];
+  if (declaration === undefined || !ts.isMethodDeclaration(declaration)) return null;
+  const owner = declaration.parent;
+  if (!ts.isClassDeclaration(owner) || owner.name === undefined) return null;
+  const file = pathOfSourceFile(repository, declaration.getSourceFile());
+  if (file === undefined) return null;
+  return `${file}:${owner.name.text}.${access.name.text}`;
+}
+
 function handleCall(
   node: ts.CallExpression | ts.NewExpression,
   callerId: string,
@@ -587,6 +610,17 @@ function handleCall(
   }
 
   const checker = repository?.checker;
+  if (
+    checker !== undefined &&
+    repository !== undefined &&
+    ts.isPropertyAccessExpression(node.expression)
+  ) {
+    const target = typedMethodTarget(node.expression, checker, repository);
+    if (target !== null) {
+      graph.addRelationship('calls', callerId, target);
+      return;
+    }
+  }
   if (checker !== undefined && ts.isIdentifier(node.expression)) {
     if (!refersToModuleBinding(node.expression, checker)) return;
   }
