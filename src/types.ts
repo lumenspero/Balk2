@@ -387,6 +387,7 @@ export type LoadKind =
   | 'dunder-import'
   | 'spec-from-file'
   | 'run-path'
+  | 'run-module'
   | 'wasm-bindgen-module';
 
 export type RelationshipType =

@@ -157,7 +157,16 @@ export function analyzePythonSources(
         bound.set(name, { kind: 'file', path: r.target.path });
         continue;
       }
-      if (r.form !== 'import' || r.specifier.includes('.')) continue;
+      if (r.form !== 'import') continue;
+      // `import pkg.mod` binds the root package `pkg` when it is external, so `pkg.mod.f()` can be read
+      // (Phase 12.5). A repository package and an aliased import bind nothing here.
+      if (r.specifier.includes('.')) {
+        const root = r.specifier.split('.')[0] ?? '';
+        if (name === root && r.target.kind === 'external') {
+          bound.set(root, { kind: 'external', name: root });
+        }
+        continue;
+      }
       if (r.target.kind === 'file') bound.set(name, { kind: 'file', path: r.target.path });
       else if (r.target.kind === 'external') {
         bound.set(name, { kind: 'external', name: r.target.name });
@@ -208,7 +217,12 @@ export function analyzePythonSources(
   // Callbacks passed to library calls (Phase 12.4), such as `threading.Thread(target=f)`.
   const callbacks = createPythonCallbackCollector({ bindings: moduleBindings });
   // Dynamic module loads (Phase 12.5): `importlib.import_module(name)`.
-  const loads = createPythonLoadCollector({ bindings: moduleBindings, index, roots });
+  const loads = createPythonLoadCollector({
+    bindings: moduleBindings,
+    index,
+    roots,
+    files: knownFiles,
+  });
 
   // Calls. The owner is the enclosing function or method, or the file for module-level code.
   for (const c of analyzePythonCalls(
