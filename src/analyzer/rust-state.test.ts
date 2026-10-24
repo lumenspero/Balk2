@@ -162,4 +162,22 @@ describe('rust static mut writes as shared state (V3 Phase 12.3)', () => {
 
     expect(stateEdges(map)).toEqual([]);
   });
+
+  it('records a with() call on a thread_local static as a read', () => {
+    const map = mapOf({
+      'src/lib.rs':
+        'use std::cell::RefCell;\n\nthread_local! {\n    static COUNTER: RefCell<u32> = RefCell::new(0);\n}\n\npub fn bump() {\n    COUNTER.with(|c| *c.borrow_mut() += 1);\n}\n',
+    });
+
+    expect(stateEdges(map)).toEqual(['readsState src/lib.rs:bump -> state:src/lib.rs:COUNTER']);
+  });
+
+  it('records a with_borrow_mut() call on a thread_local static as a write', () => {
+    const map = mapOf({
+      'src/lib.rs':
+        'use std::cell::RefCell;\n\nthread_local! {\n    static COUNTER: RefCell<u32> = RefCell::new(0);\n}\n\npub fn bump() {\n    COUNTER.with_borrow_mut(|v| *v += 1);\n}\n',
+    });
+
+    expect(stateEdges(map)).toEqual(['writesState src/lib.rs:bump -> state:src/lib.rs:COUNTER']);
+  });
 });

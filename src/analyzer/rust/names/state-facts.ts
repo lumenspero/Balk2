@@ -7,8 +7,10 @@
  *   `OnceCell`, and `LazyLock`, `LazyCell` and `Lazy`. A method the catalogue does not name is not
  *   read. Every lock acquisition (`lock`, `read`, `write`, `try_*`) is a read, as Phase 12.3 has it.
  *
- * Only a static whose own type is one of these is read. `LazyLock<Mutex<..>>` is not, because its
- * methods belong to the inner type, and `lazy_static!` and `thread_local!` are not read yet.
+ * A `LazyLock<Mutex<..>>` is read as both wrapper and inner type. `lazy_static!` statics are read
+ * by their declared type. A `thread_local!` static is read by its `LocalKey` methods: `with`,
+ * `with_borrow` and `get` are reads, `with_borrow_mut`, `set`, `take` and `replace` are writes.
+ * Writes made inside a `with` closure are not read.
  *
  * Names are read from the body's tokens, since the body scanner records no assignments or method
  * calls. A name the function binds itself (`let`, a pattern, a closure parameter) is a local. Writes
@@ -30,7 +32,7 @@ import { pathOfTokens, readPath } from './type-paths.js';
 type Effect = 'read' | 'write' | 'read-write';
 
 /** The kind of an interior-mutable static, from its declared type. */
-type Category = 'atomic' | 'lock' | 'once' | 'lazy';
+type Category = 'atomic' | 'lock' | 'once' | 'lazy' | 'local';
 
 const ATOMIC_EFFECTS: Readonly<Record<string, Effect>> = {
   load: 'read',
@@ -70,11 +72,23 @@ const ONCE_EFFECTS: Readonly<Record<string, Effect>> = {
 
 const LAZY_EFFECTS: Readonly<Record<string, Effect>> = { force: 'read' };
 
+/** `LocalKey` methods on a `thread_local!` static. `with` hands the closure the value, so it is a read. */
+const LOCAL_EFFECTS: Readonly<Record<string, Effect>> = {
+  with: 'read',
+  with_borrow: 'read',
+  with_borrow_mut: 'write',
+  get: 'read',
+  set: 'write',
+  take: 'write',
+  replace: 'write',
+};
+
 const EFFECTS: Readonly<Record<Category, Readonly<Record<string, Effect>>>> = {
   atomic: ATOMIC_EFFECTS,
   lock: LOCK_EFFECTS,
   once: ONCE_EFFECTS,
   lazy: LAZY_EFFECTS,
+  local: LOCAL_EFFECTS,
 };
 
 /** The category of each non-atomic type a static may be declared with. */
@@ -131,13 +145,15 @@ export function rustStateFacts(
       if (categories.length > 0) interior.set(decl.id, categories);
     }
     for (const call of crate.macroCalls) {
-      if (call.path[call.path.length - 1] !== 'lazy_static') continue;
+      const macro = call.path[call.path.length - 1];
+      if (macro !== 'lazy_static' && macro !== 'thread_local') continue;
       const file = call.owner.file;
       for (const lazy of lazyStaticsOf(call.args.children)) {
         const id = `${file}:${lazy.name}`;
         const key = nameKey(file, lazy.name);
         lazyNames.set(key, lazyNames.has(key) ? null : id);
-        const categories = categoriesOf(lazy.type);
+        const categories: Category[] =
+          macro === 'thread_local' ? ['local'] : categoriesOf(lazy.type);
         if (categories.length > 0) interior.set(id, categories);
       }
     }
