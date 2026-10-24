@@ -84,4 +84,55 @@ describe('rust static mut writes as shared state (V3 Phase 12.3)', () => {
 
     expect(stateEdges(map)).toEqual([]);
   });
+
+  it('reads and writes the methods of an atomic static that write and read', () => {
+    const map = mapOf({
+      'src/lib.rs':
+        'use std::sync::atomic::{AtomicUsize, Ordering};\n\npub static COUNTER: AtomicUsize = AtomicUsize::new(0);\n\npub fn bump() -> usize {\n    COUNTER.fetch_add(1, Ordering::SeqCst)\n}\n\npub fn read() -> usize {\n    COUNTER.load(Ordering::SeqCst)\n}\n',
+    });
+
+    expect(stateEdges(map)).toEqual([
+      'readsState src/lib.rs:bump -> state:src/lib.rs:COUNTER',
+      'readsState src/lib.rs:read -> state:src/lib.rs:COUNTER',
+      'writesState src/lib.rs:bump -> state:src/lib.rs:COUNTER',
+    ]);
+  });
+
+  it('records a lock acquisition on a Mutex static as a read', () => {
+    const map = mapOf({
+      'src/lib.rs':
+        'use std::sync::Mutex;\n\npub static LOG: Mutex<Vec<u8>> = Mutex::new(Vec::new());\n\npub fn push(byte: u8) {\n    let mut guard = LOG.lock().unwrap();\n    guard.push(byte);\n}\n',
+    });
+
+    expect(stateEdges(map)).toEqual(['readsState src/lib.rs:push -> state:src/lib.rs:LOG']);
+  });
+
+  it('writes a OnceLock static through set', () => {
+    const map = mapOf({
+      'src/lib.rs':
+        'use std::sync::OnceLock;\n\npub static CONFIG: OnceLock<u8> = OnceLock::new();\n\npub fn configure() {\n    let _ = CONFIG.set(1);\n}\n',
+    });
+
+    expect(stateEdges(map)).toEqual([
+      'writesState src/lib.rs:configure -> state:src/lib.rs:CONFIG',
+    ]);
+  });
+
+  it('gives no state for a method the catalogue does not name', () => {
+    const map = mapOf({
+      'src/lib.rs':
+        'use std::sync::atomic::AtomicUsize;\n\npub static COUNTER: AtomicUsize = AtomicUsize::new(0);\n\npub fn address() -> usize {\n    COUNTER.as_ptr() as usize\n}\n',
+    });
+
+    expect(stateEdges(map)).toEqual([]);
+  });
+
+  it('gives no state for a local that shadows an interior static', () => {
+    const map = mapOf({
+      'src/lib.rs':
+        'use std::sync::atomic::{AtomicUsize, Ordering};\n\npub static COUNTER: AtomicUsize = AtomicUsize::new(0);\n\npub fn local() -> usize {\n    let COUNTER = AtomicUsize::new(1);\n    COUNTER.load(Ordering::SeqCst)\n}\n',
+    });
+
+    expect(stateEdges(map)).toEqual([]);
+  });
 });
