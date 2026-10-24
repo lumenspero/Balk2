@@ -12,12 +12,17 @@
  * `with_borrow` and `get` are reads, `with_borrow_mut`, `set`, `take` and `replace` are writes.
  * Writes made inside a `with` closure are not read.
  *
+ * A configured singleton (`state.singletons`, matched by module and export) is also read through its
+ * fields: `STORE.count = 1` writes the singleton at field `count`, and `STORE.a.b = 1` writes `a.b`.
+ * Reads of its fields are not recorded yet.
+ *
  * Names are read from the body's tokens, since the body scanner records no assignments or method
  * calls. A name the function binds itself (`let`, a pattern, a closure parameter) is a local. Writes
- * through a field or an index are not read.
+ * through a field are read only for a configured singleton, and writes through an index are not read.
  */
 import type { StatePathFact } from '../../../facts/types.js';
 import type { BodyFact } from '../body.js';
+import type { StateSingleton } from '../../../config/state-config.js';
 import type { RustToken } from '../lexer.js';
 import { bodyBlocksOf, ownBodyFacts, startsWithin } from '../nested.js';
 import { sourceSpanOf } from '../source-span.js';
@@ -102,9 +107,10 @@ const TYPE_CATEGORY: Readonly<Record<string, Category>> = {
   Lazy: 'lazy',
 };
 
-/** One assignment a body makes to a plain name: the name's token and the operator. */
+/** One assignment a body makes to a name, or to a field chain below it: the token, fields and operator. */
 interface Assignment {
   readonly name: RustToken;
+  readonly fields: readonly string[];
   readonly op: string;
 }
 
@@ -132,15 +138,19 @@ const ASSIGNMENTS: ReadonlySet<string> = new Set([
 export function rustStateFacts(
   crates: readonly RustCrateIndex[],
   env: RustNameEnvironment,
+  config: readonly StateSingleton[] = [],
 ): StatePathFact[] {
   const mutable = new Set<string>();
   const interior = new Map<string, Category[]>();
+  const singletonIds = new Set(config.map((s) => `${s.module}:${s.export}`));
+  const singletons = new Set<string>();
   // A `lazy_static!` static is not in the symbol namespace, so it is found by its file and name.
   const lazyNames = new Map<string, string | null>();
   for (const crate of crates) {
     for (const decl of crate.decls) {
       if (decl.item.kind !== 'static') continue;
       if (decl.item.mutable) mutable.add(decl.id);
+      if (singletonIds.has(decl.id)) singletons.add(decl.id);
       const categories = categoriesOf(decl.item.ty?.tokens ?? null);
       if (categories.length > 0) interior.set(decl.id, categories);
     }
@@ -152,13 +162,14 @@ export function rustStateFacts(
         const id = `${file}:${lazy.name}`;
         const key = nameKey(file, lazy.name);
         lazyNames.set(key, lazyNames.has(key) ? null : id);
+        if (singletonIds.has(id)) singletons.add(id);
         const categories: Category[] =
           macro === 'thread_local' ? ['local'] : categoriesOf(lazy.type);
         if (categories.length > 0) interior.set(id, categories);
       }
     }
   }
-  if (mutable.size === 0 && interior.size === 0) return [];
+  if (mutable.size === 0 && interior.size === 0 && singletons.size === 0) return [];
 
   const repo = buildRepo(crates, env);
   const facts: StatePathFact[] = [];
@@ -184,8 +195,11 @@ export function rustStateFacts(
 
     for (const assignment of assignmentsIn(body.children)) {
       const target = staticNamed(assignment.name);
-      if (target === undefined || !mutable.has(target)) continue;
-      facts.push(...assignmentFacts(assignment, target, entry.fn.id, file));
+      if (target === undefined) continue;
+      const singleton = singletons.has(target);
+      // Only a configured singleton is read through its fields; a `static mut` is read as a whole.
+      if (!singleton && (!mutable.has(target) || assignment.fields.length > 0)) continue;
+      facts.push(...assignmentFacts(assignment, target, entry.fn.id, file, singleton));
     }
     for (const call of methodCallsIn(body.children)) {
       const target = staticNamed(call.name);
@@ -287,7 +301,25 @@ function continuesPath(tree: TokenTree | undefined): boolean {
   return tree !== undefined && !isTokenGroup(tree) && (tree.text === '.' || tree.text === '::');
 }
 
-/** Every assignment to a plain name in a token list, including inside nested groups. */
+/** The field names of a `.a.b` chain that starts at `start`, and the index just past the chain. */
+function fieldChainAt(
+  trees: readonly TokenTree[],
+  start: number,
+): { fields: string[]; next: number } {
+  const fields: string[] = [];
+  let j = start;
+  for (;;) {
+    const dot = trees[j];
+    const field = trees[j + 1];
+    if (dot === undefined || isTokenGroup(dot) || dot.text !== '.') break;
+    if (field === undefined || isTokenGroup(field) || field.kind !== 'ident') break;
+    fields.push(field.value);
+    j += 2;
+  }
+  return { fields, next: j };
+}
+
+/** Every assignment to a name, or to a field chain below it, in a token list, including nested groups. */
 function assignmentsIn(trees: readonly TokenTree[]): Assignment[] {
   const out: Assignment[] = [];
   for (let i = 0; i < trees.length; i += 1) {
@@ -306,9 +338,10 @@ function assignmentsIn(trees: readonly TokenTree[]): Assignment[] {
     ) {
       continue;
     }
-    const after = trees[i + 1];
+    const { fields, next } = fieldChainAt(trees, i + 1);
+    const after = trees[next];
     if (after === undefined || isTokenGroup(after) || after.kind !== 'punct') continue;
-    if (ASSIGNMENTS.has(after.text)) out.push({ name: tree, op: after.text });
+    if (ASSIGNMENTS.has(after.text)) out.push({ name: tree, fields, op: after.text });
   }
   return out;
 }
@@ -341,6 +374,7 @@ function assignmentFacts(
   root: string,
   owner: string,
   file: string,
+  singleton: boolean,
 ): StatePathFact[] {
   const compound = assignment.op !== '=';
   const base = {
@@ -348,12 +382,12 @@ function assignmentFacts(
     filePath: file,
     span: sourceSpanOf(assignment.name, file),
     owner,
-    rootKind: 'module' as const,
+    rootKind: singleton ? ('singleton' as const) : ('module' as const),
     root,
-    segments: [],
+    segments: [...assignment.fields],
     confidence: 'high' as const,
     evidence: 'ast' as const,
-    subject: `${assignment.name.value} ${assignment.op}`,
+    subject: `${[assignment.name.value, ...assignment.fields].join('.')} ${assignment.op}`,
   };
   const out: StatePathFact[] = [];
   if (compound) out.push({ ...base, relationship: 'readsState', operation: 'compound-assign' });

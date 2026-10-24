@@ -333,6 +333,7 @@ export class RustFrontEnd implements LanguageFrontEnd {
           rustStateFacts(
             crates.map((c) => c.index),
             env,
+            input.config?.state?.singletons ?? [],
           ),
           'rust',
         ),
