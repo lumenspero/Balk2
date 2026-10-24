@@ -3,8 +3,11 @@
  * - through a `global` declaration: in `def bump(): global count; count += 1`, `bump` writes and
  *   reads `<file>:count`;
  * - through a module imported by name: with `import store`, `store.count = 1` writes
- *   `<store file>:count`, and `import builtins` makes `builtins.x = 1` write the global root.
- * A compound assignment both reads and writes, as it does for every state path.
+ *   `<store file>:count`, and `import builtins` makes `builtins.x = 1` write the global root;
+ * - through a configured singleton: with `from store import store`, `store.count = 1` writes the
+ *   singleton at field `count`, and `store.a.b = 1` writes field path `a.b`.
+ * A compound assignment both reads and writes, as it does for every state path. Reads of a
+ * singleton's fields are not recorded yet, and neither are writes to a subscript such as `s[k]`.
  *
  * Only the statements of a function are read. A nested function or class has its own owner and
  * is reported when the call pass reaches it. Writes made by module-level code are not read yet.
@@ -19,7 +22,8 @@ import type { StatePathFact } from '../../facts/types.js';
 /** What a local name bound by an import refers to. */
 export type ModuleBinding =
   | { readonly kind: 'file'; readonly path: string }
-  | { readonly kind: 'external'; readonly name: string };
+  | { readonly kind: 'external'; readonly name: string }
+  | { readonly kind: 'singleton'; readonly root: string };
 
 export interface PythonStateOptions {
   /** Per file, the module names its imports bind, from the import resolver. */
@@ -56,7 +60,7 @@ type Write =
   | {
       readonly kind: 'attribute';
       readonly module: string;
-      readonly attr: string;
+      readonly attrs: readonly string[];
       readonly span: Span;
       readonly compound: boolean;
     };
@@ -64,7 +68,7 @@ type Write =
 /** The state a write names: its root, its kind, and its path below the root. */
 interface Target {
   readonly root: string;
-  readonly rootKind: 'module' | 'global';
+  readonly rootKind: 'module' | 'global' | 'singleton';
   readonly segments: readonly string[];
 }
 
@@ -91,7 +95,7 @@ function writesOf(
       segments: [...target.segments],
       confidence: 'high' as const,
       evidence: 'ast' as const,
-      subject: write.kind === 'name' ? write.name : `${write.module}.${write.attr}`,
+      subject: write.kind === 'name' ? write.name : `${write.module}.${write.attrs.join('.')}`,
     };
     if (write.compound) {
       out.push({ ...base, relationship: 'readsState', operation: 'compound-assign' });
@@ -118,11 +122,17 @@ function targetOf(
   }
   const binding = bindings?.get(write.module);
   if (binding === undefined) return undefined;
+  if (binding.kind === 'singleton') {
+    return { root: binding.root, rootKind: 'singleton', segments: [...write.attrs] };
+  }
+  // A module's own attribute is one name; a deeper path is not a module global.
+  const [attr] = write.attrs;
+  if (write.attrs.length !== 1 || attr === undefined) return undefined;
   if (binding.kind === 'file') {
-    return { root: `${binding.path}:${write.attr}`, rootKind: 'module', segments: [] };
+    return { root: `${binding.path}:${attr}`, rootKind: 'module', segments: [] };
   }
   if (binding.name === 'builtins') {
-    return { root: 'global', rootKind: 'global', segments: [write.attr] };
+    return { root: 'global', rootKind: 'global', segments: [attr] };
   }
   return undefined;
 }
@@ -147,15 +157,23 @@ function visitBlock(block: readonly Stmt[], globals: Set<string>, writes: Write[
 function collect(target: Expr, span: Span, compound: boolean, writes: Write[]): void {
   if (target.kind === 'name') {
     writes.push({ kind: 'name', name: target.id, span, compound });
-  } else if (target.kind === 'attribute' && target.value.kind === 'name') {
-    writes.push({
-      kind: 'attribute',
-      module: target.value.id,
-      attr: target.attr,
-      span,
-      compound,
-    });
+  } else if (target.kind === 'attribute') {
+    const chain = attributeChain(target);
+    if (chain) {
+      writes.push({ kind: 'attribute', module: chain.base, attrs: chain.attrs, span, compound });
+    }
   } else if (target.kind === 'tuple' || target.kind === 'list') {
     for (const element of target.elements) collect(element, span, compound, writes);
   }
+}
+
+/** The name at the base of an attribute chain, and the attributes below it: `a.b.c` gives `a`, [`b`, `c`]. */
+function attributeChain(target: Expr): { base: string; attrs: string[] } | undefined {
+  const attrs: string[] = [];
+  let node: Expr = target;
+  while (node.kind === 'attribute') {
+    attrs.unshift(node.attr);
+    node = node.value;
+  }
+  return node.kind === 'name' ? { base: node.id, attrs } : undefined;
 }

@@ -1,4 +1,5 @@
 import { pathBaseOrder } from '../config/path-base-config.js';
+import type { StateSingleton } from '../config/state-config.js';
 import type { PathBase } from '../facts/path-value.js';
 /**
  * The Python front end (V3 Phase 5.7b and 5.7c). It runs the fact passes over a set of Python files
@@ -77,6 +78,8 @@ export interface PythonSourceOptions {
   readonly attributes?: readonly RegistryAttributeRule[];
   /** Methods with a configured registry, from `protocols.registries.methods`. */
   readonly methods?: readonly RegistryProtocol[];
+  /** Module exports that hold shared state, from `state.singletons` (Phase 12.3) */
+  readonly singletons?: readonly StateSingleton[];
   /** Package facts whose entry points resolve here, where the module index exists (V3 Phase 4.5) */
   readonly entryPoints?: {
     readonly packages: readonly PackageNode[];
@@ -105,6 +108,9 @@ export function analyzePythonSources(
   // Imports: a repository file is an edge, with the statement's span as evidence. The names each
   // file binds to a module are kept for the state pass (Phase 12.3).
   const moduleBindings = new Map<string, Map<string, ModuleBinding>>();
+  const singletonRoots = new Set(
+    (options.singletons ?? []).map((singleton) => `${singleton.module}:${singleton.export}`),
+  );
   for (const { filePath, source } of sources) {
     const bound = new Map<string, ModuleBinding>();
     for (const r of imports.resolveFile(filePath, source)) {
@@ -113,6 +119,15 @@ export function analyzePythonSources(
           evidence: 'ast',
           spans: [toSourceSpan(r.span, filePath)],
         });
+      }
+      // `from store import store` binds a configured singleton, found by its module and export.
+      if (r.form === 'from' && r.via === 'attribute' && r.target.kind === 'file') {
+        const module = r.target.path;
+        r.names.forEach((local, i) => {
+          const root = `${module}:${r.imported?.[i] ?? local}`;
+          if (singletonRoots.has(root)) bound.set(local, { kind: 'singleton', root });
+        });
+        continue;
       }
       // Only `import mod` and `import mod as name` bind a module. `import pkg.mod` binds `pkg`, and
       // `from pkg import name` binds a member, so neither is kept.
@@ -321,6 +336,7 @@ export class PythonFrontEnd implements LanguageFrontEnd {
         nameInjection: input.config?.protocols?.registries?.nameInjection,
         attributes: input.config?.protocols?.registries?.attributes,
         methods: input.config?.protocols?.registries?.methods,
+        singletons: input.config?.state?.singletons,
         entryPoints: input.packages
           ? {
               packages: input.packages.python.packages,

@@ -20,6 +20,8 @@ export interface ResolvedImport {
   readonly target: FactTarget;
   /** Local names this edge binds */
   readonly names: readonly string[];
+  /** For an `attribute` edge, the imported name behind each local name, in the same order */
+  readonly imported?: readonly string[];
   readonly typeOnly: boolean;
   /** The enclosing conditions, outermost first, joined with ` > `. Never evaluated. */
   readonly condition?: string;
@@ -232,6 +234,7 @@ function emitFrom(
   }
 
   const attributes: string[] = [];
+  const imported: string[] = [];
   const bound =
     baseFile && baseFile.path !== file ? new Set(names(baseFile.path).bound) : new Set<string>();
   const submodules: Array<{ alias: Alias; target: FactTarget }> = [];
@@ -239,6 +242,7 @@ function emitFrom(
   for (const alias of stmt.names) {
     if (baseFile && bound.has(alias.name)) {
       attributes.push(localName(alias));
+      imported.push(alias.name);
       continue;
     }
     const child = childEntry(index, base, alias.name);
@@ -251,18 +255,17 @@ function emitFrom(
   }
 
   if (baseFile) {
-    out.push(
-      edge(
-        file,
-        specifier,
-        'from',
-        attributes.length > 0 ? 'attribute' : 'whole',
-        baseFile,
-        attributes,
-        scope,
-        stmt.span,
-      ),
+    const resolved = edge(
+      file,
+      specifier,
+      'from',
+      attributes.length > 0 ? 'attribute' : 'whole',
+      baseFile,
+      attributes,
+      scope,
+      stmt.span,
     );
+    out.push(attributes.length > 0 ? { ...resolved, imported } : resolved);
   }
   for (const { alias, target } of submodules) {
     out.push(
