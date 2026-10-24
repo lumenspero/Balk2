@@ -723,6 +723,76 @@ export const PARITY_CORPUS: readonly CorpusScenario[] = [
       rust: 'Rust has no class inheritance and no super method call. Trait default methods are covered by 9.6.',
     },
   },
+  {
+    name: 'configured decorator or attribute registers a route that a bare call reaches',
+    family: 'registries',
+    renditions: {
+      javascript: {
+        files: {
+          'app.ts':
+            "function route(path: string): MethodDecorator {\n  return () => undefined;\n}\n\nexport class Users {\n  @route('/users')\n  list(): number[] {\n    return [];\n  }\n}\n\nexport function navigate(path: string): void {}\n\nexport function go(): void {\n  navigate('/users');\n}\n\nexport function other(page: { navigate(path: string): void }): void {\n  page.navigate('/users');\n}\n",
+        },
+        config: {
+          protocols: {
+            registries: {
+              decorators: [{ name: 'route', registry: 'routes', keyArg: 0 }],
+              methods: [{ method: 'navigate', direction: 'route', keyArg: 0, registry: 'routes' }],
+            },
+          },
+        },
+        expect: {
+          relationships: [
+            'registers registry:routes#/users -> app.ts:Users.list',
+            'routesTo app.ts:go -> registry:routes#/users',
+          ],
+          absent: ['routesTo app.ts:other -> registry:routes#/users'],
+        },
+      },
+      python: {
+        files: {
+          'm.py':
+            "from flask import Flask\n\napp = Flask(__name__)\n\n\n@app.route('/users')\ndef users():\n    return []\n\n\ndef go():\n    return navigate('/users')\n\n\ndef other(page):\n    return page.navigate('/users')\n",
+        },
+        config: {
+          protocols: {
+            registries: {
+              attributes: [{ name: 'app.route', key: { arg: 0 }, registry: 'routes' }],
+              methods: [{ method: 'navigate', direction: 'route', keyArg: 0, registry: 'routes' }],
+            },
+          },
+        },
+        expect: {
+          relationships: [
+            'registers registry:routes#/users -> m.py:users',
+            'routesTo m.py:go -> registry:routes#/users',
+          ],
+          absent: ['routesTo m.py:other -> registry:routes#/users'],
+        },
+      },
+      rust: {
+        files: {
+          'Cargo.toml': '[package]\nname = "app"\nversion = "0.1.0"\nedition = "2021"\n',
+          'src/lib.rs':
+            '#[route("/users")]\npub fn users() -> Vec<u8> {\n    Vec::new()\n}\n\npub fn go() -> Vec<u8> {\n    navigate("/users")\n}\n\npub fn other(page: Page) -> Vec<u8> {\n    page.navigate("/users")\n}\n',
+        },
+        config: {
+          protocols: {
+            registries: {
+              attributes: [{ name: 'route', key: { arg: 0 }, registry: 'routes' }],
+              methods: [{ method: 'navigate', direction: 'route', keyArg: 0, registry: 'routes' }],
+            },
+          },
+        },
+        expect: {
+          relationships: [
+            'registers registry:routes#/users -> src/lib.rs:users',
+            'routesTo src/lib.rs:go -> registry:routes#/users',
+          ],
+          absent: ['routesTo src/lib.rs:other -> registry:routes#/users'],
+        },
+      },
+    },
+  },
 ];
 
 assertUniqueNames(PARITY_CORPUS);

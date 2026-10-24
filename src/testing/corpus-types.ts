@@ -40,6 +40,11 @@ export interface Rendition {
   readonly expect: Expectation;
   /** Set when the language does not yet support the scenario. Not a failing test. */
   readonly pending?: PendingPhase;
+  /**
+   * Configuration for the analysis, in the shape of `.balk2.json`. A scenario that depends on a
+   * configured recipe, such as an attribute registration, states the recipe here.
+   */
+  readonly config?: Readonly<Record<string, unknown>>;
 }
 
 export interface CorpusScenario {

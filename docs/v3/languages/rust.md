@@ -35,8 +35,33 @@ pub static REGISTRY: LazyLock<HashMap<&str, Handler>> = LazyLock::new(|| {
 ```
 
 The inserts register under the static, so the registry is `REGISTRY`, not the local `m`. A static that
-builds two maps is not read, because the registry it names is ambiguous. `phf` tables and `lazy_static!`
-blocks are not read.
+builds two maps is not read, because the registry it names is ambiguous.
+
+## Literal tables and `lazy_static!`
+
+A `phf_map!` or `phf_ordered_map!` table in a `static` declares each literal key under the static:
+
+```rust
+pub static REGISTRY: phf::Map<&str, Handler> = phf_map! {
+    "user" => User,
+};
+```
+
+A `lazy_static!` block reads each `static ref NAME: T = <initializer>` as a static, so the map rules
+above apply to it:
+
+```rust
+lazy_static! {
+    static ref REGISTRY: HashMap<&str, User> = {
+        let mut m = HashMap::new();
+        m.insert("user", User);
+        m
+    };
+}
+```
+
+A `get` or `contains_key` on a static registry of the same file looks it up. A static used from
+another file is not matched yet.
 
 ## Attributes (registration by declaration)
 
@@ -77,4 +102,21 @@ Limits:
 - `invoke` is matched only as a bare call. `api.invoke('greet')` is not matched. A local function named
   `invoke` also matches, because the import is not checked.
 - Attributes on methods in an `impl` or `trait` are not read.
-- Lookups from Rust to a registry are not read; the Tauri lookup is on the TypeScript side.
+- Rust code that calls a command is not read; the Tauri lookup is on the TypeScript side.
+
+## Configured bare calls (recipe)
+
+A method the configuration names with a registry is read in function bodies when it is called bare,
+such as `navigate("/users")`. Calls on a receiver, such as `page.navigate("/users")`, are not matched:
+
+```json
+{
+  "protocols": {
+    "registries": {
+      "methods": [{ "method": "navigate", "direction": "route", "keyArg": 0, "registry": "routes" }]
+    }
+  }
+}
+```
+
+A call whose path has more than one segment, such as `module::navigate(..)`, is not matched either.

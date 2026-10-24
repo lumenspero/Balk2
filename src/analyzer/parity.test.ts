@@ -3,6 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import { buildConnectionGraphDetailed } from '../cli/build-graph.js';
+import type { Balk2Config } from '../config/config.js';
 import {
   CORPUS_LANGUAGES,
   parseRelationship,
@@ -45,7 +46,10 @@ function entries(): CorpusEntry[] {
 }
 
 /** Writes the repository to a temporary directory and analyzes it like `generate` does. */
-function analyzeFiles(files: Readonly<Record<string, string>>): {
+function analyzeFiles(
+  files: Readonly<Record<string, string>>,
+  config?: Readonly<Record<string, unknown>>,
+): {
   map: ConnectionMap;
   syntaxPaths: Set<string>;
   /** Reported diagnostics as `"<kind> <path>"`, from the module tree problems. */
@@ -58,7 +62,7 @@ function analyzeFiles(files: Readonly<Record<string, string>>): {
       fs.mkdirSync(path.dirname(full), { recursive: true });
       fs.writeFileSync(full, content, 'utf8');
     }
-    const built = buildConnectionGraphDetailed(root);
+    const built = buildConnectionGraphDetailed(root, config as Balk2Config | undefined);
     const map = built.graph.build({ generatedAt: '2026-01-01T00:00:00Z' });
     return {
       map,
@@ -82,7 +86,10 @@ function hasRelationship(map: ConnectionMap, expectation: string): boolean {
 /** Checks one non-pending rendition. Returns the list of unmet expectations. */
 function unmetExpectations(entry: CorpusEntry): string[] {
   const { expect: want } = entry.rendition;
-  const { map, syntaxPaths, diagnostics } = analyzeFiles(entry.rendition.files);
+  const { map, syntaxPaths, diagnostics } = analyzeFiles(
+    entry.rendition.files,
+    entry.rendition.config,
+  );
   const unmet: string[] = [];
 
   for (const rel of want.relationships ?? []) {

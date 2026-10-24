@@ -310,7 +310,7 @@ export class RustFrontEnd implements LanguageFrontEnd {
         ),
       }),
     );
-    // Local maps as registries (12.2): `insert`, `entry().or_insert` and lookups on a map local.
+    // Local maps, statics and configured bare calls as registries (12.2).
     applyRegistryEdges(
       graph,
       runRegistryEngine({
@@ -318,6 +318,7 @@ export class RustFrontEnd implements LanguageFrontEnd {
         facts: rustRegistryFacts(
           crates.map((c) => c.index),
           env,
+          input.config?.protocols?.registries?.methods ?? [],
         ),
       }),
     );
