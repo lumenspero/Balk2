@@ -37,6 +37,10 @@ import { applyCallbackEdges } from './callback-apply.js';
 import { applyModuleLoadEdges } from './module-load-apply.js';
 import { runModuleLoadEngine } from '../facts/module-load-engine.js';
 import { createPythonLoadCollector, pythonLoadFiles } from './python/load-facts.js';
+import { createPythonResourceCollector, pythonResourceFiles } from './python/resource-facts.js';
+import { runResourceEngine } from '../facts/resource-engine.js';
+import { applyResourceEdges } from './resource-edges.js';
+import type { ResourceProtocol } from './resource-protocols.js';
 import { runCallbackEngine } from '../facts/callback-engine.js';
 import { applyStateEdges } from './state-apply.js';
 import { runStateEngine, statePathFiles } from '../facts/state-engine.js';
@@ -88,6 +92,8 @@ export interface PythonSourceOptions {
   readonly attributes?: readonly RegistryAttributeRule[];
   /** Methods with a configured registry, from `protocols.registries.methods`. */
   readonly methods?: readonly RegistryProtocol[];
+  /** Configured loader functions that read a resource path, from `protocols.resources` (Phase 12.6). */
+  readonly resources?: readonly ResourceProtocol[];
   /** Module exports that hold shared state, from `state.singletons` (Phase 12.3) */
   readonly singletons?: readonly StateSingleton[];
   /** Package facts whose entry points resolve here, where the module index exists (V3 Phase 4.5) */
@@ -223,6 +229,14 @@ export function analyzePythonSources(
     roots,
     files: knownFiles,
   });
+  // Resource reads (Phase 12.6): importlib.resources, pkgutil.get_data and configured loader calls.
+  const resources = createPythonResourceCollector({
+    bindings: moduleBindings,
+    index,
+    roots,
+    files: knownFiles,
+    loaders: options.resources ?? [],
+  });
 
   // Calls. The owner is the enclosing function or method, or the file for module-level code.
   for (const c of analyzePythonCalls(
@@ -235,6 +249,7 @@ export function analyzePythonSources(
       state.observer,
       callbacks.observer,
       loads.observer,
+      resources.observer,
     ),
   ).calls) {
     if (c.callee.kind !== 'symbol') continue;
@@ -261,6 +276,18 @@ export function analyzePythonSources(
     }),
   );
   applyModuleLoadEdges(runModuleLoadEngine(pythonLoadFiles(loads.facts())), graph);
+  applyResourceEdges(graph, [
+    ...runResourceEngine({
+      files: pythonResourceFiles(resources.callFacts()),
+      catalog: (options.resources ?? []).map((protocol) => ({
+        function: protocol.function,
+        specifierArg: protocol.specifierArg,
+        languages: ['python' as const],
+      })),
+      fileExists: (repoPath) => knownFiles.has(repoPath),
+    }),
+    ...resources.edges(),
+  ]);
   applyRegistryEdges(graph, runRegistryEngine({ configured: [], facts: registries.facts() }));
 
   // References: annotations, bases, isinstance targets, except classes and match classes.
@@ -387,6 +414,7 @@ export class PythonFrontEnd implements LanguageFrontEnd {
         attributes: input.config?.protocols?.registries?.attributes,
         methods: input.config?.protocols?.registries?.methods,
         singletons: input.config?.state?.singletons,
+        resources: input.config?.protocols?.resources,
         entryPoints: input.packages
           ? {
               packages: input.packages.python.packages,

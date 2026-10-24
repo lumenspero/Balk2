@@ -625,7 +625,7 @@ function pushResourceLinks(lines: string[], outgoing: readonly Relationship[]): 
   }
 }
 
-/** The mechanism suffix for a resource edge: `(import)` or `(loader)`. */
+/** The mechanism suffix for a resource edge: `(import)`, `(loader)` or `(api)`. */
 function resourceMechanism(rel: Relationship): string {
   const mechanism = rel.metadata?.['mechanism'];
   return typeof mechanism === 'string' ? ` (${mechanism})` : '';

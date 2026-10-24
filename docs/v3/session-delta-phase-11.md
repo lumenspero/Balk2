@@ -6,27 +6,27 @@
 
 ## Commits
 
-| Commit    | Subject                                   | Files | Lines (+/-) | Notes                                                                 |
-| --------- | ----------------------------------------- | ----- | ----------- | --------------------------------------------------------------------- |
-| `65e1b97` | 11.1 complete                             | 9     | +435 / -6   | —                                                                     |
-| `7926751` | 11.4 complete                             | 9     | +217 / -5   | —                                                                     |
-| `5cc7d39` | 11.5 complete                             | 8     | +225 / -18  | —                                                                     |
-| `de756f6` | 11.2 complete                             | 9     | +384 / -30  | —                                                                     |
-| `9da67fd` | 11.3 complete                             | 6     | +402 / -2   | —                                                                     |
-| `ca17303` | 11.5 python constant flows                | 4     | +202 / -24  | Module constants and `Final` values carried to catalog calls.        |
-| `63eaf3d` | 11.4 placement move                       | 13    | +920 / -82  | Bare-path placement moved into one shared rule for every language.   |
-| `1a538b5` | fetch handling                            | 8     | +177 / -20  | Served `fetch` paths, placed by the `public/` and package bases.     |
-| `6ddab2a` | file::options() and DuckDB leftovers      | 7     | +227 / -6   | `File::options()` chains; DuckDB SQL in JS/TS.                        |
-| `57b22cf` | polars dataframe                          | 4     | +62 / -5    | Polars writers and `LazyFrame` sinks.                                 |
-| `d18e94e` | python import rebinding                   | 3     | +59         | A name rebound by an import is not typed from its earlier value.      |
-| `1c4fd67` | rust module-path item                     | 5     | +298 / -39  | `crate::`, `self::`, `super::` paths to constants.                    |
-| `23d320f` | 11.4 data.pathBase override               | 12    | +269 / -13  | `data.pathBase` in config, per language or for all.                   |
-| `dd9f4f0` | 11.5 single assignment local bindings     | 8     | +299 / -15  | Function locals in Python, `let` in Rust, `let`/`var` in JS/TS.       |
-| `e8ddf26` | 11.3 Rust readers and writers             | 4     | +137 / -17  | `csv` builder chains, Polars `LazyCsvReader`, `LazyFrame::scan_*`.    |
-| `d97c9ed` | 11.1 JS/TS Catalog                        | 4     | +81 / -1    | `parquetjs` readers and writers; static methods on imports.           |
-| `28c897c` | 11.2 python anchors                       | 8     | +310 / -14  | `__file__`-anchored paths, `os.path.join`, pathlib `/`.               |
-| `c397652` | 11.5 rust pub use                         | 6     | +150 / -17  | Constants re-exported by `pub use`, followed to their declaration.    |
-| `9f52cce` | python duckdb sql                         | 7     | +149 / -12  | DuckDB SQL in Python; SQL scanner shared with JS/TS.                  |
+| Commit    | Subject                               | Files | Lines (+/-) | Notes                                                              |
+| --------- | ------------------------------------- | ----- | ----------- | ------------------------------------------------------------------ |
+| `65e1b97` | 11.1 complete                         | 9     | +435 / -6   | —                                                                  |
+| `7926751` | 11.4 complete                         | 9     | +217 / -5   | —                                                                  |
+| `5cc7d39` | 11.5 complete                         | 8     | +225 / -18  | —                                                                  |
+| `de756f6` | 11.2 complete                         | 9     | +384 / -30  | —                                                                  |
+| `9da67fd` | 11.3 complete                         | 6     | +402 / -2   | —                                                                  |
+| `ca17303` | 11.5 python constant flows            | 4     | +202 / -24  | Module constants and `Final` values carried to catalog calls.      |
+| `63eaf3d` | 11.4 placement move                   | 13    | +920 / -82  | Bare-path placement moved into one shared rule for every language. |
+| `1a538b5` | fetch handling                        | 8     | +177 / -20  | Served `fetch` paths, placed by the `public/` and package bases.   |
+| `6ddab2a` | file::options() and DuckDB leftovers  | 7     | +227 / -6   | `File::options()` chains; DuckDB SQL in JS/TS.                     |
+| `57b22cf` | polars dataframe                      | 4     | +62 / -5    | Polars writers and `LazyFrame` sinks.                              |
+| `d18e94e` | python import rebinding               | 3     | +59         | A name rebound by an import is not typed from its earlier value.   |
+| `1c4fd67` | rust module-path item                 | 5     | +298 / -39  | `crate::`, `self::`, `super::` paths to constants.                 |
+| `23d320f` | 11.4 data.pathBase override           | 12    | +269 / -13  | `data.pathBase` in config, per language or for all.                |
+| `dd9f4f0` | 11.5 single assignment local bindings | 8     | +299 / -15  | Function locals in Python, `let` in Rust, `let`/`var` in JS/TS.    |
+| `e8ddf26` | 11.3 Rust readers and writers         | 4     | +137 / -17  | `csv` builder chains, Polars `LazyCsvReader`, `LazyFrame::scan_*`. |
+| `d97c9ed` | 11.1 JS/TS Catalog                    | 4     | +81 / -1    | `parquetjs` readers and writers; static methods on imports.        |
+| `28c897c` | 11.2 python anchors                   | 8     | +310 / -14  | `__file__`-anchored paths, `os.path.join`, pathlib `/`.            |
+| `c397652` | 11.5 rust pub use                     | 6     | +150 / -17  | Constants re-exported by `pub use`, followed to their declaration. |
+| `9f52cce` | python duckdb sql                     | 7     | +149 / -12  | DuckDB SQL in Python; SQL scanner shared with JS/TS.               |
 
 ## What Phase 11 built
 

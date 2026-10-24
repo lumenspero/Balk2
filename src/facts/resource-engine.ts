@@ -38,7 +38,7 @@ export type ResourceEdge =
       readonly from: string;
       readonly resourcePath: string;
       readonly resourceKind: ResourceKind;
-      readonly mechanism: 'import' | 'loader';
+      readonly mechanism: 'import' | 'loader' | 'api';
       readonly confidence: Confidence;
       readonly evidence: Evidence;
       readonly span: SourceSpan;

@@ -12,11 +12,12 @@
 import type { FactTarget, FileFacts, ModuleEdge } from '../../facts/types.js';
 import { normalizePath } from '../../graph.js';
 import type { LoadKind } from '../../types.js';
-import type { CallArg, Expr } from './ast.js';
+import type { Expr } from './ast.js';
 import type { CallObserver, ObservedCall } from './calls.js';
 import { dottedName } from './expression-format.js';
 import { resolveBase, toSourceSpan } from './inheritance.js';
 import type { ModuleIndex } from './modules/module-index.js';
+import { argumentOf, literalName, qualifiedName, segmentsOf } from './call-names.js';
 import type { ModuleBinding } from './state-facts.js';
 
 export interface PythonLoadOptions {
@@ -76,8 +77,6 @@ const LOAD_FORMS: readonly LoadForm[] = [
 ];
 
 const DUNDER_IMPORT = '__import__';
-/** A plain or raw string literal with one quote style and no escapes. */
-const LITERAL = /^[rRuU]?(['"])([^'"\\]*)\1$/;
 
 /**
  * One load call, read. `prefix` and `base` give a relative name its meaning: `prefix` is the dots
@@ -256,22 +255,6 @@ function staticRead(
   };
 }
 
-/** `importlib.import_module`, `runpy.run_module` and the like, as a qualified name of their module. */
-function qualifiedName(
-  func: Expr,
-  bindings: ReadonlyMap<string, ModuleBinding> | undefined,
-): string | undefined {
-  if (func.kind === 'name') {
-    const bound = bindings?.get(func.id);
-    return bound?.kind === 'member' ? bound.name : undefined;
-  }
-  const text = dottedName(func);
-  if (text === undefined) return undefined;
-  const root = text.split('.')[0] ?? '';
-  const bound = bindings?.get(root);
-  return bound?.kind === 'external' ? `${bound.name}${text.slice(root.length)}` : undefined;
-}
-
 /** The builtin `__import__`: not bound by an import, and not a repository function of that name. */
 function isDunderImport(
   func: Expr,
@@ -283,28 +266,11 @@ function isDunderImport(
   return resolveBase(func, site.info, site.ctx, site.declared)?.kind !== 'symbol';
 }
 
-/** The argument at a position among the positional arguments, or the keyword argument of that name. */
-function argumentOf(args: readonly CallArg[], position: number, keyword: string): Expr | undefined {
-  const positional = args.filter((arg) => arg.kind === 'positional');
-  const found =
-    positional[position] ?? args.find((arg) => arg.kind === 'keyword' && arg.name === keyword);
-  return found?.value;
-}
-
-function literalName(value: Expr): string | undefined {
-  if (value.kind !== 'constant' || value.type !== 'str') return undefined;
-  return LITERAL.exec(value.raw)?.[2];
-}
-
 function intLiteral(value: Expr): number | undefined {
   if (value.kind !== 'constant' || value.type !== 'number' || !/^\d+$/.test(value.raw)) {
     return undefined;
   }
   return Number(value.raw);
-}
-
-function segmentsOf(text: string): string[] {
-  return text.split('.').filter((part) => part !== '');
 }
 
 /** The package a repository file belongs to, as dotted segments. A top-level file has none. */
