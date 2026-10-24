@@ -53,3 +53,47 @@ describe('importlib.import_module with a computed name', () => {
     expect(observations[0]?.location.startLine).toBe(4);
   });
 });
+
+describe('importlib.import_module forms', () => {
+  it('links a from-imported import_module with a constant name', () => {
+    const map = analyze({
+      'pkg/util.py': 'def help():\n    return 1\n',
+      'app.py':
+        'from importlib import import_module\n\ndef load():\n    return import_module("pkg.util")\n',
+    });
+    expect(map.relationships).toContainEqual(
+      expect.objectContaining({ type: 'imports', from: 'app.py:load', to: 'pkg/util.py' }),
+    );
+  });
+
+  it('resolves a relative name against the package keyword', () => {
+    const map = analyze({
+      'pkg/util.py': 'def help():\n    return 1\n',
+      'app.py':
+        "import importlib\n\ndef load():\n    return importlib.import_module('.util', package='pkg')\n",
+    });
+    expect(map.relationships).toContainEqual(
+      expect.objectContaining({ type: 'imports', from: 'app.py:load', to: 'pkg/util.py' }),
+    );
+  });
+
+  it('links a package name to its __init__ file', () => {
+    const map = analyze({
+      'pkg/__init__.py': 'VALUE = 1\n',
+      'app.py': "import importlib\n\ndef load():\n    return importlib.import_module('pkg')\n",
+    });
+    expect(map.relationships).toContainEqual(
+      expect.objectContaining({ type: 'imports', from: 'app.py:load', to: 'pkg/__init__.py' }),
+    );
+  });
+
+  it('ignores import_module called on a receiver that is not importlib', () => {
+    const map = analyze({
+      'pkg/util.py': 'def help():\n    return 1\n',
+      'app.py':
+        "class Loader:\n    def import_module(self, name):\n        return name\n\n\nloader = Loader()\n\ndef load():\n    return loader.import_module('pkg.util')\n",
+    });
+    expect(map.relationships.filter((rel) => rel.type === 'imports')).toEqual([]);
+    expect(Object.keys(map.unresolved)).toEqual([]);
+  });
+});

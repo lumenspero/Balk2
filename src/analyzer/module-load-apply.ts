@@ -1,5 +1,5 @@
 import type { ConnectionGraph } from '../graph.js';
-import { runModuleLoadEngine } from '../facts/module-load-engine.js';
+import { runModuleLoadEngine, type ModuleLoadEdge } from '../facts/module-load-engine.js';
 import { moduleLoadFacts } from './module-load-facts.js';
 import type { ModuleLoad } from './module-loads.js';
 
@@ -12,8 +12,14 @@ import type { ModuleLoad } from './module-loads.js';
  * guesses which file the load reaches.
  */
 export function applyModuleLoads(loads: readonly ModuleLoad[], graph: ConnectionGraph): void {
-  const edges = runModuleLoadEngine(moduleLoadFacts(loads));
+  applyModuleLoadEdges(runModuleLoadEngine(moduleLoadFacts(loads)), graph);
+}
 
+/** Writes the engine's module-load edges to the graph, in the same order as `applyModuleLoads`. */
+export function applyModuleLoadEdges(
+  edges: readonly ModuleLoadEdge[],
+  graph: ConnectionGraph,
+): void {
   for (const edge of edges) {
     if (edge.kind !== 'imports') continue;
     const alreadyLinked = graph

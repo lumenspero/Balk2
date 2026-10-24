@@ -34,6 +34,9 @@ import {
   pythonCallbackFiles,
 } from './python/callback-facts.js';
 import { applyCallbackEdges } from './callback-apply.js';
+import { applyModuleLoadEdges } from './module-load-apply.js';
+import { runModuleLoadEngine } from '../facts/module-load-engine.js';
+import { createPythonLoadCollector, pythonLoadFiles } from './python/load-facts.js';
 import { runCallbackEngine } from '../facts/callback-engine.js';
 import { applyStateEdges } from './state-apply.js';
 import { runStateEngine, statePathFiles } from '../facts/state-engine.js';
@@ -204,13 +207,21 @@ export function analyzePythonSources(
   const state = createPythonStateCollector({ bindings: moduleBindings });
   // Callbacks passed to library calls (Phase 12.4), such as `threading.Thread(target=f)`.
   const callbacks = createPythonCallbackCollector({ bindings: moduleBindings });
+  // Dynamic module loads (Phase 12.5): `importlib.import_module(name)`.
+  const loads = createPythonLoadCollector({ bindings: moduleBindings, index, roots });
 
   // Calls. The owner is the enclosing function or method, or the file for module-level code.
   for (const c of analyzePythonCalls(
     sources,
     ctx,
     { identityDecorators: options.identityDecorators },
-    combineObservers(events.observer, registries.observer, state.observer, callbacks.observer),
+    combineObservers(
+      events.observer,
+      registries.observer,
+      state.observer,
+      callbacks.observer,
+      loads.observer,
+    ),
   ).calls) {
     if (c.callee.kind !== 'symbol') continue;
     graph.addRelationship('calls', c.owner ?? c.filePath, c.callee.id, c.confidence, {
@@ -235,6 +246,7 @@ export function analyzePythonSources(
       catalog: PYTHON_CALLBACK_CATALOG,
     }),
   );
+  applyModuleLoadEdges(runModuleLoadEngine(pythonLoadFiles(loads.facts())), graph);
   applyRegistryEdges(graph, runRegistryEngine({ configured: [], facts: registries.facts() }));
 
   // References: annotations, bases, isinstance targets, except classes and match classes.
@@ -313,7 +325,6 @@ export function analyzePythonSources(
       filePath,
       source,
       graph,
-      knownFiles,
       (line, value) => claimed.has(`${filePath}:${line}:${value}`),
       place,
     );
