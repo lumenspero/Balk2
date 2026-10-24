@@ -41,6 +41,7 @@ import {
   rustCallbackFiles,
 } from './names/callback-facts.js';
 import { applyCallbackEdges } from '../callback-apply.js';
+import { nativeLoadObservations } from './names/native-loads.js';
 import { runCallbackEngine } from '../../facts/callback-engine.js';
 import { applyStateEdges } from '../state-apply.js';
 import { runStateEngine, statePathFiles } from '../../facts/state-engine.js';
@@ -345,6 +346,25 @@ export class RustFrontEnd implements LanguageFrontEnd {
         catalog: RUST_CALLBACK_CATALOG,
       }),
     );
+    // Native library loads (12.5): `libloading::Library::new` is an observation, since the library's
+    // code is not analyzed. Each is a low-confidence link from the function that loads it.
+    for (const load of nativeLoadObservations(
+      crates.map((c) => c.index),
+      env,
+    )) {
+      const unresolved = graph.addUnresolved({
+        reason: load.reason,
+        attempted: 'imports',
+        subject: load.subject,
+        location: load.location,
+        detail: load.detail,
+      });
+      graph.addRelationship('imports', load.from, unresolved.id, 'low', {
+        evidence: 'ast',
+        spans: [load.location],
+        metadata: { mechanism: 'native-library' },
+      });
+    }
     // Shared state (Phase 12.3): writes to a `static mut`.
     applyStateEdges(
       graph,

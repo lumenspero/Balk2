@@ -131,12 +131,12 @@ function resolutionOf(
   return { kind: 'unresolved', subject: tokens.map(textOf).join('') || 'callback' };
 }
 
-function textOf(tree: TokenTree): string {
+export function textOf(tree: TokenTree): string {
   return isTokenGroup(tree) ? `${tree.open.text}${tree.close?.text ?? ''}` : tree.text;
 }
 
 /** The comma-separated argument token lists of a call. */
-function splitArgs(group: TokenGroup): TokenTree[][] {
+export function splitArgs(group: TokenGroup): TokenTree[][] {
   const args: TokenTree[][] = [];
   let current: TokenTree[] = [];
   for (const child of group.children) {
