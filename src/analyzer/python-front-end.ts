@@ -26,7 +26,7 @@ import { analyzePythonDataApis } from './python/data-apis.js';
 import { collectPythonSourceAnnotations } from './python-source-apply.js';
 import { analyzePythonCalls, combineObservers } from './python/calls.js';
 import { createPythonRegistryCollector } from './python/registry-facts.js';
-import { createPythonStateCollector } from './python/state-facts.js';
+import { createPythonStateCollector, type ModuleBinding } from './python/state-facts.js';
 import { applyStateEdges } from './state-apply.js';
 import { runStateEngine } from '../facts/state-engine.js';
 import type { FileFacts, StatePathFact } from '../facts/types.js';
@@ -103,15 +103,34 @@ export function analyzePythonSources(
 
   for (const { filePath } of sources) graph.addFile(filePath, 'python');
 
-  // Imports: a repository file is an edge, with the statement's span as evidence.
+  // Imports: a repository file is an edge, with the statement's span as evidence. The names each
+  // file binds to a module are kept for the state pass (Phase 12.3).
+  const moduleBindings = new Map<string, Map<string, ModuleBinding>>();
   for (const { filePath, source } of sources) {
+    const bound = new Map<string, ModuleBinding>();
     for (const r of imports.resolveFile(filePath, source)) {
-      if (r.target.kind !== 'file') continue;
-      graph.addRelationship('imports', filePath, r.target.path, 'high', {
-        evidence: 'ast',
-        spans: [toSourceSpan(r.span, filePath)],
-      });
+      if (r.target.kind === 'file') {
+        graph.addRelationship('imports', filePath, r.target.path, 'high', {
+          evidence: 'ast',
+          spans: [toSourceSpan(r.span, filePath)],
+        });
+      }
+      // Only `import mod` and `import mod as name` bind a module. `import pkg.mod` binds `pkg`, and
+      // `from pkg import name` binds a member, so neither is kept.
+      const name = r.names[0];
+      if (name === undefined || r.names.length !== 1) continue;
+      // `from pkg import store` binds the submodule `store`, which is a module, not a member.
+      if (r.form === 'from' && r.via === 'submodule' && r.target.kind === 'file') {
+        bound.set(name, { kind: 'file', path: r.target.path });
+        continue;
+      }
+      if (r.form !== 'import' || r.specifier.includes('.')) continue;
+      if (r.target.kind === 'file') bound.set(name, { kind: 'file', path: r.target.path });
+      else if (r.target.kind === 'external') {
+        bound.set(name, { kind: 'external', name: r.target.name });
+      }
     }
+    moduleBindings.set(filePath, bound);
   }
 
   // Symbols and exports. A symbol's id is `file:qualified.name`, which `addSymbol` builds from
@@ -152,7 +171,7 @@ export function analyzePythonSources(
   });
 
   // Shared state (Phase 12.3). Module globals that functions write through `global`.
-  const state = createPythonStateCollector();
+  const state = createPythonStateCollector({ bindings: moduleBindings });
 
   // Calls. The owner is the enclosing function or method, or the file for module-level code.
   for (const c of analyzePythonCalls(
