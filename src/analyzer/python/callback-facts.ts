@@ -18,7 +18,9 @@
  * receiver must be named `self`, and the owner must be a method of the class. Any other attribute is
  * an unresolved observation.
  *
- * Not yet read: `loop.call_soon(f)`, whose loop is not typed by its constructor.
+ * An event loop is typed by `asyncio.get_event_loop()`, `get_running_loop()` or `new_event_loop()`.
+ * Its `call_soon`, `call_soon_threadsafe`, `call_later`, `call_at` and `run_in_executor` take a
+ * callback, as do an executor's `submit` and `map`.
  */
 import type { ArgValue, CallSite, CallbackResolution, FileFacts } from '../../facts/types.js';
 import type { CallbackCatalogEntry } from '../../facts/callback-engine.js';
@@ -27,7 +29,7 @@ import type { CallObserver, ObservedCall } from './calls.js';
 import { dottedName } from './expression-format.js';
 import { resolveBase, toSourceSpan } from './inheritance.js';
 import type { ModuleBinding } from './state-facts.js';
-import { EXECUTOR_TYPES, localTypeOf } from './typed-receivers.js';
+import { EVENT_LOOP_TYPES, EXECUTOR_TYPES, localTypeOf } from './typed-receivers.js';
 
 /** Where a sink takes its callback: a positional index, or a keyword argument. */
 type CallbackPlace = { readonly position: number } | { readonly keyword: string };
@@ -53,12 +55,23 @@ const SINKS: readonly Sink[] = [
   { module: 'builtins', attribute: 'filter', place: { position: 0 }, builtin: true },
 ];
 
-/** Executor methods that call the function they are given, read on a typed executor receiver. */
-const EXECUTOR_METHODS: readonly Sink[] = ['submit', 'map'].map((attribute) => ({
-  module: 'concurrent.futures',
-  attribute,
-  place: { position: 0 },
-}));
+/** Methods that call the function they are given, by the library type of their receiver. */
+const EXECUTOR_METHOD_PLACES: ReadonlyMap<string, CallbackPlace> = new Map<string, CallbackPlace>([
+  ['submit', { position: 0 }],
+  ['map', { position: 0 }],
+]);
+const LOOP_METHOD_PLACES: ReadonlyMap<string, CallbackPlace> = new Map<string, CallbackPlace>([
+  ['call_soon', { position: 0 }],
+  ['call_soon_threadsafe', { position: 0 }],
+  ['call_later', { position: 1 }],
+  ['call_at', { position: 1 }],
+  ['run_in_executor', { position: 1 }],
+]);
+
+/** Every typed method, as a sink, for the catalogue. */
+const METHOD_SINKS: readonly Sink[] = [...EXECUTOR_METHOD_PLACES, ...LOOP_METHOD_PLACES].map(
+  ([attribute, place]): Sink => ({ module: 'typed', attribute, place }),
+);
 
 /** The `signal` module's handler constants, which are not functions. */
 const SIGNAL_CONSTANTS: ReadonlySet<string> = new Set(['SIG_DFL', 'SIG_IGN']);
@@ -74,7 +87,7 @@ function entryOf(sink: Sink): CallbackCatalogEntry {
 
 /** The catalog the callback engine reads for the Python sinks, with one entry per callee name. */
 const CATALOG: CallbackCatalogEntry[] = [];
-for (const sink of [...SINKS, ...EXECUTOR_METHODS]) {
+for (const sink of [...SINKS, ...METHOD_SINKS]) {
   if (!CATALOG.some((entry) => entry.function === sink.attribute)) CATALOG.push(entryOf(sink));
 }
 export const PYTHON_CALLBACK_CATALOG: readonly CallbackCatalogEntry[] = CATALOG;
@@ -118,7 +131,7 @@ function callbackFactOf(
   site: ObservedCall,
   bindings: ReadonlyMap<string, ModuleBinding> | undefined,
 ): CallSite | undefined {
-  const sink = sinkOf(site, bindings) ?? executorSinkOf(site);
+  const sink = sinkOf(site, bindings) ?? typedMethodSinkOf(site);
   if (sink === undefined) return undefined;
   const place = sink.place;
   const arg = argumentAt(site.call.args, place);
@@ -181,16 +194,18 @@ function sinkOf(
   );
 }
 
-/** An executor method, when its receiver is typed as a library executor. */
-function executorSinkOf(site: ObservedCall): Sink | undefined {
+/** A method on a receiver typed as a library executor or event loop, when the method takes a callback. */
+function typedMethodSinkOf(site: ObservedCall): Sink | undefined {
   const func = site.call.func;
   if (func.kind !== 'attribute' || func.value.kind !== 'name') return undefined;
-  const method = EXECUTOR_METHODS.find((s) => s.attribute === func.attr);
-  if (method === undefined) return undefined;
-  const typed = localTypeOf(func.value, site.info, site.index);
-  const name = typed?.name;
-  if (name?.kind !== 'external' || !EXECUTOR_TYPES.has(name.name)) return undefined;
-  return method;
+  const name = localTypeOf(func.value, site.info, site.index)?.name;
+  if (name?.kind !== 'external') return undefined;
+  let places: ReadonlyMap<string, CallbackPlace> | undefined;
+  if (EXECUTOR_TYPES.has(name.name)) places = EXECUTOR_METHOD_PLACES;
+  else if (EVENT_LOOP_TYPES.has(name.name)) places = LOOP_METHOD_PLACES;
+  const place = places?.get(func.attr);
+  if (place === undefined) return undefined;
+  return { module: name.name, attribute: func.attr, place };
 }
 
 /**

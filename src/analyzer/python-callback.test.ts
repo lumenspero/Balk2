@@ -235,4 +235,40 @@ describe('python callbacks passed to threading.Thread (V3 Phase 12.4)', () => {
       `passesCallback main.py:Worker.start -> ${observation?.id}`,
     ]);
   });
+
+  it('links the function passed to call_soon on an event loop', () => {
+    const map = mapOf({
+      'main.py':
+        'import asyncio\n\n\ndef worker():\n    pass\n\n\ndef setup():\n    loop = asyncio.get_event_loop()\n    loop.call_soon(worker)\n',
+    });
+
+    expect(callbackEdges(map)).toEqual(['passesCallback main.py:setup -> main.py:worker']);
+  });
+
+  it('links the function passed to call_later, which takes it second', () => {
+    const map = mapOf({
+      'main.py':
+        'import asyncio\n\n\ndef worker():\n    pass\n\n\ndef setup():\n    loop = asyncio.new_event_loop()\n    loop.call_later(1, worker)\n',
+    });
+
+    expect(callbackEdges(map)).toEqual(['passesCallback main.py:setup -> main.py:worker']);
+  });
+
+  it('links the function passed to run_in_executor, which takes it second', () => {
+    const map = mapOf({
+      'main.py':
+        'import asyncio\n\n\ndef worker():\n    pass\n\n\ndef setup():\n    loop = asyncio.get_running_loop()\n    loop.run_in_executor(None, worker)\n',
+    });
+
+    expect(callbackEdges(map)).toEqual(['passesCallback main.py:setup -> main.py:worker']);
+  });
+
+  it('gives no edge for call_soon on a receiver that is not an event loop', () => {
+    const map = mapOf({
+      'main.py':
+        'class Ticker:\n    def call_soon(self, f):\n        pass\n\n\ndef worker():\n    pass\n\n\ndef setup():\n    ticker = Ticker()\n    ticker.call_soon(worker)\n',
+    });
+
+    expect(callbackEdges(map)).toEqual([]);
+  });
 });

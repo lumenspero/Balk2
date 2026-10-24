@@ -170,8 +170,9 @@ export function typeOfValue(
   if (target?.kind === 'external') {
     // An imported name may be a class or a function, so its result is medium. The name is the one
     // the import gives, so library types can be matched (Phase 12.1).
-    const name = importedNameOf(e.func, info);
-    if (name === undefined) return undefined;
+    const called = importedNameOf(e.func, info);
+    if (called === undefined) return undefined;
+    const name = LIBRARY_CALL_RESULTS.get(called) ?? called;
     const first = e.args[0];
     const payload = first?.kind === 'positional' ? plainStringValue(first.value) : undefined;
     return {
@@ -276,6 +277,16 @@ function topLevelNames(st: Stmt): string[] {
       ? st.names.map((a) => a.asname ?? a.name)
       : [];
 }
+
+/** The library type a library function returns, for the calls the typing rules read (Phase 12.4). */
+export const LIBRARY_CALL_RESULTS: ReadonlyMap<string, string> = new Map([
+  ['asyncio.get_event_loop', 'asyncio.AbstractEventLoop'],
+  ['asyncio.get_running_loop', 'asyncio.AbstractEventLoop'],
+  ['asyncio.new_event_loop', 'asyncio.AbstractEventLoop'],
+]);
+
+/** Event loop types, whose methods take a callback (Phase 12.4). */
+export const EVENT_LOOP_TYPES: ReadonlySet<string> = new Set(['asyncio.AbstractEventLoop']);
 
 /**
  * Library executors (Phase 12.4). Their `__enter__` returns the executor itself, so `with
