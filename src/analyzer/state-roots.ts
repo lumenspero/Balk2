@@ -65,6 +65,8 @@ export class StateRootResolver {
   private readonly configuredRoots: ReadonlySet<string>;
   private readonly policy: GlobalPolicy;
   private readonly singletons: ReadonlyMap<ts.Symbol, string>;
+  private readonly filePaths: ReadonlyMap<ts.SourceFile, string>;
+  private reassigned: ReadonlySet<ts.Symbol> | undefined;
 
   constructor(
     repository: RepositoryProgram,
@@ -73,6 +75,9 @@ export class StateRootResolver {
   ) {
     this.checker = repository.checker;
     this.repositoryFiles = new Set(repository.sourceFiles.values());
+    this.filePaths = new Map(
+      [...repository.sourceFiles].map(([path, file]): [ts.SourceFile, string] => [file, path]),
+    );
     this.configuredRoots = new Set(config.roots ?? []);
     this.policy = globalPolicy(config.globals, globals);
 
@@ -131,6 +136,9 @@ export class StateRootResolver {
     if (this.isGlobalVariable(node, symbol, bound)) {
       return state(GLOBAL_STATE_ROOT, 'global', [node.text], 'high', 'ts-program');
     }
+
+    const moduleLet = symbol ? this.moduleLetOf(symbol) : undefined;
+    if (moduleLet !== undefined) return state(moduleLet, 'module', [], 'high', 'ts-program');
 
     return symbol ? this.followAlias(symbol, depth, seen) : undefined;
   }
@@ -256,6 +264,48 @@ export class StateRootResolver {
         this.isRepositoryNode(declaration) &&
         !isAmbient(declaration),
     );
+  }
+
+  /**
+   * The root of a module-level `let` that some function reassigns, as `<file>:<name>`. A `let`
+   * that is only assigned at module level is not shared state, because nothing changes it later.
+   */
+  private moduleLetOf(symbol: ts.Symbol): string | undefined {
+    const declaration = symbol.valueDeclaration;
+    if (!declaration || !ts.isVariableDeclaration(declaration)) return undefined;
+    if (!ts.isIdentifier(declaration.name)) return undefined;
+    const list = declaration.parent;
+    if (!ts.isVariableDeclarationList(list) || (list.flags & ts.NodeFlags.Let) === 0) {
+      return undefined;
+    }
+    const statement = list.parent;
+    if (!ts.isVariableStatement(statement) || !ts.isSourceFile(statement.parent)) return undefined;
+    if (!this.isRepositoryNode(declaration) || !this.reassignedInFunctions().has(symbol)) {
+      return undefined;
+    }
+    const file = this.filePaths.get(statement.parent);
+    return file === undefined ? undefined : `${file}:${declaration.name.text}`;
+  }
+
+  /** The symbols that some function assigns to, with `=`, a compound assignment, `++` or `--`. */
+  private reassignedInFunctions(): ReadonlySet<ts.Symbol> {
+    if (this.reassigned === undefined) {
+      const found = new Set<ts.Symbol>();
+      const visit = (node: ts.Node, inFunction: boolean): void => {
+        const nested = inFunction || ts.isFunctionLike(node);
+        const target = nested ? assignedIdentifierOf(node) : undefined;
+        if (target !== undefined) {
+          const symbol = this.checker.getSymbolAtLocation(target);
+          if (symbol !== undefined) found.add(symbol);
+        }
+        ts.forEachChild(node, (child) => visit(child, nested));
+      };
+      for (const sourceFile of this.repositoryFiles) {
+        if (!sourceFile.isDeclarationFile) visit(sourceFile, false);
+      }
+      this.reassigned = found;
+    }
+    return this.reassigned;
   }
 
   private isRepositoryNode(node: ts.Node): boolean {
@@ -403,6 +453,27 @@ export function destructuringOf(
 }
 
 /** An alias of a path below a root is a copy of a reference, so it is reported at medium. */
+/** The identifier an assignment writes to, or `undefined` for any other node. */
+function assignedIdentifierOf(node: ts.Node): ts.Identifier | undefined {
+  let target: ts.Expression | undefined;
+  if (
+    ts.isBinaryExpression(node) &&
+    node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+    node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
+  ) {
+    target = node.left;
+  } else if (
+    (ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) &&
+    (node.operator === ts.SyntaxKind.PlusPlusToken ||
+      node.operator === ts.SyntaxKind.MinusMinusToken)
+  ) {
+    target = node.operand;
+  }
+  if (target === undefined) return undefined;
+  const inner = unwrapExpression(target);
+  return ts.isIdentifier(inner) ? inner : undefined;
+}
+
 function lowered(located: Located | undefined): Located | undefined {
   if (located?.kind !== 'state' || located.segments.length === 0) return located;
   return { ...located, confidence: 'medium' };
