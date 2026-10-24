@@ -317,7 +317,6 @@ export const PARITY_CORPUS: readonly CorpusScenario[] = [
         expect: {
           relationships: ['writesState store.py:bump -> state:store.py:count'],
         },
-        pending: '12.3',
       },
       rust: {
         files: {

@@ -26,6 +26,10 @@ import { analyzePythonDataApis } from './python/data-apis.js';
 import { collectPythonSourceAnnotations } from './python-source-apply.js';
 import { analyzePythonCalls, combineObservers } from './python/calls.js';
 import { createPythonRegistryCollector } from './python/registry-facts.js';
+import { createPythonStateCollector } from './python/state-facts.js';
+import { applyStateEdges } from './state-apply.js';
+import { runStateEngine } from '../facts/state-engine.js';
+import type { FileFacts, StatePathFact } from '../facts/types.js';
 import { applyRegistryEdges } from './registry-apply.js';
 import type {
   RegistryAttributeRule,
@@ -147,12 +151,15 @@ export function analyzePythonSources(
     methods: options.methods,
   });
 
+  // Shared state (Phase 12.3). Module globals that functions write through `global`.
+  const state = createPythonStateCollector();
+
   // Calls. The owner is the enclosing function or method, or the file for module-level code.
   for (const c of analyzePythonCalls(
     sources,
     ctx,
     { identityDecorators: options.identityDecorators },
-    combineObservers(events.observer, registries.observer),
+    combineObservers(events.observer, registries.observer, state.observer),
   ).calls) {
     if (c.callee.kind !== 'symbol') continue;
     graph.addRelationship('calls', c.owner ?? c.filePath, c.callee.id, c.confidence, {
@@ -163,6 +170,13 @@ export function analyzePythonSources(
   }
 
   applyEventEdges(graph, runEventEngine({ facts: events.facts() }));
+  applyStateEdges(
+    graph,
+    runStateEngine({
+      files: groupByFile(state.facts()),
+      dynamicPaths: 'off',
+    }),
+  );
   applyRegistryEdges(graph, runRegistryEngine({ configured: [], facts: registries.facts() }));
 
   // References: annotations, bases, isinstance targets, except classes and match classes.
@@ -315,4 +329,15 @@ function dirOf(filePath: string): string {
 
 function lastSegment(path: string): string {
   return path.slice(path.lastIndexOf('/') + 1);
+}
+
+/** The state-path facts of each file, grouped as the state engine takes them. */
+function groupByFile(facts: readonly StatePathFact[]): FileFacts[] {
+  const byFile = new Map<string, StatePathFact[]>();
+  for (const fact of facts) {
+    const list = byFile.get(fact.filePath);
+    if (list === undefined) byFile.set(fact.filePath, [fact]);
+    else list.push(fact);
+  }
+  return [...byFile].map(([filePath, list]) => ({ filePath, language: 'python', facts: list }));
 }
