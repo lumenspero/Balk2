@@ -33,6 +33,7 @@ import { bindBuildScripts } from './names/build-scripts.js';
 import { bindIncludes } from './names/includes.js';
 import { bindProcMacros } from './names/proc-macros.js';
 import { attributeRegistrations } from './names/attribute-registrations.js';
+import { rustRegistryFacts } from './names/registry-facts.js';
 import { applyRegistryEdges } from '../registry-apply.js';
 import { runRegistryEngine } from '../../facts/registry-engine.js';
 import { bindReferences } from './names/references.js';
@@ -306,6 +307,17 @@ export class RustFrontEnd implements LanguageFrontEnd {
         facts: attributeRegistrations(
           crates.map((c) => ({ index: c.index })),
           input.config?.protocols?.registries?.attributes ?? [],
+        ),
+      }),
+    );
+    // Local maps as registries (12.2): `insert`, `entry().or_insert` and lookups on a map local.
+    applyRegistryEdges(
+      graph,
+      runRegistryEngine({
+        configured: [],
+        facts: rustRegistryFacts(
+          crates.map((c) => c.index),
+          env,
         ),
       }),
     );

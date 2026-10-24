@@ -45,6 +45,8 @@ export type BodyFact =
       readonly receiver: string | null;
       readonly args: TokenGroup;
       readonly span: Span;
+      /** The call this one is made on, when the receiver is `name.m(args)`, as in `map.entry(k).or_insert(v)`. */
+      readonly receiverCall?: ChainedCall;
     }
   | {
       readonly kind: 'macro-call';
@@ -76,6 +78,13 @@ export type BodyFact =
       readonly fields: readonly StructField[];
       readonly span: Span;
     };
+
+/** A call made on a plain name, such as `map.entry(k)` in `map.entry(k).or_insert(v)`. */
+export interface ChainedCall {
+  readonly receiver: string;
+  readonly method: string;
+  readonly args: TokenGroup;
+}
 
 /** Keywords that can head a path. */
 const PATH_KEYWORDS: ReadonlySet<string> = new Set(['self', 'Self', 'super', 'crate']);
@@ -305,6 +314,17 @@ function skipItem(trees: readonly TokenTree[], start: number): number {
   return j;
 }
 
+/** The call before a method call's dot, when it is `name.m(args)`. Only a plain name is read. */
+function chainedCallOf(trees: readonly TokenTree[], dotIndex: number): ChainedCall | undefined {
+  const args = groupOf(trees[dotIndex - 1], '(');
+  const method = identToken(trees[dotIndex - 2]);
+  const receiver = identToken(trees[dotIndex - 4]);
+  if (args === undefined || method === undefined || receiver === undefined) return undefined;
+  if (!isPunct(trees[dotIndex - 3], '.')) return undefined;
+  if (isPunct(trees[dotIndex - 5], '.') || isPunct(trees[dotIndex - 5], '::')) return undefined;
+  return { receiver: receiver.value, method: method.value, args };
+}
+
 /** A field access or method call after `.`. Returns the index to continue from. */
 function scanAfterDot(trees: readonly TokenTree[], dotIndex: number, facts: BodyFact[]): number {
   const dot = trees[dotIndex];
@@ -319,12 +339,14 @@ function scanAfterDot(trees: readonly TokenTree[], dotIndex: number, facts: Body
   const beforeBefore = trees[dotIndex - 2];
   const plain =
     !isPunct(beforeBefore, '.') && !isPunct(beforeBefore, '::') ? identToken(before) : undefined;
+  const chained = chainedCallOf(trees, dotIndex);
   facts.push({
     kind: 'method-call',
     method: name.value,
     receiver: plain?.value ?? null,
     args,
     span: spanBetween(dot, args),
+    ...(chained !== undefined ? { receiverCall: chained } : {}),
   });
   return j;
 }

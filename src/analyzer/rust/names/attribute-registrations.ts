@@ -8,8 +8,8 @@
  * A bare attribute has no argument, so only `fn-name` applies to it.
  */
 import type { RegistryDeclarationFact, RegistryKeyFact } from '../../../facts/types.js';
-import type { SourceSpan } from '../../../types.js';
-import type { Attribute, Span } from '../items.js';
+import type { Attribute } from '../items.js';
+import { sourceSpanOf } from '../source-span.js';
 import type { RegistryAttributeRule } from '../../registry-protocols.js';
 import { argumentParts } from './proc-macros.js';
 import type { RustCrateIndex } from './module-index.js';
@@ -96,14 +96,4 @@ function keyOf(
     return { kind: 'static', name: part, keyType: 'number', numericLiteral: true, evidence: 'ast' };
   }
   return undefined;
-}
-
-function sourceSpanOf(span: Span, filePath: string): SourceSpan {
-  return {
-    filePath,
-    startLine: span.line,
-    startColumn: span.column,
-    endLine: span.endLine,
-    endColumn: span.endColumn,
-  };
 }
