@@ -200,4 +200,39 @@ describe('python callbacks passed to threading.Thread (V3 Phase 12.4)', () => {
 
     expect(callbackEdges(map)).toEqual([]);
   });
+
+  it('links a method passed as self.run to a method of the same class', () => {
+    const map = mapOf({
+      'main.py':
+        'import threading\n\n\nclass Worker:\n    def run(self):\n        pass\n\n    def start(self):\n        threading.Thread(target=self.run).start()\n',
+    });
+
+    expect(callbackEdges(map)).toEqual([
+      'passesCallback main.py:Worker.start -> main.py:Worker.run',
+    ]);
+  });
+
+  it('links self.run to a method the class inherits', () => {
+    const map = mapOf({
+      'main.py':
+        'import threading\n\n\nclass Base:\n    def run(self):\n        pass\n\n\nclass Worker(Base):\n    def start(self):\n        threading.Thread(target=self.run).start()\n',
+    });
+
+    expect(callbackEdges(map)).toEqual(['passesCallback main.py:Worker.start -> main.py:Base.run']);
+  });
+
+  it('reports self.attribute that is not a method as unresolved, at low confidence', () => {
+    const map = mapOf({
+      'main.py':
+        'import threading\n\n\nclass Worker:\n    def __init__(self, job):\n        self.job = job\n\n    def start(self):\n        threading.Thread(target=self.job).start()\n',
+    });
+
+    const observation = Object.values(map.unresolved).find(
+      (node) => node.reason === 'unresolved-callback',
+    );
+    expect(observation).toBeDefined();
+    expect(callbackEdges(map)).toEqual([
+      `passesCallback main.py:Worker.start -> ${observation?.id}`,
+    ]);
+  });
 });

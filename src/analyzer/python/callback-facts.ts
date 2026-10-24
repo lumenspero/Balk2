@@ -14,8 +14,11 @@
  *
  * `signal.SIG_DFL` and `signal.SIG_IGN` are constants, not handlers, so they give no edge.
  *
- * Not yet read: a bound method such as `self.run` (unresolved for now), and `loop.call_soon(f)`,
- * whose loop is not typed by its constructor.
+ * A bound method, `self.run`, inside a method of a class is resolved through that class's MRO. The
+ * receiver must be named `self`, and the owner must be a method of the class. Any other attribute is
+ * an unresolved observation.
+ *
+ * Not yet read: `loop.call_soon(f)`, whose loop is not typed by its constructor.
  */
 import type { ArgValue, CallSite, CallbackResolution, FileFacts } from '../../facts/types.js';
 import type { CallbackCatalogEntry } from '../../facts/callback-engine.js';
@@ -191,11 +194,37 @@ function executorSinkOf(site: ObservedCall): Sink | undefined {
 }
 
 /**
+ * The repository method that `self.name` refers to, when the call is inside a method of a class.
+ * The class's own methods come first, then its bases in MRO order.
+ */
+function selfMethodOf(
+  value: Extract<Expr, { kind: 'attribute' }>,
+  site: ObservedCall,
+): string | undefined {
+  if (value.value.kind !== 'name' || value.value.id !== 'self') return undefined;
+  if (site.owner === null) return undefined;
+  const cut = site.owner.lastIndexOf('.');
+  if (cut < 0) return undefined;
+  const classId = site.owner.slice(0, cut);
+  if (site.types.get(classId) !== 'class') return undefined;
+  const bases = (site.mro.get(classId) ?? []).filter((base) => base !== classId);
+  for (const cls of [classId, ...bases]) {
+    const id = `${cls}.${value.attr}`;
+    if (site.types.get(id) === 'method') return id;
+  }
+  return undefined;
+}
+
+/**
  * What a callback argument refers to: a repository function or method, or anything else as an
  * unresolved observation. Undefined for a `signal` constant, which is not a callback at all.
  */
 function resolutionOf(value: Expr, site: ObservedCall): CallbackResolution | undefined {
   if (value.kind === 'attribute' && SIGNAL_CONSTANTS.has(value.attr)) return undefined;
+  if (value.kind === 'attribute') {
+    const method = selfMethodOf(value, site);
+    if (method !== undefined) return { kind: 'symbol', id: method };
+  }
   if (value.kind === 'name' && SIGNAL_CONSTANTS.has(value.id)) return undefined;
   if (value.kind === 'name' || value.kind === 'attribute') {
     const target = resolveBase(value, site.info, site.ctx, site.declared);
