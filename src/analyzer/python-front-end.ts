@@ -28,6 +28,13 @@ import { collectPythonSourceAnnotations } from './python-source-apply.js';
 import { analyzePythonCalls, combineObservers } from './python/calls.js';
 import { createPythonRegistryCollector } from './python/registry-facts.js';
 import { createPythonStateCollector, type ModuleBinding } from './python/state-facts.js';
+import {
+  createPythonCallbackCollector,
+  PYTHON_CALLBACK_CATALOG,
+  pythonCallbackFiles,
+} from './python/callback-facts.js';
+import { applyCallbackEdges } from './callback-apply.js';
+import { runCallbackEngine } from '../facts/callback-engine.js';
 import { applyStateEdges } from './state-apply.js';
 import { runStateEngine, statePathFiles } from '../facts/state-engine.js';
 import { applyRegistryEdges } from './registry-apply.js';
@@ -186,13 +193,15 @@ export function analyzePythonSources(
 
   // Shared state (Phase 12.3). Module globals that functions write through `global`.
   const state = createPythonStateCollector({ bindings: moduleBindings });
+  // Callbacks passed to library calls (Phase 12.4), such as `threading.Thread(target=f)`.
+  const callbacks = createPythonCallbackCollector({ bindings: moduleBindings });
 
   // Calls. The owner is the enclosing function or method, or the file for module-level code.
   for (const c of analyzePythonCalls(
     sources,
     ctx,
     { identityDecorators: options.identityDecorators },
-    combineObservers(events.observer, registries.observer, state.observer),
+    combineObservers(events.observer, registries.observer, state.observer, callbacks.observer),
   ).calls) {
     if (c.callee.kind !== 'symbol') continue;
     graph.addRelationship('calls', c.owner ?? c.filePath, c.callee.id, c.confidence, {
@@ -208,6 +217,13 @@ export function analyzePythonSources(
     runStateEngine({
       files: statePathFiles(state.facts(), 'python'),
       dynamicPaths: 'off',
+    }),
+  );
+  applyCallbackEdges(
+    graph,
+    runCallbackEngine({
+      files: pythonCallbackFiles(callbacks.facts()),
+      catalog: PYTHON_CALLBACK_CATALOG,
     }),
   );
   applyRegistryEdges(graph, runRegistryEngine({ configured: [], facts: registries.facts() }));

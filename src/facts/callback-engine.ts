@@ -1,6 +1,6 @@
 import type { Evidence, SourceSpan } from '../types.js';
 import { entriesFor, type CatalogEntry } from './engine.js';
-import type { FileFacts } from './types.js';
+import type { ArgValue, CallSite, FileFacts } from './types.js';
 
 /**
  * The callback engine (Phase 2.7, callbacks). It reads call facts whose callback argument is
@@ -15,7 +15,17 @@ export const UNRESOLVED_CALLBACK_DETAIL =
 /** A configured callback-receiving function, as the engine reads it. */
 export interface CallbackCatalogEntry extends CatalogEntry {
   readonly function: string;
-  readonly callbackArg: number;
+  /** Zero-based argument position that holds the callback */
+  readonly callbackArg?: number;
+  /** The keyword argument that holds the callback, for a library that takes it by name */
+  readonly keyword?: string;
+}
+
+/** The argument of a call that the catalog entry names as its callback. */
+function callbackArgOf(fact: CallSite, entry: CallbackCatalogEntry): ArgValue | undefined {
+  if (entry.keyword !== undefined) return fact.keyword[entry.keyword];
+  if (entry.callbackArg !== undefined) return fact.positional[entry.callbackArg];
+  return undefined;
 }
 
 /** What the engine found, to be applied to the graph. */
@@ -52,7 +62,7 @@ export function runCallbackEngine(input: {
       if (fact.kind !== 'call' || fact.name === undefined) continue;
       const entry = byName.get(fact.name);
       if (entry === undefined) continue;
-      const argument = fact.positional[entry.callbackArg];
+      const argument = callbackArgOf(fact, entry);
       if (argument === undefined || argument.kind !== 'callback') continue;
 
       const from = fact.owner ?? fact.filePath;
