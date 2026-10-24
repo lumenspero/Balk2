@@ -107,6 +107,21 @@ These are not yet produced by the fact passes. They keep their V2 behavior until
 - **Source annotations.** A `# balk2:` comment directly above a statement can set the confidence or
   add an edge. It must name the enclosing owner. A directive inside a triple-quoted string is text.
 
+## Shared state
+
+- A module global that a function writes through `global name` is shared state, at `<file>:name`.
+- With `import mod`, `mod.name = ...` in a function writes `<mod file>:name`.
+- `builtins.x = ...` writes the global root, as `globalThis` does in JS.
+- A configured singleton is read through its fields. With `from store import store`, the write
+  `store.count = 1` in a function writes the singleton at field `count`, and `store.a.b = 1` writes
+  `a.b`. The entry is matched by module and export:
+
+```json
+{ "state": { "singletons": [{ "module": "store.py", "export": "store" }] } }
+```
+
+The limits of shared-state recording are listed in `docs/v3/language-parity.md`.
+
 ## Limits
 
 - `del` is straight-line only. A `del` that runs directly in a module, class or function body unbinds the name for later uses in that body, until it is bound again. A `del` in a branch or loop, and uses in nested functions, leave the name bound.

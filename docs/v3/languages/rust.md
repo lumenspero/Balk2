@@ -120,3 +120,27 @@ such as `navigate("/users")`. Calls on a receiver, such as `page.navigate("/user
 ```
 
 A call whose path has more than one segment, such as `module::navigate(..)`, is not matched either.
+
+## Shared state
+
+- A write to a `static mut` inside a function is shared state, at the static's path, including inside
+  `unsafe`. A compound assignment reads and writes.
+- Method calls on an interior-mutable static are read by the method's effect:
+  - atomics (`Atomic*`): `load` reads; `store` writes; `swap`, `fetch_*` and `compare_exchange*` read
+    and write;
+  - `Mutex` and `RwLock`: `lock`, `read`, `write` and their `try_` forms are reads;
+  - `OnceLock` and `OnceCell`: `get` reads; `set`, `take` and `initialize` write; `get_or_init` reads
+    and writes;
+  - `LazyLock`, `LazyCell` and `Lazy`: `force` reads. A wrapped `LazyLock<Mutex<..>>` is also read as a
+    `Mutex`.
+- A `lazy_static!` static is read by its declared type, the same as a plain static.
+- A `thread_local!` static is read through `LocalKey` methods: `with`, `with_borrow` and `get` read;
+  `with_borrow_mut`, `set`, `take` and `replace` write.
+- A configured singleton is read through its fields. With a `static` named `STORE` in `src/lib.rs`,
+  `STORE.count += 1` in a function reads and writes field `count`, and `STORE.a.b = 1` writes `a.b`:
+
+```json
+{ "state": { "singletons": [{ "module": "src/lib.rs", "export": "STORE" }] } }
+```
+
+The limits of shared-state recording are listed in `docs/v3/language-parity.md`.
