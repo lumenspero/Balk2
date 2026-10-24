@@ -36,6 +36,12 @@ export interface Expectation {
   readonly confidence?: readonly string[];
   /** Reasons of unresolved references that must be reported, for example `"unresolved-callback"`. */
   readonly observations?: readonly string[];
+  /** Reasons of unresolved references that must not be reported. */
+  readonly absentObservations?: readonly string[];
+  /** Repository paths that must be tagged as test code (V3 D5). */
+  readonly tests?: readonly string[];
+  /** Repository paths that must not be tagged as test code. */
+  readonly untagged?: readonly string[];
 }
 
 export interface Rendition {

@@ -99,7 +99,9 @@ function positiveCount(want: Expectation): number {
     (want.syntaxErrors?.length ?? 0) +
     (want.diagnostics?.length ?? 0) +
     (want.confidence?.length ?? 0) +
-    (want.observations?.length ?? 0)
+    (want.observations?.length ?? 0) +
+    (want.tests?.length ?? 0) +
+    (want.untagged?.length ?? 0)
   );
 }
 
@@ -168,6 +170,17 @@ export function evaluate(entry: CorpusEntry): Evaluation {
     if (!found.some((rel) => rel.confidence === level)) {
       missing.push(`missing confidence ${level}: ${edge}`);
     }
+  }
+  for (const reason of want.absentObservations ?? []) {
+    if (Object.values(map.unresolved).some((node) => node.reason === reason)) {
+      unexpected.push(`unexpected observation: ${reason}`);
+    }
+  }
+  for (const file of want.tests ?? []) {
+    if (map.files[file]?.tests !== true) missing.push(`missing test tag: ${file}`);
+  }
+  for (const file of want.untagged ?? []) {
+    if (map.files[file]?.tests === true) unexpected.push(`unexpected test tag: ${file}`);
   }
   for (const reason of want.observations ?? []) {
     if (!Object.values(map.unresolved).some((node) => node.reason === reason)) {

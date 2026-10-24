@@ -32,6 +32,8 @@ export interface FileNode {
   readonly path: string;
   /** Detected language, if recognized */
   readonly language?: string;
+  /** Set on test code, by the path conventions in `analyzer/test-files.ts` (V3 D5). */
+  readonly tests?: true;
 }
 
 /**

@@ -44,7 +44,7 @@ describe('rust native library loads (V3 Phase 12.5)', () => {
       'src/lib.rs':
         'pub fn load() {\n    let _ = unsafe { libloading::Library::new("libplugin.so") };\n}\n',
     });
-    expect(loadObservations(map)).toEqual(['unresolved-module-path libplugin.so']);
+    expect(loadObservations(map)).toEqual(['dynamic-module-specifier libplugin.so']);
     expect(map.relationships).toContainEqual(
       expect.objectContaining({
         type: 'imports',

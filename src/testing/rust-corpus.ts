@@ -364,6 +364,70 @@ export const RUST_CORPUS: readonly CorpusScenario[] = [
       },
     },
   },
+  {
+    name: 'a private use in the crate root is visible to child modules through crate::',
+    family: 'modules and imports',
+    renditions: {
+      rust: {
+        files: {
+          'Cargo.toml': '[package]\nname = "demo"\nversion = "0.1.0"\nedition = "2021"\n',
+          'src/lib.rs': 'mod event;\nmod use_it;\n\nuse self::event::Event;\n',
+          'src/event.rs':
+            'pub struct Event;\n\nimpl Event {\n    pub fn new() -> Event {\n        Event\n    }\n}\n',
+          'src/use_it.rs': 'pub fn make() -> crate::Event {\n    crate::Event::new()\n}\n',
+        },
+        expect: {
+          relationships: [
+            'calls src/use_it.rs:make -> src/event.rs:Event.new',
+            'references src/use_it.rs:make -> src/event.rs:Event',
+          ],
+          absentObservations: ['unresolved-module-path'],
+        },
+      },
+    },
+  },
+
+  {
+    name: 'an enum variant glob import resolves to the enum file',
+    family: 'modules and imports',
+    renditions: {
+      rust: {
+        files: {
+          'Cargo.toml': '[package]\nname = "demo"\nversion = "0.1.0"\nedition = "2021"\n',
+          'src/lib.rs': 'mod draw;\nmod shape;\n',
+          'src/shape.rs':
+            'pub enum Mode {\n    Fast,\n    Slow,\n}\n\npub fn fast() -> i32 {\n    1\n}\n',
+          'src/draw.rs':
+            'use crate::shape::fast;\nuse crate::shape::Mode::*;\n\npub fn run(m: crate::shape::Mode) -> i32 {\n    match m {\n        Fast => fast(),\n        Slow => 0,\n    }\n}\n',
+        },
+        expect: {
+          relationships: [
+            'imports src/draw.rs -> src/shape.rs',
+            'calls src/draw.rs:run -> src/shape.rs:fast',
+          ],
+          absentObservations: ['unresolved-module-path'],
+        },
+      },
+    },
+  },
+
+  {
+    name: 'an integration test depends on its package library',
+    family: 'packages',
+    renditions: {
+      rust: {
+        files: {
+          'Cargo.toml': '[package]\nname = "demo"\nversion = "0.1.0"\nedition = "2021"\n',
+          'src/lib.rs': 'pub fn help() -> i32 {\n    1\n}\n',
+          'tests/test.rs': '#[test]\nfn works() {\n    assert_eq!(demo::help(), 1);\n}\n',
+        },
+        expect: {
+          relationships: ['calls tests/test.rs:works -> src/lib.rs:help'],
+          absentObservations: ['unresolved-module-path'],
+        },
+      },
+    },
+  },
 ];
 
 assertUniqueNames(RUST_CORPUS);

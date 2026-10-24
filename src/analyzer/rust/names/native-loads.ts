@@ -3,8 +3,9 @@
  * time. The library's code is not analyzed, so the load is recorded only as an observation, from the
  * function that makes it:
  *
- * - a string literal path names a library, which is not a repository source file: `unresolved-module-path`;
- * - any other path is computed: `dynamic-module-specifier`.
+ * Both forms are reported as `dynamic-module-specifier`, the reason for a module loaded from a value the
+ * analyzer does not resolve. A literal path names a library, not a repository source file, and a computed
+ * path is unknown; the detail text tells them apart.
  *
  * The call is read by its full path, `libloading::Library::new`, and only when no repository symbol
  * has that path. A `Library::new` reached through a `use libloading::Library` is not read yet.
@@ -58,7 +59,7 @@ export function nativeLoadObservations(
         literal !== undefined
           ? {
               from: entry.fn.id,
-              reason: 'unresolved-module-path',
+              reason: 'dynamic-module-specifier',
               subject: literal,
               detail: 'a native library is loaded at run time, and its code is not analyzed',
               location,

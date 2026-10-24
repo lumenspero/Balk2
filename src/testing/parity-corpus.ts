@@ -954,14 +954,17 @@ export const PARITY_CORPUS: readonly CorpusScenario[] = [
     family: 'resources',
     renditions: {
       javascript: {
-        pending: '13',
         files: {
           'app/loader.ts':
-            "import { readFileSync } from 'node:fs';\n\nexport function load(): string {\n  return readFileSync(new URL('./templates/card.html', import.meta.url), 'utf8');\n}\n",
+            "import { renderTemplate } from './render.js';\n\nexport function load(): string {\n  return renderTemplate('./templates/card.html');\n}\n",
+          'app/render.ts':
+            'export function renderTemplate(name: string): string {\n  return name;\n}\n',
           'app/templates/card.html': '<p>card</p>\n',
         },
+        config: { protocols: { resources: [{ function: 'renderTemplate', specifierArg: 0 }] } },
         expect: {
           relationships: ['usesResource app/loader.ts:load -> resource:app/templates/card.html'],
+          symbols: ['app/loader.ts:load'],
         },
       },
       python: {
@@ -1046,14 +1049,13 @@ export const PARITY_CORPUS: readonly CorpusScenario[] = [
         },
       },
       rust: {
-        pending: '13',
         files: {
           'Cargo.toml':
             '[package]\nname = "demo"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\nlibloading = "0.8"\n',
           'src/lib.rs':
             'pub fn open() {\n    let _ = unsafe { libloading::Library::new("plugin.so") };\n}\n',
         },
-        expect: {},
+        expect: { observations: ['dynamic-module-specifier'] },
       },
     },
   },
@@ -1129,6 +1131,111 @@ export const PARITY_CORPUS: readonly CorpusScenario[] = [
             'use crate::util::help;\n\npub fn run() -> i32 {\n    let help = || 2;\n    help()\n}\n',
         },
         expect: { absent: ['calls src/main_mod.rs:run -> src/util.rs:help'] },
+      },
+    },
+  },
+  {
+    name: 'a plain file read is a data read, not a resource (negative)',
+    family: 'resources',
+    renditions: {
+      javascript: {
+        files: {
+          'app/loader.ts':
+            "import { readFileSync } from 'node:fs';\n\nexport function load(): string {\n  return readFileSync(new URL('./templates/card.html', import.meta.url), 'utf8');\n}\n",
+          'app/templates/card.html': '<p>card</p>\n',
+        },
+        expect: { absent: ['usesResource app/loader.ts:load -> resource:app/templates/card.html'] },
+      },
+      python: {
+        files: {
+          'app/__init__.py': '',
+          'app/templates/card.html': '<p>card</p>\n',
+          'app/loader.py':
+            "def load():\n    with open('app/templates/card.html') as handle:\n        return handle.read()\n",
+        },
+        expect: { absent: ['usesResource app/loader.py:load -> resource:app/templates/card.html'] },
+      },
+      rust: {
+        files: {
+          'Cargo.toml': '[package]\nname = "demo"\nversion = "0.1.0"\nedition = "2021"\n',
+          'src/lib.rs':
+            'pub fn card() -> std::io::Result<String> {\n    std::fs::read_to_string("templates/card.html")\n}\n',
+          'templates/card.html': '<p>card</p>\n',
+        },
+        expect: { absent: ['usesResource src/lib.rs:card -> resource:templates/card.html'] },
+      },
+    },
+  },
+
+  {
+    name: 'test code is tagged by its path convention',
+    family: 'test code tagging',
+    renditions: {
+      javascript: {
+        files: {
+          'util.ts': 'export function help(): number {\n  return 1;\n}\n',
+          'util.test.ts':
+            "import { help } from './util.js';\n\nexport function check(): number {\n  return help();\n}\n",
+        },
+        expect: { tests: ['util.test.ts'], untagged: ['util.ts'] },
+      },
+      python: {
+        files: {
+          'util.py': 'def help():\n    return 1\n',
+          'test_util.py': 'from util import help\n\n\ndef check():\n    return help()\n',
+        },
+        expect: { tests: ['test_util.py'], untagged: ['util.py'] },
+      },
+      rust: {
+        files: {
+          'Cargo.toml': '[package]\nname = "demo"\nversion = "0.1.0"\nedition = "2021"\n',
+          'src/lib.rs': 'pub fn help() -> i32 {\n    1\n}\n',
+          'tests/test.rs': '#[test]\nfn works() {\n    assert_eq!(1, 1);\n}\n',
+        },
+        expect: { tests: ['tests/test.rs'], untagged: ['src/lib.rs'] },
+      },
+    },
+  },
+
+  {
+    name: 'include tests false leaves test code out of the graph',
+    family: 'test code tagging',
+    renditions: {
+      javascript: {
+        files: {
+          'util.ts': 'export function help(): number {\n  return 1;\n}\n',
+          'util.test.ts':
+            "import { help } from './util.js';\n\nexport function check(): number {\n  return help();\n}\n",
+        },
+        config: { include: { tests: false } },
+        expect: {
+          symbols: ['util.ts:help'],
+          absent: ['calls util.test.ts:check -> util.ts:help'],
+        },
+      },
+      python: {
+        files: {
+          'util.py': 'def help():\n    return 1\n',
+          'test_util.py': 'from util import help\n\n\ndef check():\n    return help()\n',
+        },
+        config: { include: { tests: false } },
+        expect: {
+          symbols: ['util.py:help'],
+          absent: ['calls test_util.py:check -> util.py:help'],
+        },
+      },
+      rust: {
+        files: {
+          'Cargo.toml': '[package]\nname = "demo"\nversion = "0.1.0"\nedition = "2021"\n',
+          'src/lib.rs': 'pub fn help() -> i32 {\n    1\n}\n',
+          'tests/test.rs':
+            'fn helper() -> i32 {\n    1\n}\n\nfn works() -> i32 {\n    helper()\n}\n',
+        },
+        config: { include: { tests: false } },
+        expect: {
+          symbols: ['src/lib.rs:help'],
+          absent: ['calls tests/test.rs:works -> tests/test.rs:helper'],
+        },
       },
     },
   },

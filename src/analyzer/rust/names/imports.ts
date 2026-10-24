@@ -126,8 +126,18 @@ function tryBind(use: PendingUse, crate: RustCrateIndex, env: RustNameEnvironmen
       }
       return { bound: true, target: resolution.node.file, last: resolution };
     }
+    if (resolution.kind === 'symbol') {
+      // An enum glob (`use Enum::*`) names variants this pass does not enumerate, so it adds no source.
+      // The enum's file is still what the import draws its edge to.
+      owner.globs.push({ source: null, isPub: use.isPub });
+      return {
+        bound: true,
+        target: resolution.id.slice(0, resolution.id.lastIndexOf(':')),
+        last: resolution,
+      };
+    }
     if (resolution.kind === 'extern' || resolution.kind === 'associated') {
-      // An extern or enum glob names nothing this pass can enumerate, so it adds no source.
+      // An extern glob names nothing this pass can enumerate, so it adds no source.
       owner.globs.push({ source: null, isPub: use.isPub });
       return { bound: true, target: null, last: resolution };
     }
