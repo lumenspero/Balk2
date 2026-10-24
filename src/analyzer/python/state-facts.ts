@@ -23,7 +23,9 @@ import type { StatePathFact } from '../../facts/types.js';
 export type ModuleBinding =
   | { readonly kind: 'file'; readonly path: string }
   | { readonly kind: 'external'; readonly name: string }
-  | { readonly kind: 'singleton'; readonly root: string };
+  | { readonly kind: 'singleton'; readonly root: string }
+  /** A member of an external module, such as `threading.Thread`, bound by a from-import */
+  | { readonly kind: 'member'; readonly name: string };
 
 export interface PythonStateOptions {
   /** Per file, the module names its imports bind, from the import resolver. */
@@ -125,6 +127,7 @@ function targetOf(
   if (binding.kind === 'singleton') {
     return { root: binding.root, rootKind: 'singleton', segments: [...write.attrs] };
   }
+  if (binding.kind === 'member') return undefined;
   // A module's own attribute is one name; a deeper path is not a module global.
   const [attr] = write.attrs;
   if (write.attrs.length !== 1 || attr === undefined) return undefined;

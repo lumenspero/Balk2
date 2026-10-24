@@ -74,6 +74,33 @@ describe('python callbacks passed to threading.Thread (V3 Phase 12.4)', () => {
     expect(callbackEdges(map)).toEqual([`passesCallback main.py:start -> ${observation?.id}`]);
   });
 
+  it('links a Thread imported by name from threading', () => {
+    const map = mapOf({
+      'main.py':
+        'from threading import Thread\n\n\ndef worker():\n    pass\n\n\ndef start():\n    Thread(target=worker).start()\n',
+    });
+
+    expect(callbackEdges(map)).toEqual(['passesCallback main.py:start -> main.py:worker']);
+  });
+
+  it('links a Thread imported by name under an alias', () => {
+    const map = mapOf({
+      'main.py':
+        'from threading import Thread as T\n\n\ndef worker():\n    pass\n\n\ndef start():\n    T(target=worker).start()\n',
+    });
+
+    expect(callbackEdges(map)).toEqual(['passesCallback main.py:start -> main.py:worker']);
+  });
+
+  it('gives no edge for a name imported from threading that is not Thread', () => {
+    const map = mapOf({
+      'main.py':
+        'from threading import Timer\n\n\ndef worker():\n    pass\n\n\ndef start():\n    Timer(1, worker).start()\n',
+    });
+
+    expect(callbackEdges(map)).toEqual([]);
+  });
+
   it('gives no edge for a Thread that is not the threading library', () => {
     const map = mapOf({
       'other.py': 'class Thread:\n    pass\n',

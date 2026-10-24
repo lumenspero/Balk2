@@ -20,7 +20,7 @@ export interface ResolvedImport {
   readonly target: FactTarget;
   /** Local names this edge binds */
   readonly names: readonly string[];
-  /** For an `attribute` edge, the imported name behind each local name, in the same order */
+  /** For a `from` edge, the imported name behind each local name, in the same order */
   readonly imported?: readonly string[];
   readonly typeOnly: boolean;
   /** The enclosing conditions, outermost first, joined with ` > `. Never evaluated. */
@@ -218,9 +218,17 @@ function emitFrom(
       return;
     }
     for (const alias of stmt.names) {
-      out.push(
-        edge(file, specifier, 'from', 'unresolved', target, [localName(alias)], scope, stmt.span),
+      const resolved = edge(
+        file,
+        specifier,
+        'from',
+        'unresolved',
+        target,
+        [localName(alias)],
+        scope,
+        stmt.span,
       );
+      out.push({ ...resolved, imported: [alias.name] });
     }
     return;
   }

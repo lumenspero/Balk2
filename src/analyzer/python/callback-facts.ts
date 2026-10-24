@@ -101,6 +101,11 @@ function sinkOf(
   func: Expr,
   bindings: ReadonlyMap<string, ModuleBinding> | undefined,
 ): Sink | undefined {
+  if (func.kind === 'name') {
+    const member = bindings?.get(func.id);
+    if (member?.kind !== 'member') return undefined;
+    return SINKS.find((s) => `${s.module}.${s.attribute}` === member.name);
+  }
   if (func.kind !== 'attribute' || func.value.kind !== 'name') return undefined;
   const binding = bindings?.get(func.value.id);
   if (binding?.kind !== 'external') return undefined;

@@ -127,6 +127,15 @@ export function analyzePythonSources(
           spans: [toSourceSpan(r.span, filePath)],
         });
       }
+      // `from threading import Thread` binds a member of an external module, by its qualified name.
+      if (r.form === 'from' && r.via === 'unresolved' && r.target.kind === 'external') {
+        r.names.forEach((local, i) => {
+          const member = r.imported?.[i];
+          if (member !== undefined)
+            bound.set(local, { kind: 'member', name: `${r.specifier}.${member}` });
+        });
+        continue;
+      }
       // `from store import store` binds a configured singleton, found by its module and export.
       if (r.form === 'from' && r.via === 'attribute' && r.target.kind === 'file') {
         const module = r.target.path;
