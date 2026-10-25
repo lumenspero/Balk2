@@ -502,6 +502,59 @@ export const RUST_CORPUS: readonly CorpusScenario[] = [
       },
     },
   },
+  {
+    name: 'a name a crate macro may define is reported as macro-generated',
+    family: 'macros',
+    renditions: {
+      rust: {
+        files: {
+          'Cargo.toml': CARGO,
+          'src/lib.rs': 'macro_rules! kinds {\n    () => {};\n}\n\nkinds! {}\n\nmod user;\n',
+          'src/user.rs': 'pub fn make() -> Option<crate::Kind> {\n    None\n}\n',
+        },
+        expect: {
+          observations: ['macro-generated-item'],
+          absentObservations: ['unresolved-module-path'],
+        },
+      },
+    },
+  },
+  {
+    name: 'a re-export of a macro-generated name is macro-generated where it is used',
+    family: 'macros',
+    renditions: {
+      rust: {
+        files: {
+          'Cargo.toml': CARGO,
+          'src/lib.rs': 'mod errors;\n\npub fn make() -> Option<errors::Kind> {\n    None\n}\n',
+          'src/errors/mod.rs': 'mod types;\n\npub use types::Kind;\n',
+          'src/errors/types.rs': 'macro_rules! kinds {\n    () => {};\n}\n\nkinds! {}\n',
+        },
+        expect: {
+          observations: ['macro-generated-item'],
+          absentObservations: ['unresolved-module-path'],
+        },
+      },
+    },
+  },
+  {
+    name: 'a quote body is template text, not code',
+    family: 'macros',
+    renditions: {
+      rust: {
+        files: {
+          'Cargo.toml':
+            '[package]\nname = "gen"\nversion = "0.1.0"\nedition = "2021"\n\n[lib]\nproc-macro = true\n',
+          'src/lib.rs':
+            'mod shapes;\n\npub fn gen() -> String {\n    let _t = quote! { fn go() -> shapes::Missing {} };\n    String::new()\n}\n',
+          'src/shapes.rs': 'pub struct Circle;\n',
+        },
+        expect: {
+          absentObservations: ['unresolved-module-path', 'macro-generated-item'],
+        },
+      },
+    },
+  },
 ];
 
 assertUniqueNames(RUST_CORPUS);

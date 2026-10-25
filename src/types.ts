@@ -216,6 +216,7 @@ export type UnresolvedReason =
   | 'unresolved-metadata-key'
   | 'dynamic-resource-specifier'
   | 'unresolved-module-path'
+  | 'macro-generated-item'
   | 'ambiguous-star-import'
   | 'dynamic-include-path'
   | 'unresolved-binding';

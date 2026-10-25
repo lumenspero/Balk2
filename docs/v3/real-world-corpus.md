@@ -81,3 +81,16 @@ Rust repositories only. Same checkouts. The count is `unresolved-module-path` en
 | pydantic_pydantic-core | 96         | 94        | Library-first ordering. Remaining paths are macro-generated items (`error_types!`, `serialization_mode!`, `combined_serializer!`) |
 
 The remaining Tauri paths are macro-generated (`gen_wrappers!`, `swift!`), the `quote!` and proc-macro cases, and an open umbrella-crate case. Each is listed in `docs/v3/phase-13-gap-register.md`.
+
+## Fourth run (after the macro reason and the quote fix)
+
+Rust repositories only. The first number is `unresolved-module-path`, which are misses the analyzer cannot explain. The second is `macro-generated-item`, which are paths to names a macro call in the same module may generate.
+
+| Repository             | Third run | Fourth run (misses / macro) | What changed                                                                                                                                         |
+| ---------------------- | --------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| BurntSushi_ripgrep     | 87        | 87 / 281                    | Macro reason. Misses are the `grep::` umbrella (open)                                                                                                |
+| dtolnay_async-trait    | 57        | 57 / 0                      | No change. Proc-macro attribute paths (open)                                                                                                         |
+| tauri-apps__tauri      | 38        | 1 / 119                     | Macro reason. One miss: `tauri_plugin_sample::PingRequest`, a glob re-export from another repository crate (open)                                    |
+| pydantic_pydantic-core | 94        | 0 / 550                     | Macro reason, and a use that imports a macro-generated name now binds it, so the names re-exported through `errors` and `type_serializers` are known |
+
+Counts rose for macro-generated entries because a mention of a name bound by a failing `use` used to be silent. It is now reported at each mention with the macro reason, the same as any other unresolved path.

@@ -140,12 +140,13 @@ Each relationship keeps `type`, `from`, `to`, `confidence`, `evidence`, `spans` 
 
 `UnresolvedReason` gains:
 
-| Reason                   | Meaning                                                                       |
-| ------------------------ | ----------------------------------------------------------------------------- |
-| `unresolved-module-path` | An internal-looking import or path that cannot be resolved, in any language.  |
-| `ambiguous-star-import`  | A name supplied by more than one star or glob import (Python `*`, Rust glob). |
-| `dynamic-include-path`   | An include path built from `concat!`, `env!` or a non-literal expression.     |
-| `unresolved-binding`     | A cross-language consumer naming something its producer does not export.      |
+| Reason                   | Meaning                                                                                                                            |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `unresolved-module-path` | An internal-looking import or path that cannot be resolved, in any language.                                                       |
+| `macro-generated-item`   | A path to a name that an item-level macro call in its module may generate (Rust). Not a miss: the analyzer does not expand macros. |
+| `ambiguous-star-import`  | A name supplied by more than one star or glob import (Python `*`, Rust glob).                                                      |
+| `dynamic-include-path`   | An include path built from `concat!`, `env!` or a non-literal expression.                                                          |
+| `unresolved-binding`     | A cross-language consumer naming something its producer does not export.                                                           |
 
 ## Diagnostics
 

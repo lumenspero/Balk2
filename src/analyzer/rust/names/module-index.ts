@@ -37,6 +37,13 @@ export type ImportBinding =
       readonly id: string;
       readonly rest: readonly string[];
       readonly isPub: boolean;
+    }
+  /** A `use` that names a macro-generated item: the name is known to be there but not what it is. */
+  | {
+      readonly kind: 'unresolved';
+      readonly reason: 'macro-generated-item';
+      readonly detail: string;
+      readonly isPub: boolean;
     };
 
 /** A `use path::*` in a module. A null source is an extern or associated glob, which names nothing here. */
@@ -63,6 +70,8 @@ export interface RustModuleNode {
   readonly children: Map<string, RustModuleNode>;
   /** Child names declared in two different files. Names through them resolve to nothing. */
   readonly ambiguous: Set<string>;
+  /** The paths of the item-level macro calls in this module, which may generate names it does not declare. */
+  readonly macroCalls: string[];
   /** The namespace tables of the whole crate, shared by every module in it. */
   readonly tables: RustNamespaceTables;
   /** The visibility of every item in the crate, by symbol id. Shared by every module in it. */
@@ -292,6 +301,7 @@ function newNode(
     reachable: init.reachable === true,
     children: new Map(),
     ambiguous: new Set(),
+    macroCalls: [],
     tables: build.namespaces,
     visibility: build.visibility,
     imports: new Map(),
@@ -437,6 +447,7 @@ function visitItems(
       continue;
     }
     if (item.kind === 'macro_call') {
+      node.macroCalls.push(item.path);
       build.macroCalls.push({
         owner: node,
         path: item.path.split('::'),
