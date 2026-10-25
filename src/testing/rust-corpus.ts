@@ -555,6 +555,28 @@ export const RUST_CORPUS: readonly CorpusScenario[] = [
       },
     },
   },
+  {
+    name: 'a crate imports a glob re-export of a sibling library',
+    family: 'packages',
+    renditions: {
+      rust: {
+        files: {
+          'Cargo.toml': '[workspace]\nmembers = ["crates/*"]\n',
+          'crates/sample/Cargo.toml':
+            '[package]\nname = "sample"\nversion = "0.1.0"\nedition = "2021"\n',
+          'crates/sample/src/lib.rs': 'pub use models::*;\nmod models;\n',
+          'crates/sample/src/models.rs': 'pub struct PingRequest {\n    pub value: u8,\n}\n',
+          'crates/app/Cargo.toml':
+            '[package]\nname = "app"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\nsample = { path = "../sample" }\n',
+          'crates/app/src/lib.rs': 'use sample::PingRequest;\n\npub fn take(_p: PingRequest) {}\n',
+        },
+        expect: {
+          relationships: ['imports crates/app/src/lib.rs -> crates/sample/src/models.rs'],
+          absentObservations: ['unresolved-module-path', 'macro-generated-item'],
+        },
+      },
+    },
+  },
 ];
 
 assertUniqueNames(RUST_CORPUS);

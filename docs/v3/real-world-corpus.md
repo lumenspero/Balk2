@@ -94,3 +94,14 @@ Rust repositories only. The first number is `unresolved-module-path`, which are 
 | pydantic_pydantic-core | 94        | 0 / 550                     | Macro reason, and a use that imports a macro-generated name now binds it, so the names re-exported through `errors` and `type_serializers` are known |
 
 Counts rose for macro-generated entries because a mention of a name bound by a failing `use` used to be silent. It is now reported at each mention with the macro reason, the same as any other unresolved path.
+
+## Fifth run (after the sweep binding and the reason check)
+
+| Repository             | Misses | Macro-generated | What changed                                                                                                           |
+| ---------------------- | ------ | --------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| BurntSushi_ripgrep     | 74     | 0               | Macro reason was wrongly applied to plain misses (281 false entries removed). Sibling-crate names now bound (87 to 74) |
+| dtolnay_async-trait    | 57     | 0               | No change. Proc-macro attribute paths (open)                                                                           |
+| tauri-apps__tauri      | 0      | 118             | Sibling glob re-export fixed (`PingRequest`)                                                                           |
+| pydantic_pydantic-core | 0      | 550             | No change                                                                                                              |
+
+The earlier run reported a macro-generated count for ripgrep that was a bug: a plain miss was classified as macro-generated. That count is gone.

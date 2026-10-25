@@ -125,7 +125,9 @@ export function bindImports(crate: RustCrateIndex, env: RustNameEnvironment): Im
  */
 function bindMacroName(use: PendingUse, last: Resolution): boolean {
   const bind = use.entry.bind;
-  if (last.kind !== 'unresolved' || use.entry.glob || bind === null) return false;
+  // A plain miss is also `unresolved`, so the reason is what marks a name a macro may generate.
+  if (last.kind !== 'unresolved' || last.reason !== 'macro-generated-item') return false;
+  if (use.entry.glob || bind === null) return false;
   let changed = false;
   for (const ns of NAMESPACES) {
     if (use.owner.imports.get(ns)?.has(bind)) continue;
