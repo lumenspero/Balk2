@@ -107,3 +107,30 @@ limits are known and recorded, not defects in the matrix cells above.
 ## Phase 12 exit status
 
 Phase 12 exit criteria are met. The parity suite has 95 tests, and every rendition runs and passes in each language it covers. The negative counterparts are in the corpus: the same key in two registries does not connect, the same event name on two emitters does not connect, and a local binding of a shared name is not shared state. The three JS renditions that were pending on Phase 2.5 now pass, so rows 6 and 8 stay Supported for JS/TS.
+
+## Phase 13 exit status
+
+Phase 13 exit is conditionally met. Two parts of the budget check still need a run outside this environment, listed below.
+
+**Parity matrix.** No cell is Deferred. The deferred items in `docs/v3/deferred.md` were approved by the user on 2026-10-25, and the Not applicable rows are recorded above with their reasons. Partial cells remain, as listed in "Partial cells, and what closes them".
+
+**Accuracy suites.** `npm run test:accuracy` runs 7 files and 227 tests, and all pass. Recall and declared false positives meet the budget for each family and language covered.
+
+**Performance.** Each language has a synthetic 1,000-file baseline in the repository, enabled with `BALK2_PERF=1`. The contract sets each budget at 1.5 times the first measured run on the CI runner. These runs were on the development sandbox (Linux), not the CI runner, so they are provisional until the CI figures replace them.
+
+| Language | Test                                                                | Files |   Lines |   Time |  Nodes | Relationships |
+| -------- | ------------------------------------------------------------------- | ----: | ------: | -----: | -----: | ------------: |
+| Python   | `src/analyzer/python-perf.test.ts` (first run, Windows dev machine) | 1,000 | 133,000 | 12.4 s | 36,000 |        56,000 |
+| JS/TS    | `src/analyzer/js-perf.test.ts`                                      | 1,000 | 127,000 | 18.7 s | 36,002 |        65,001 |
+| Rust     | `src/analyzer/rust/rust-perf.test.ts`                               | 1,000 | 172,000 |  5.8 s | 36,002 |        60,001 |
+
+**Determinism.** Repeated builds of `expressjs/express`, `BurntSushi/ripgrep` and `dtolnay/async-trait` serialize to byte-identical JSON on Linux. Windows has not been run for this check.
+
+**Overhead of excluded directories.** `expressjs/express` was scanned three times as a clean copy and three times with a 3,000-file `node_modules`, a 2,000-file `target/` beside a `Cargo.toml`, and a 2,000-file `.venv` marked by `pyvenv.cfg`. Median clean scan 4.6 s, median with the directories 5.0 s, about 9% more. This is within the 10% budget, but the runs were noisy (the first clean run took 6.5 s), so the margin is thin.
+
+**Still open for Phase 13 exit:**
+
+- The CI runner budget for each language, which replaces the provisional figures above. The `perf` workflow (`.github/workflows/perf.yml`) runs the three perf tests with `BALK2_PERF=1` on `ubuntu-latest` and `windows-latest` and uploads the timings as an artifact. It is not a required check. `test/perf-budgets.json` is empty until the first runs are recorded; each entry is 1.5 times that platform's first measured time, and `assertWithinBudget` then fails any test that exceeds its budget.
+- Determinism on Windows.
+
+Phase 13 is complete when those two items are measured. Everything else in the exit criterion is met.

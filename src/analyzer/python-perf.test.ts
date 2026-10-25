@@ -4,6 +4,7 @@ import * as path from 'path';
 import { performance } from 'perf_hooks';
 import { describe, expect, it } from 'vitest';
 import { buildConnectionGraphDetailed } from '../cli/build-graph.js';
+import { assertWithinBudget } from './perf-budget.js';
 
 /**
  * Phase 0.7 performance budget for Python. Runs only with BALK2_PERF=1, because it generates
@@ -69,6 +70,7 @@ describe.skipIf(!ENABLED)('python performance (Phase 0.7 budget)', () => {
         `python perf: ${FILE_COUNT} files, ${lines} lines, ${Math.round(elapsedMs)} ms, ` +
           `${built.graph.nodeCount} nodes, ${built.graph.relationshipCount} relationships`,
       );
+      assertWithinBudget('python', elapsedMs);
       expect(built.graph.relationshipCount).toBeGreaterThan(0);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });

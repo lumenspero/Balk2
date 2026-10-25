@@ -290,8 +290,7 @@ function emitFrom(
 
   const attributes: string[] = [];
   const imported: string[] = [];
-  const bound =
-    baseFile && baseFile.path !== file ? view.bound(baseFile.path) : new Set<string>();
+  const bound = baseFile && baseFile.path !== file ? view.bound(baseFile.path) : new Set<string>();
   const submodules: Array<{ alias: Alias; target: FactTarget }> = [];
   const unresolved: Array<{ alias: Alias }> = [];
   for (const alias of stmt.names) {
