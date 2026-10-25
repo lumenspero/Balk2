@@ -160,6 +160,10 @@ analyzed. A string-literal path is recorded as an `unresolved-module-path` obser
 path as a `dynamic-module-specifier` observation, both from the function that makes the load. Only the
 full path is read. A `Library::new` reached through `use libloading::Library` is not read yet.
 
+## Macro-generated names
+
+The analyzer does not expand macros. A path to a name that a module does not declare is reported as `unresolved-module-path` when the module has no item-level macro call. When it does, the path is reported as `macro-generated-item` with the call named in its detail, since the call may generate the name. Macro templates are not code: the tokens of a macro argument that is not an expression (such as a `quote!` body or a `macro_rules!` definition) declare and name nothing.
+
 ## Source annotations
 
 A `// balk2:` line comment directly above a statement can set confidence, and must name the innermost

@@ -120,7 +120,7 @@ export const PYTHON_CORPUS: readonly CorpusScenario[] = [
 
   {
     name: 'match soft keyword used as an ordinary name',
-    family: 'syntax',
+    family: 'lexing',
     renditions: {
       python: {
         files: {
@@ -138,7 +138,7 @@ export const PYTHON_CORPUS: readonly CorpusScenario[] = [
 
   {
     name: 'f-string with nested quotes (PEP 701)',
-    family: 'syntax',
+    family: 'lexing',
     renditions: {
       python: {
         files: {
@@ -257,6 +257,22 @@ export const PYTHON_CORPUS: readonly CorpusScenario[] = [
         },
         expect: {
           symbols: ['state.py:counter', 'state.py:bump'],
+        },
+      },
+    },
+  },
+  {
+    name: 'a lambda passed as a callback is reported as unresolved, and its calls are kept',
+    family: 'callbacks',
+    renditions: {
+      python: {
+        files: {
+          'util.py':
+            'def helper():\n    return 1\n\n\ndef run(items):\n    return sorted(items, key=lambda x: helper())\n',
+        },
+        expect: {
+          relationships: ['calls util.py:run -> util.py:helper'],
+          observations: ['unresolved-callback'],
         },
       },
     },

@@ -9,6 +9,8 @@ import { RustFrontEnd } from '../analyzer/rust/front-end.js';
 import { registerDataArtifacts } from '../data/formats.js';
 import { registerManifests } from '../data/manifests.js';
 import { filterFilesWithConfig, applyExplicitLineage } from '../config/index.js';
+import { resolveInclude } from '../config/file-matcher.js';
+import { isTestFile } from '../analyzer/test-files.js';
 import type { Balk2Config } from '../config/balk2-config.js';
 import type { ConfigProblem } from '../config/config-problem.js';
 import type { SyntaxErrorNote } from '../analyzer/repository-program.js';
@@ -84,7 +86,10 @@ export function buildConnectionGraphDetailed(rootDir: string, config?: Balk2Conf
 
   // 1. Scan. Every later step sees only these files, after the configured include/exclude filters.
   const rawFiles = scanRepositoryFiles(rootDir);
-  const files = filterFilesWithConfig(rawFiles, config?.include, config?.exclude);
+  const include = resolveInclude(config?.include);
+  const files = filterFilesWithConfig(rawFiles, include.patterns, config?.exclude).filter(
+    (filePath) => include.tests || !isTestFile(filePath),
+  );
 
   // 2. Package discovery. Cargo, npm and Python manifests yield package nodes, `packageRoot` edges
   //    for Cargo and npm targets, and `dependsOn` edges. The Python front end adds its entry points.

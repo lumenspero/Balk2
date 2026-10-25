@@ -7,7 +7,7 @@ import {
 import type { PackageNode, RelationshipMetadata } from '../types.js';
 import { discoverNpmPackages } from './npm-packages.js';
 
-/** A `packageRoot` fact from Cargo or npm. Python roots come from its entry-point resolution. */
+/** A `packageRoot` fact: a package and the file that is its entry point. */
 export interface RepositoryPackageRoot {
   readonly packageId: string;
   readonly file: string;
@@ -88,7 +88,11 @@ export function discoverRepositoryPackages(
 
   return {
     packages: [...cargo.packages, ...npm.packages, ...python.packages],
-    packageRoots: [...cargo.packageRoots, ...npm.packageRoots],
+    packageRoots: [
+      ...cargo.packageRoots,
+      ...npm.packageRoots,
+      ...pythonLibraryRoots(python.packages, readable),
+    ],
     dependencies: mergeDependencies([
       ...cargo.dependencies.map((dependency) => ({
         from: dependency.from,
@@ -154,4 +158,46 @@ function mergeDependencies(all: readonly RepositoryDependency[]): RepositoryDepe
 
 function basename(path: string): string {
   return path.slice(path.lastIndexOf('/') + 1);
+}
+
+const PYTHON_NON_PACKAGE_MODULES = new Set(['__init__', 'setup', 'conftest']);
+const PYTHON_TEST_PACKAGES = new Set(['test', 'tests']);
+
+/**
+ * `packageRoot` edges for Python libraries (V3 Phase 4.1). Each top-level package's `__init__.py`,
+ * and each top-level module, is an entry file of the library, in each import root. A library with no
+ * declared root uses `src` when the repository has Python under it, and the repository root otherwise
+ * (Phase 4.2). Test packages and `setup.py` are not entry files.
+ */
+function pythonLibraryRoots(
+  packages: readonly PackageNode[],
+  filePaths: readonly string[],
+): RepositoryPackageRoot[] {
+  const hasSrc = filePaths.some((file) => file.startsWith('src/') && file.endsWith('.py'));
+  const out: RepositoryPackageRoot[] = [];
+  for (const node of packages) {
+    if (node.ecosystem !== 'python' || node.target !== 'lib') continue;
+    const roots = node.roots.length > 0 ? node.roots : [hasSrc ? 'src' : '.'];
+    for (const root of roots) {
+      const prefix = root === '.' ? '' : `${root}/`;
+      for (const file of filePaths) {
+        if (!file.startsWith(prefix) || !file.endsWith('.py')) continue;
+        const rest = file.slice(prefix.length);
+        const initMatch = /^([^/]+)\/__init__\.py$/.exec(rest);
+        const moduleMatch = /^([^/]+)\.py$/.exec(rest);
+        const name = initMatch?.[1] ?? moduleMatch?.[1];
+        if (name === undefined) continue;
+        if (initMatch === null && PYTHON_NON_PACKAGE_MODULES.has(name)) continue;
+        if (initMatch !== null && PYTHON_TEST_PACKAGES.has(name)) continue;
+        out.push({ packageId: node.id, file });
+      }
+    }
+  }
+  return out.sort((a, b) =>
+    a.packageId + a.file < b.packageId + b.file
+      ? -1
+      : a.packageId + a.file > b.packageId + b.file
+        ? 1
+        : 0,
+  );
 }

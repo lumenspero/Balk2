@@ -19,6 +19,7 @@ const REASON_KEYS: Record<UnresolvedReason, true> = {
   'unresolved-metadata-key': true,
   'dynamic-resource-specifier': true,
   'unresolved-module-path': true,
+  'macro-generated-item': true,
   'ambiguous-star-import': true,
   'dynamic-include-path': true,
   'unresolved-binding': true,

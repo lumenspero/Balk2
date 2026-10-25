@@ -50,7 +50,7 @@ import { applyRegistryEdges } from '../registry-apply.js';
 import { runRegistryEngine } from '../../facts/registry-engine.js';
 import { bindReferences } from './names/references.js';
 import { computeExports } from './names/exports.js';
-import { bindImports } from './names/imports.js';
+import { bindImports, type ImportResult } from './names/imports.js';
 import { bindTypeRelations } from './names/type-relations.js';
 import { buildCrateIndex, type RustCrateIndex } from './names/module-index.js';
 import type { RustNameEnvironment } from './names/resolve.js';
@@ -103,6 +103,7 @@ export class RustFrontEnd implements LanguageFrontEnd {
         if (fn.noMangle && fn.abi !== null) abiById.set(fn.id, fn.abi.replace(/^"|"$/g, ''));
       }
     }
+    const bound = bindAllImports(crates, env);
     for (const { index: crate, exporting } of crates) {
       if (exporting) {
         for (const edge of computeExports(crate)) {
@@ -116,7 +117,7 @@ export class RustFrontEnd implements LanguageFrontEnd {
           });
         }
       }
-      const result = bindImports(crate, env);
+      const result = bound.get(crate) ?? { edges: [], unresolved: [] };
       for (const edge of result.edges) {
         graph.addRelationship('imports', edge.file, edge.target, 'high', {
           evidence: 'ast',
@@ -555,6 +556,37 @@ function buildCrates(
     if (index !== undefined && !repoCrates.has(node.name)) repoCrates.set(node.name, index);
   }
   return { crates, env };
+}
+
+/** The most sweeps that bind all crates before giving up on a fixed point. */
+const MAX_BINDING_SWEEPS = 8;
+
+/**
+ * Binds every crate's `use` declarations until a sweep changes no crate's result. A use may name a name
+ * another crate's use brings in, and the crates are not in dependency order, so one sweep is not enough
+ * (V3 Phase 9.9). Each crate's result is from the last sweep, which is the settled one.
+ */
+function bindAllImports(
+  crates: readonly CrateEntry[],
+  env: RustNameEnvironment,
+): Map<RustCrateIndex, ImportResult> {
+  const results = new Map<RustCrateIndex, ImportResult>();
+  let previous = '';
+  for (let sweep = 0; sweep < MAX_BINDING_SWEEPS; sweep++) {
+    for (const { index } of crates) results.set(index, bindImports(index, env));
+    const signature = JSON.stringify(
+      crates.map(({ index }) => {
+        const result = results.get(index);
+        return [
+          result?.edges.map((edge) => [edge.file, edge.target]),
+          result?.unresolved.map((use) => [use.subject, use.reason]),
+        ];
+      }),
+    );
+    if (signature === previous) break;
+    previous = signature;
+  }
+  return results;
 }
 
 /** The repository-relative directory holding a package's manifest, or undefined when unknown. */

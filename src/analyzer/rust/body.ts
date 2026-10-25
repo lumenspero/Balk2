@@ -132,6 +132,14 @@ const EXPRESSION_MACROS: ReadonlySet<string> = new Set([
 /** Macros whose first argument is an expression and whose later arguments are patterns. */
 const FIRST_ARGUMENT_MACROS: ReadonlySet<string> = new Set(['matches']);
 
+/**
+ * True when a macro's arguments are code. Any other macro's arguments are template or token text, such as a
+ * `quote!` body, so they declare nothing and name nothing.
+ */
+export function macroArgumentsAreCode(name: string): boolean {
+  return EXPRESSION_MACROS.has(name) || FIRST_ARGUMENT_MACROS.has(name);
+}
+
 /** The token trees of a macro's arguments that are expressions, to scan like a body (V3 Phase 10.2). */
 function expressionArgsOf(name: string, args: TokenGroup): readonly TokenTree[] {
   if (EXPRESSION_MACROS.has(name)) return args.children;
@@ -588,6 +596,13 @@ function fieldNameOf(tree: TokenTree): RustToken | undefined {
  * every comma-separated part is `name`, `name: value` or `..base`, so a block such as `{ f(); }`
  * is never read as a literal.
  */
+/** The field's tokens with any leading `#[...]` attributes removed. */
+function withoutFieldAttributes(segment: TokenTree[]): TokenTree[] {
+  let rest = segment;
+  while (isPunct(rest[0], '#') && groupOf(rest[1], '[') !== undefined) rest = rest.slice(2);
+  return rest;
+}
+
 function structFields(
   children: readonly TokenTree[],
 ): { fields: StructField[]; values: TokenTree[][] } | undefined {
@@ -595,7 +610,9 @@ function structFields(
   if (segments.at(-1)?.length === 0) segments.pop();
   const fields: StructField[] = [];
   const values: TokenTree[][] = [];
-  for (const segment of segments) {
+  for (const rawSegment of segments) {
+    // Outer attributes such as `#[cfg(...)]` only gate the field, so the field is what follows them.
+    const segment = withoutFieldAttributes(rawSegment);
     const first = segment[0];
     if (first === undefined) return undefined;
     if (isPunct(first, '..')) {

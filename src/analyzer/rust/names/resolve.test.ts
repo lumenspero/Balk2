@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildCrateIndex, type RustCrateIndex, type RustModuleNode } from './module-index.js';
-import { resolvePath, type RustNameEnvironment, type RustPath } from './resolve.js';
+import { resolveName, resolvePath, type RustNameEnvironment, type RustPath } from './resolve.js';
 
 function crateOf(
   files: Record<string, string>,
@@ -128,12 +128,15 @@ describe('resolvePath: uniform paths and extern crates', () => {
     expect(resolve('::serde::Serialize', 'type')).toEqual({ kind: 'extern', crate: 'serde' });
   });
 
-  it('reports a local item and an extern crate with the same name as unresolved', () => {
+  it('lets a local item shadow an extern crate of the same name in a non-import path', () => {
     const crate = crateOf({ 'src/lib.rs': 'mod serde { pub fn f() {} }' });
-    expect(resolve('serde::f', 'value', crate.root, crate, ENV)).toMatchObject({
-      kind: 'unresolved',
-      reason: 'unresolved-module-path',
-    });
+    expect(resolve('serde::f', 'value', crate.root, crate, ENV)).toMatchObject({ kind: 'symbol' });
+  });
+
+  it('reports a local item and an extern crate with the same name in a use as unresolved', () => {
+    const crate = crateOf({ 'src/lib.rs': 'mod serde { pub fn f() {} }' });
+    const result = resolveName(path('serde::f'), 'value', crate.root, crate, ENV, true);
+    expect(result).toMatchObject({ kind: 'unresolved', reason: 'unresolved-module-path' });
   });
 
   it('treats a name the crate does not know as not-found, not as an observation', () => {

@@ -45,9 +45,15 @@ export interface GlobalsConfig {
   readonly targets?: Readonly<Record<string, string>>;
 }
 
+/** The `include` option as an object: patterns, and whether test code is analyzed (default true). */
+export interface IncludeOptions {
+  readonly patterns?: readonly string[];
+  readonly tests?: boolean;
+}
+
 export interface Balk2Config {
-  /** Glob or path patterns of files to include */
-  readonly include?: readonly string[];
+  /** Glob or path patterns of files to include, or an object with `patterns` and `tests` */
+  readonly include?: readonly string[] | IncludeOptions;
   /** Glob or path patterns of files to exclude */
   readonly exclude?: readonly string[];
   /** Output directory or base file path */

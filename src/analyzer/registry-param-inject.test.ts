@@ -88,8 +88,12 @@ describe('constructor parameter injection', () => {
       'service.ts': FILES['service.ts'].replace('@Inject', '@Other'),
     });
     try {
+      // The constructor parameter's type is still a `references` edge (JS type references, Phase 13).
+      // Only the injection edges are asserted absent here.
       expect(
-        other.graph.getRelationships().filter((rel) => rel.from === 'service.ts:UserService'),
+        other.graph
+          .getRelationships()
+          .filter((rel) => rel.from === 'service.ts:UserService' && rel.type !== 'references'),
       ).toEqual([]);
     } finally {
       other.fixture.cleanup();

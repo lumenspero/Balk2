@@ -10,7 +10,7 @@ const CARGO = '[package]\nname = "demo"\nversion = "0.1.0"\nedition = "2021"\n';
 export const RUST_CORPUS: readonly CorpusScenario[] = [
   {
     name: 'cfg twin modules are both declared',
-    family: 'modules',
+    family: 'modules and imports',
     renditions: {
       rust: {
         files: {
@@ -281,7 +281,7 @@ export const RUST_CORPUS: readonly CorpusScenario[] = [
 
   {
     name: 'file no crate reaches is reported (negative)',
-    family: 'modules',
+    family: 'modules and imports',
     renditions: {
       rust: {
         files: {
@@ -298,7 +298,7 @@ export const RUST_CORPUS: readonly CorpusScenario[] = [
 
   {
     name: 'foo.rs and foo/mod.rs together are a conflict, and neither is chosen',
-    family: 'modules',
+    family: 'modules and imports',
     renditions: {
       rust: {
         files: {
@@ -360,6 +360,219 @@ export const RUST_CORPUS: readonly CorpusScenario[] = [
         },
         expect: {
           relationships: ['calls src/lib.rs:show -> src/lib.rs:Render.render'],
+        },
+      },
+    },
+  },
+  {
+    name: 'a private use in the crate root is visible to child modules through crate::',
+    family: 'modules and imports',
+    renditions: {
+      rust: {
+        files: {
+          'Cargo.toml': '[package]\nname = "demo"\nversion = "0.1.0"\nedition = "2021"\n',
+          'src/lib.rs': 'mod event;\nmod use_it;\n\nuse self::event::Event;\n',
+          'src/event.rs':
+            'pub struct Event;\n\nimpl Event {\n    pub fn new() -> Event {\n        Event\n    }\n}\n',
+          'src/use_it.rs': 'pub fn make() -> crate::Event {\n    crate::Event::new()\n}\n',
+        },
+        expect: {
+          relationships: [
+            'calls src/use_it.rs:make -> src/event.rs:Event.new',
+            'references src/use_it.rs:make -> src/event.rs:Event',
+          ],
+          absentObservations: ['unresolved-module-path'],
+        },
+      },
+    },
+  },
+
+  {
+    name: 'an enum variant glob import resolves to the enum file',
+    family: 'modules and imports',
+    renditions: {
+      rust: {
+        files: {
+          'Cargo.toml': '[package]\nname = "demo"\nversion = "0.1.0"\nedition = "2021"\n',
+          'src/lib.rs': 'mod draw;\nmod shape;\n',
+          'src/shape.rs':
+            'pub enum Mode {\n    Fast,\n    Slow,\n}\n\npub fn fast() -> i32 {\n    1\n}\n',
+          'src/draw.rs':
+            'use crate::shape::fast;\nuse crate::shape::Mode::*;\n\npub fn run(m: crate::shape::Mode) -> i32 {\n    match m {\n        Fast => fast(),\n        Slow => 0,\n    }\n}\n',
+        },
+        expect: {
+          relationships: [
+            'imports src/draw.rs -> src/shape.rs',
+            'calls src/draw.rs:run -> src/shape.rs:fast',
+          ],
+          absentObservations: ['unresolved-module-path'],
+        },
+      },
+    },
+  },
+
+  {
+    name: 'an integration test depends on its package library',
+    family: 'packages',
+    renditions: {
+      rust: {
+        files: {
+          'Cargo.toml': '[package]\nname = "demo"\nversion = "0.1.0"\nedition = "2021"\n',
+          'src/lib.rs': 'pub fn help() -> i32 {\n    1\n}\n',
+          'tests/test.rs': '#[test]\nfn works() {\n    assert_eq!(demo::help(), 1);\n}\n',
+        },
+        expect: {
+          relationships: ['calls tests/test.rs:works -> src/lib.rs:help'],
+          absentObservations: ['unresolved-module-path'],
+        },
+      },
+    },
+  },
+  {
+    name: 'an inherited edition with no workspace in the scan still resolves bare module paths',
+    family: 'modules and imports',
+    renditions: {
+      rust: {
+        files: {
+          'Cargo.toml': '[package]\nname = "demo"\nversion = "0.1.0"\nedition.workspace = true\n',
+          'src/lib.rs': 'mod ipc;\n\npub fn run() -> i32 {\n    1\n}\n',
+          'src/ipc/mod.rs': 'mod authority;\n\npub use authority::Scope;\n',
+          'src/ipc/authority.rs': 'pub struct Scope;\n',
+        },
+        expect: {
+          relationships: ['imports src/ipc/mod.rs -> src/ipc/authority.rs'],
+          absentObservations: ['unresolved-module-path'],
+        },
+      },
+    },
+  },
+  {
+    name: 'a struct literal with a cfg-gated field still resolves to its struct',
+    family: 'modules and imports',
+    renditions: {
+      rust: {
+        files: {
+          'Cargo.toml': CARGO,
+          'src/lib.rs': 'pub mod manager;\n',
+          'src/manager.rs':
+            'pub mod webview;\n\npub fn make() -> webview::Manager {\n    webview::Manager {\n        count: 1,\n        #[cfg(any())]\n        gated: 2,\n    }\n}\n',
+          'src/manager/webview.rs':
+            'pub struct Manager {\n    pub count: i32,\n    pub gated: i32,\n}\n',
+        },
+        expect: {
+          relationships: ['references src/manager.rs:make -> src/manager/webview.rs:Manager'],
+          absentObservations: ['unresolved-module-path'],
+        },
+      },
+    },
+  },
+  {
+    name: 'a local module shadows a dependency of the same name in a type path',
+    family: 'modules and imports',
+    renditions: {
+      rust: {
+        files: {
+          'Cargo.toml':
+            '[package]\nname = "demo"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\nimage = "0.25"\n',
+          'src/lib.rs': 'pub mod image;\n\npub fn make() -> Option<image::Image> {\n    None\n}\n',
+          'src/image.rs': 'pub struct Image;\n',
+        },
+        expect: {
+          relationships: ['references src/lib.rs:make -> src/image.rs:Image'],
+          absentObservations: ['unresolved-module-path'],
+        },
+      },
+    },
+  },
+  {
+    name: 'a bench reaches a re-export of its package library',
+    family: 'packages',
+    renditions: {
+      rust: {
+        files: {
+          'Cargo.toml': CARGO,
+          'src/lib.rs': 'mod shapes;\n\npub use shapes::Circle;\n',
+          'src/shapes.rs': 'pub struct Circle;\n',
+          'benches/main.rs': 'use demo::Circle;\n\nfn main() {\n    let _c = Circle;\n}\n',
+        },
+        expect: {
+          relationships: ['imports benches/main.rs -> src/shapes.rs'],
+          absentObservations: ['unresolved-module-path'],
+        },
+      },
+    },
+  },
+  {
+    name: 'a name a crate macro may define is reported as macro-generated',
+    family: 'macros',
+    renditions: {
+      rust: {
+        files: {
+          'Cargo.toml': CARGO,
+          'src/lib.rs': 'macro_rules! kinds {\n    () => {};\n}\n\nkinds! {}\n\nmod user;\n',
+          'src/user.rs': 'pub fn make() -> Option<crate::Kind> {\n    None\n}\n',
+        },
+        expect: {
+          observations: ['macro-generated-item'],
+          absentObservations: ['unresolved-module-path'],
+        },
+      },
+    },
+  },
+  {
+    name: 'a re-export of a macro-generated name is macro-generated where it is used',
+    family: 'macros',
+    renditions: {
+      rust: {
+        files: {
+          'Cargo.toml': CARGO,
+          'src/lib.rs': 'mod errors;\n\npub fn make() -> Option<errors::Kind> {\n    None\n}\n',
+          'src/errors/mod.rs': 'mod types;\n\npub use types::Kind;\n',
+          'src/errors/types.rs': 'macro_rules! kinds {\n    () => {};\n}\n\nkinds! {}\n',
+        },
+        expect: {
+          observations: ['macro-generated-item'],
+          absentObservations: ['unresolved-module-path'],
+        },
+      },
+    },
+  },
+  {
+    name: 'a quote body is template text, not code',
+    family: 'macros',
+    renditions: {
+      rust: {
+        files: {
+          'Cargo.toml':
+            '[package]\nname = "gen"\nversion = "0.1.0"\nedition = "2021"\n\n[lib]\nproc-macro = true\n',
+          'src/lib.rs':
+            'mod shapes;\n\npub fn gen() -> String {\n    let _t = quote! { fn go() -> shapes::Missing {} };\n    String::new()\n}\n',
+          'src/shapes.rs': 'pub struct Circle;\n',
+        },
+        expect: {
+          absentObservations: ['unresolved-module-path', 'macro-generated-item'],
+        },
+      },
+    },
+  },
+  {
+    name: 'a crate imports a glob re-export of a sibling library',
+    family: 'packages',
+    renditions: {
+      rust: {
+        files: {
+          'Cargo.toml': '[workspace]\nmembers = ["crates/*"]\n',
+          'crates/sample/Cargo.toml':
+            '[package]\nname = "sample"\nversion = "0.1.0"\nedition = "2021"\n',
+          'crates/sample/src/lib.rs': 'pub use models::*;\nmod models;\n',
+          'crates/sample/src/models.rs': 'pub struct PingRequest {\n    pub value: u8,\n}\n',
+          'crates/app/Cargo.toml':
+            '[package]\nname = "app"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\nsample = { path = "../sample" }\n',
+          'crates/app/src/lib.rs': 'use sample::PingRequest;\n\npub fn take(_p: PingRequest) {}\n',
+        },
+        expect: {
+          relationships: ['imports crates/app/src/lib.rs -> crates/sample/src/models.rs'],
+          absentObservations: ['unresolved-module-path', 'macro-generated-item'],
         },
       },
     },

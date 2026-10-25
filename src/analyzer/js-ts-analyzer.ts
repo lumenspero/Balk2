@@ -325,6 +325,13 @@ export class JsTsAnalyzer implements Analyzer {
         handleCall(node, callerId, graph, importsMap, topLevelSymbols, options?.repository);
       }
 
+      if (ts.isTypeReferenceNode(node) && options?.repository !== undefined) {
+        const target = typeReferenceTarget(node, options.repository.checker, options.repository);
+        if (target !== null) {
+          graph.addRelationship('references', enclosingSymbolId ?? normalizedPath, target);
+        }
+      }
+
       ts.forEachChild(node, (child) => visitSecondPass(child, enclosingSymbolId));
     };
 
@@ -560,6 +567,32 @@ function aliasTarget(
   if (declaration === undefined) return null;
   const file = pathOfSourceFile(repository, declaration.getSourceFile());
   return file === undefined ? null : `${file}:${aliased.getName()}`;
+}
+
+/**
+ * The repository type a type reference names (a class, interface, type alias or enum), as a symbol
+ * id, or null. Qualified names such as `NS.User` are not followed, and names outside the repository
+ * draw no edge. An imported name is followed through its alias, as a call is.
+ */
+function typeReferenceTarget(
+  node: ts.TypeReferenceNode,
+  checker: ts.TypeChecker,
+  repository: RepositoryProgram,
+): string | null {
+  if (!ts.isIdentifier(node.typeName)) return null;
+  const aliased = aliasTarget(node.typeName, node.typeName.text, checker, repository);
+  if (aliased !== undefined) return aliased;
+  const symbol = checker.getSymbolAtLocation(node.typeName);
+  const declaration = symbol?.declarations?.[0];
+  if (symbol === undefined || declaration === undefined) return null;
+  const typeFlags =
+    ts.SymbolFlags.Class |
+    ts.SymbolFlags.Interface |
+    ts.SymbolFlags.TypeAlias |
+    ts.SymbolFlags.Enum;
+  if ((symbol.flags & typeFlags) === 0) return null;
+  const file = pathOfSourceFile(repository, declaration.getSourceFile());
+  return file === undefined ? null : `${file}:${symbol.getName()}`;
 }
 
 /**

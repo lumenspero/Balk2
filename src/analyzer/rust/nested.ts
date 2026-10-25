@@ -7,7 +7,7 @@
  * Only items are read. A statement is an item when it starts with an item keyword (after any
  * attributes, `pub`, `unsafe`) at a statement start. `mod` items are not read.
  */
-import { type BodyFact, scanFunctionBody } from './body.js';
+import { type BodyFact, macroArgumentsAreCode, scanFunctionBody } from './body.js';
 import { type Item, parseItems, type Span, TreeCursor } from './items.js';
 import type { RustLexNote } from './lexer.js';
 import { isTokenGroup, type TokenGroup, type TokenTree } from './token-tree.js';
@@ -150,13 +150,27 @@ function collectBlocks(
     };
     out.push(here);
   }
-  for (const child of trees) {
-    if (!isTokenGroup(child)) continue;
+  for (let index = 0; index < trees.length; index += 1) {
+    const child = trees[index];
+    if (child === undefined || !isTokenGroup(child)) continue;
     // A group inside a nested item belongs to that item, not to this block.
     const childSpan = spanOf(child);
     if (items.some((item) => startsWithin(childSpan, item.span))) continue;
+    // A macro's template arguments, such as a `quote!` body or a `macro_rules!` definition, are not code.
+    if (isTemplateArgument(trees, index)) continue;
     collectBlocks(child, child.children, here, out, false);
   }
+}
+
+/** True for the group after `name!` when the macro's arguments are not code, or the body of `macro_rules! name`. */
+function isTemplateArgument(trees: readonly TokenTree[], index: number): boolean {
+  if (index >= 3 && isWord(trees[index - 3], 'macro_rules') && isPunct(trees[index - 2], '!')) {
+    return true;
+  }
+  if (!isPunct(trees[index - 1], '!')) return false;
+  const name = trees[index - 2];
+  if (name === undefined || isTokenGroup(name) || name.kind !== 'ident') return false;
+  return !macroArgumentsAreCode(name.value);
 }
 
 function spanOf(group: TokenGroup): Span {

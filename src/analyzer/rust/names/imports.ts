@@ -60,18 +60,29 @@ export function bindImports(crate: RustCrateIndex, env: RustNameEnvironment): Im
   const attempts: (Attempt | undefined)[] = uses.map(() => undefined);
   const lasts: Resolution[] = uses.map(() => ({ kind: 'not-found' }));
 
-  for (let round = 0; round < MAX_ROUNDS; round++) {
-    let progress = false;
+  // Each pass binds what it can, then binds the names that only a macro may generate. A macro name is
+  // bound only once the rounds have settled, so that no later use can still bind it, and the next pass
+  // sees it for the uses that name it (V3 Phase 10.1).
+  for (let pass = 0; pass < MAX_ROUNDS; pass++) {
+    for (let round = 0; round < MAX_ROUNDS; round++) {
+      let progress = false;
+      uses.forEach((use, i) => {
+        if (attempts[i]?.bound) return;
+        const attempt = tryBind(use, crate, env);
+        lasts[i] = attempt.last;
+        if (attempt.bound) {
+          attempts[i] = attempt;
+          progress = true;
+        }
+      });
+      if (!progress) break;
+    }
+    let bound = false;
     uses.forEach((use, i) => {
-      if (attempts[i]?.bound) return;
-      const attempt = tryBind(use, crate, env);
-      lasts[i] = attempt.last;
-      if (attempt.bound) {
-        attempts[i] = attempt;
-        progress = true;
-      }
+      if (!attempts[i]?.bound && bindMacroName(use, lasts[i] ?? { kind: 'not-found' }))
+        bound = true;
     });
-    if (!progress) break;
+    if (!bound) break;
   }
 
   const edges: ImportEdge[] = [];
@@ -108,6 +119,29 @@ export function bindImports(crate: RustCrateIndex, env: RustNameEnvironment): Im
   return { edges, unresolved };
 }
 
+/**
+ * A `use` that fails because a macro may generate the name binds the name as unknown, so a re-export of
+ * it is still known to be there (V3 Phase 10.1). Returns whether a new binding was made.
+ */
+function bindMacroName(use: PendingUse, last: Resolution): boolean {
+  const bind = use.entry.bind;
+  // A plain miss is also `unresolved`, so the reason is what marks a name a macro may generate.
+  if (last.kind !== 'unresolved' || last.reason !== 'macro-generated-item') return false;
+  if (use.entry.glob || bind === null) return false;
+  let changed = false;
+  for (const ns of NAMESPACES) {
+    if (use.owner.imports.get(ns)?.has(bind)) continue;
+    setImport(use.owner, ns, bind, {
+      kind: 'unresolved',
+      reason: 'macro-generated-item',
+      detail: last.detail,
+      isPub: use.isPub,
+    });
+    changed = true;
+  }
+  return changed;
+}
+
 /** Resolves one `use` and binds what it names. Returns whether anything was bound. */
 function tryBind(use: PendingUse, crate: RustCrateIndex, env: RustNameEnvironment): Attempt {
   const { owner, entry } = use;
@@ -119,15 +153,25 @@ function tryBind(use: PendingUse, crate: RustCrateIndex, env: RustNameEnvironmen
   const path = { global: entry.global, segments: entry.path };
 
   if (entry.glob) {
-    const resolution = resolveName(path, 'type', from, crate, env);
+    const resolution = resolveName(path, 'type', from, crate, env, true);
     if (resolution.kind === 'module') {
       if (!owner.globs.some((glob) => glob.source === resolution.node)) {
         owner.globs.push({ source: resolution.node, isPub: use.isPub });
       }
       return { bound: true, target: resolution.node.file, last: resolution };
     }
+    if (resolution.kind === 'symbol') {
+      // An enum glob (`use Enum::*`) names variants this pass does not enumerate, so it adds no source.
+      // The enum's file is still what the import draws its edge to.
+      owner.globs.push({ source: null, isPub: use.isPub });
+      return {
+        bound: true,
+        target: resolution.id.slice(0, resolution.id.lastIndexOf(':')),
+        last: resolution,
+      };
+    }
     if (resolution.kind === 'extern' || resolution.kind === 'associated') {
-      // An extern or enum glob names nothing this pass can enumerate, so it adds no source.
+      // An extern glob names nothing this pass can enumerate, so it adds no source.
       owner.globs.push({ source: null, isPub: use.isPub });
       return { bound: true, target: null, last: resolution };
     }
@@ -138,7 +182,7 @@ function tryBind(use: PendingUse, crate: RustCrateIndex, env: RustNameEnvironmen
   let target: string | null = null;
   let last: Resolution = { kind: 'not-found' };
   for (const ns of NAMESPACES) {
-    const resolution = resolveName(path, ns, from, crate, env);
+    const resolution = resolveName(path, ns, from, crate, env, true);
     if (resolution.kind === 'not-found' || resolution.kind === 'unresolved') {
       if (resolution.kind === 'unresolved' || last.kind === 'not-found') last = resolution;
       continue;

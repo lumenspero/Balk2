@@ -14,10 +14,30 @@
       "description": "Configuration format version. Balk2 2.0.0 reads version 2; the key is optional."
     },
     "include": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/nonEmptyString"
-      }
+      "anyOf": [
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "patterns": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/nonEmptyString"
+              }
+            },
+            "tests": {
+              "type": "boolean"
+            }
+          }
+        }
+      ],
+      "description": "Glob or path patterns of files to include, or an object with patterns and whether test code is analyzed (default true)."
     },
     "exclude": {
       "type": "array",
@@ -57,11 +77,15 @@
       "properties": {
         "identityDecorators": {
           "type": "array",
-          "items": { "$ref": "#/$defs/nonEmptyString" }
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          }
         },
         "roots": {
           "type": "array",
-          "items": { "$ref": "#/$defs/nonEmptyString" }
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          }
         }
       }
     },
@@ -113,7 +137,9 @@
             {
               "type": "array",
               "minItems": 1,
-              "items": { "enum": ["file", "package", "repository", "public"] }
+              "items": {
+                "enum": ["file", "package", "repository", "public"]
+              }
             },
             {
               "type": "object",
@@ -122,17 +148,23 @@
                 "javascript": {
                   "type": "array",
                   "minItems": 1,
-                  "items": { "enum": ["file", "package", "repository", "public"] }
+                  "items": {
+                    "enum": ["file", "package", "repository", "public"]
+                  }
                 },
                 "python": {
                   "type": "array",
                   "minItems": 1,
-                  "items": { "enum": ["file", "package", "repository", "public"] }
+                  "items": {
+                    "enum": ["file", "package", "repository", "public"]
+                  }
                 },
                 "rust": {
                   "type": "array",
                   "minItems": 1,
-                  "items": { "enum": ["file", "package", "repository", "public"] }
+                  "items": {
+                    "enum": ["file", "package", "repository", "public"]
+                  }
                 }
               }
             }
@@ -422,7 +454,9 @@
         },
         "key": {
           "oneOf": [
-            { "const": "fn-name" },
+            {
+              "const": "fn-name"
+            },
             {
               "type": "object",
               "additionalProperties": false,

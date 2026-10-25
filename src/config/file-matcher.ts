@@ -1,4 +1,16 @@
 import { normalizePath } from '../graph.js';
+import type { IncludeOptions } from './balk2-config.js';
+
+/** The include patterns and the test-code switch, from either form of the `include` option. */
+export function resolveInclude(include: readonly string[] | IncludeOptions | undefined): {
+  patterns: readonly string[] | undefined;
+  tests: boolean;
+} {
+  if (include === undefined) return { patterns: undefined, tests: true };
+  if (Array.isArray(include)) return { patterns: include as readonly string[], tests: true };
+  const options = include as IncludeOptions;
+  return { patterns: options.patterns, tests: options.tests ?? true };
+}
 
 /**
  * Filter a list of file paths against include and exclude pattern arrays.

@@ -100,6 +100,9 @@ interface DependencyOrigin {
   readonly dir: string;
 }
 
+/** The edition assumed for a package whose inherited edition has no workspace in the repository. */
+const UNRESOLVED_EDITION = '2021';
+
 const DEPENDENCY_TABLES: readonly { readonly table: string; readonly kind: CargoDependencyKind }[] =
   [
     { table: 'dependencies', kind: 'normal' },
@@ -329,6 +332,9 @@ function resolvePackage(
     const value = shared?.package[field];
     if (value === undefined) {
       report(ctx, `[package] ${field} inherits from [workspace.package], which does not set it`);
+      // The edition is unknown without its workspace. 2021 is assumed: under the 2015 default,
+      // bare module paths resolve from the crate root, which later editions do not do.
+      if (field === 'edition') edition = edition ?? UNRESOLVED_EDITION;
       continue;
     }
     if (field === 'edition' || field === 'version') {

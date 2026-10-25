@@ -23,6 +23,7 @@ import type {
   SourceSpan,
   PackageNode,
 } from './types.js';
+import { isTestFile } from './analyzer/test-files.js';
 import { normalizePath } from './path-utils.js';
 import {
   compareRelationships,
@@ -63,7 +64,12 @@ export class ConnectionGraph {
    */
   addFile(path: string, language?: string): FileNode {
     const normalized = normalizePath(path);
-    const node: FileNode = { kind: 'file', path: normalized, ...(language ? { language } : {}) };
+    const node: FileNode = {
+      kind: 'file',
+      path: normalized,
+      ...(language ? { language } : {}),
+      ...(isTestFile(normalized) ? { tests: true } : {}),
+    };
     this.files.set(normalized, node);
     return node;
   }
