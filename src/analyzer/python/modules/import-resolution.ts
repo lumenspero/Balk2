@@ -57,7 +57,8 @@ const ROOT_SCOPE: Scope = { typeOnly: false, labels: [] };
  * Absolute imports search the script directory (when given), then the import roots. Relative
  * imports search the file's own package directory, climbed one directory per extra dot. A `from`
  * name is an attribute of the target module when the module binds it, and otherwise a submodule.
- * An internal name that matches nothing is unresolved. An external name is recorded as external.
+ * An internal name that matches nothing is unresolved. A namespace package is shared with installed
+ * distributions, so a name under one that the repository lacks is external. An external name is recorded as external.
  * `if TYPE_CHECKING:` blocks are type-only. `try` and `except` alternatives carry conditions.
  */
 export function createImportResolver(
@@ -73,6 +74,52 @@ export function createImportResolver(
     return computed;
   };
 
+  const starCache = new Map<string, Array<{ kind: 'file'; path: string }>>();
+  const starTargets = (file: string): Array<{ kind: 'file'; path: string }> => {
+    const cached = starCache.get(file);
+    if (cached) return cached;
+    const targets: Array<{ kind: 'file'; path: string }> = [];
+    starCache.set(file, targets);
+    const roots = searchPath(options.roots, undefined);
+    for (const stmt of parseModuleRecovering(options.readText(file)).body) {
+      if (stmt.kind !== 'importfrom' || stmt.names !== 'star') continue;
+      const parts = stmt.module ? stmt.module.split('.') : [];
+      let base: ModuleEntry | undefined;
+      if (stmt.level > 0) {
+        const dir = relativeBaseDir(file, stmt.level);
+        if (dir !== undefined) {
+          base = parts.length === 0 ? index.packageAt(dir) : index.resolve(parts, [dir]).entry;
+        }
+      } else {
+        base = index.resolve(parts, roots).entry;
+      }
+      const target = base ? fileTarget(base) : undefined;
+      if (target) targets.push(target);
+    }
+    return targets;
+  };
+
+  // What a module binds, and what a star import of it brings in, both including names it gets
+  // through its own star imports. A visiting set stops cycles between modules that star-import each other.
+  const visiting = new Set<string>();
+  const bound = (file: string): Set<string> => {
+    const out = new Set(names(file).bound);
+    if (visiting.has(file)) return out;
+    visiting.add(file);
+    for (const target of starTargets(file)) {
+      for (const name of exports(target.path)) out.add(name);
+    }
+    visiting.delete(file);
+    return out;
+  };
+  const exports = (file: string): string[] => {
+    const module = names(file);
+    if (module.all !== undefined) return [...module.all];
+    return [...bound(file)].filter((name) => !name.startsWith('_'));
+  };
+  const lazy = (file: string): boolean => names(file).bound.includes('__getattr__');
+  const view: ModuleView = { bound, exports, lazy };
+
   return {
     resolveFile(
       filePath: string,
@@ -85,7 +132,7 @@ export function createImportResolver(
       const emit = (stmt: Stmt, scope: Scope): void => {
         if (stmt.kind === 'import') emitImport(file, stmt, scope, topDirs, index, out);
         else if (stmt.kind === 'importfrom') {
-          emitFrom(file, stmt, scope, topDirs, index, names, out);
+          emitFrom(file, stmt, scope, topDirs, index, view, out);
         }
       };
       walk(parseModuleRecovering(source).body, ROOT_SCOPE, emit);
@@ -176,7 +223,7 @@ function emitFrom(
   scope: Scope,
   topDirs: readonly string[],
   index: ModuleIndex,
-  names: (file: string) => ReturnType<typeof moduleNames>,
+  view: ModuleView,
   out: ResolvedImport[],
 ): void {
   const specifier = '.'.repeat(stmt.level) + (stmt.module ?? '');
@@ -236,7 +283,7 @@ function emitFrom(
   const baseFile = fileTarget(base);
   if (stmt.names === 'star') {
     if (!baseFile) return;
-    const star = starNames(baseFile.path, names);
+    const star = view.exports(baseFile.path);
     out.push(edge(file, specifier, 'from', 'star', baseFile, star, scope, stmt.span));
     return;
   }
@@ -244,7 +291,7 @@ function emitFrom(
   const attributes: string[] = [];
   const imported: string[] = [];
   const bound =
-    baseFile && baseFile.path !== file ? new Set(names(baseFile.path).bound) : new Set<string>();
+    baseFile && baseFile.path !== file ? view.bound(baseFile.path) : new Set<string>();
   const submodules: Array<{ alias: Alias; target: FactTarget }> = [];
   const unresolved: Array<{ alias: Alias }> = [];
   for (const alias of stmt.names) {
@@ -257,6 +304,12 @@ function emitFrom(
     if (child) {
       const target = fileTarget(child);
       if (target) submodules.push({ alias, target });
+      continue;
+    }
+    if (baseFile && view.lazy(baseFile.path)) {
+      // The module's `__getattr__` provides the name at runtime, so the name is its attribute.
+      attributes.push(localName(alias));
+      imported.push(alias.name);
       continue;
     }
     unresolved.push({ alias });
@@ -310,7 +363,11 @@ function relativeBaseDir(file: string, level: number): string | undefined {
   return kept.length > 0 ? kept.join('/') : '.';
 }
 
-/** The target for a dotted name that did not resolve: internal failures stay internal. */
+/**
+ * The target for a dotted name that did not resolve. A regular package is internal, so a missing
+ * name under it is unresolved. A namespace package is shared with installed distributions (`google`
+ * is one), so a missing name under it may come from one and is external.
+ */
 export function missingTarget(
   specifier: string,
   parts: readonly string[],
@@ -318,7 +375,8 @@ export function missingTarget(
   topDirs: readonly string[],
 ): FactTarget {
   const top = parts[0] ?? specifier;
-  const internal = index.resolve([top], topDirs).entry !== undefined;
+  const entry = index.resolve([top], topDirs).entry;
+  const internal = entry !== undefined && entry.kind !== 'namespace';
   if (internal) {
     return {
       kind: 'unresolved',
@@ -337,13 +395,12 @@ function fileTarget(entry: ModuleEntry): { kind: 'file'; path: string } | undefi
 }
 
 /** The names a star import binds: `__all__` when static, otherwise the public names. */
-function starNames(
-  file: string,
-  names: (file: string) => ReturnType<typeof moduleNames>,
-): string[] {
-  const module = names(file);
-  if (module.all !== undefined) return [...module.all];
-  return module.bound.filter((name) => !name.startsWith('_'));
+/** What a module binds and exports, following its star imports. */
+interface ModuleView {
+  readonly bound: (file: string) => Set<string>;
+  readonly exports: (file: string) => string[];
+  /** True when the module defines a module-level `__getattr__`, which can provide any name. */
+  readonly lazy: (file: string) => boolean;
 }
 
 /** The roots the search goes through, with the script directory first when there is one. */
@@ -388,12 +445,8 @@ function labelled(scope: Scope, label: string): Scope {
 /** `TYPE_CHECKING`, bare or as `typing.TYPE_CHECKING` / `typing_extensions.TYPE_CHECKING`. */
 function isTypeChecking(test: Expr): boolean {
   if (test.kind === 'name') return test.id === 'TYPE_CHECKING';
-  return (
-    test.kind === 'attribute' &&
-    test.attr === 'TYPE_CHECKING' &&
-    test.value.kind === 'name' &&
-    (test.value.id === 'typing' || test.value.id === 'typing_extensions')
-  );
+  // Any `module.TYPE_CHECKING`, including an alias such as `import typing as t`.
+  return test.kind === 'attribute' && test.attr === 'TYPE_CHECKING' && test.value.kind === 'name';
 }
 
 /** The name of an exception expression, for a condition label. */

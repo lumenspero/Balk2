@@ -39,6 +39,41 @@ describe('absolute imports', () => {
     expect(edge?.names).toEqual(['pkg']);
   });
 
+  it('resolves a name that reaches a package through a star import of a module that binds it', () => {
+    const results = resolve(
+      {
+        'pkg/__init__.py': '',
+        'pkg/types/__init__.py': 'from pkg.dtypes.api import *\n',
+        'pkg/dtypes/__init__.py': '',
+        'pkg/dtypes/api.py': 'from pkg.dtypes.common import is_string\n__all__ = ["is_string"]\n',
+        'pkg/dtypes/common.py': 'def is_string(x):\n    return x\n',
+        'main.py': 'from pkg.types import is_string\n',
+      },
+      'main.py',
+    );
+    expect(results.some((r) => r.target.kind === 'unresolved')).toBe(false);
+    expect(results[0]).toMatchObject({
+      target: { kind: 'file', path: 'pkg/types/__init__.py' },
+      names: ['is_string'],
+    });
+  });
+
+  it('treats an import under an aliased `typing.TYPE_CHECKING` guard as type-only', () => {
+    const results = resolve(
+      { ...pkg, 'main.py': 'import typing as t\nif t.TYPE_CHECKING:\n    from pkg import mod\n' },
+      'main.py',
+    );
+    expect(results.find((r) => r.specifier === 'pkg')?.typeOnly).toBe(true);
+  });
+
+  it('reports a missing name under a namespace package as external, since an installed package may supply it', () => {
+    const results = resolve(
+      { 'ns/a/one.py': 'x = 1\n', 'main.py': 'from ns.nothere import thing\n' },
+      'main.py',
+    );
+    expect(results[0]?.target).toEqual({ kind: 'external', name: 'ns' });
+  });
+
   it('reports an internal name that matches nothing as unresolved, and an outside name as external', () => {
     const results = resolve(
       { ...pkg, 'main.py': 'import pkg.nothere\nimport requests\n' },

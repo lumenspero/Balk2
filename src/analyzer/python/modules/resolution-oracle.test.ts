@@ -73,6 +73,8 @@ describe('python import resolution: Balk2 matches importlib', () => {
       const observed = new Map<string, Observed>();
       for (const file of files.filter((path) => path.endsWith('.py'))) {
         for (const result of resolver.resolveFile(file, readText(file))) {
+          // A type-only import (under `if TYPE_CHECKING:`) does not run, so it has no runtime answer.
+          if (result.typeOnly) continue;
           record(observed, file, result);
         }
       }

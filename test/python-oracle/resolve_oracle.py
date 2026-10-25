@@ -140,6 +140,23 @@ def probe_star(case, absname):
     return dict(case.locate(spec.origin), via="star", names=names)
 
 
+def is_type_checking(test):
+    return (isinstance(test, ast.Name) and test.id == "TYPE_CHECKING") or (
+        isinstance(test, ast.Attribute) and test.attr == "TYPE_CHECKING"
+    )
+
+
+def type_checking_nodes(tree):
+    """The ids of every node inside an `if TYPE_CHECKING:` body, which never runs."""
+    found = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.If) and is_type_checking(node.test):
+            for statement in node.body:
+                for child in ast.walk(statement):
+                    found.add(id(child))
+    return found
+
+
 def package_of(rel, directory, roots):
     full = os.path.join(directory, rel)
     for root in roots:
@@ -166,7 +183,10 @@ def run_case(directory):
         with open(path, encoding="utf-8") as handle:
             tree = ast.parse(handle.read(), filename=path)
         package = package_of(rel, directory, roots)
+        type_only = type_checking_nodes(tree)
         for node in ast.walk(tree):
+            if id(node) in type_only:
+                continue
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     bound = alias.asname or alias.name.split(".")[0]
