@@ -155,4 +155,27 @@ Result: 800 of 11,685 entries differ (pandas library 7,321; djangogirls 1,004; g
 
 The real-world comparison is a diagnostic, not a CI check. The repository test fails on all five repositories, because it counts the convention differences above and the Django cases.
 
-The Rust oracle still needs `rustc` and `cargo`, which are not installed in this environment.
+## Seventh run (Rust module oracle on the real-world repositories, rustc 1.99.0)
+
+Rust module oracle: the driver compiles each crate root with `rustc --emit=dep-info` and compares the `.rs` files it reads with the files Balk2 reports as reached when the crate is active (`reachedWhenActive`). `rustc` came from the conda-forge `rust` 1.99.0 package with its `rust-std` package, unpacked without root; cargo was not available because crates.io is not reachable from this environment. The comparison is per crate root, so a crate whose dependencies are not on disk cannot be compiled and is reported as `rustc-no-depinfo`.
+
+| Repository | Crates | Match | Differs | No dep-info |
+|------------|-------:|------:|--------:|------------:|
+| `BurntSushi/ripgrep` | 21 | 20 | 0 | 1 |
+| `dtolnay/async-trait` | 4 | 4 | 0 | 0 |
+| `rustwasm/wasm-pack-template` | 2 | 2 | 0 | 0 |
+| `pydantic/pydantic-core` (Rust crate) | 4 | 3 | 0 | 1 |
+| `tauri-apps/tauri` (sparse checkout) | 10 | 10 | 0 | 0 |
+| **Total** | **41** | **39** | **0** | **2** |
+
+The two crates without dep-info fail for environment reasons, not resolver reasons: `crates/grep/src/lib.rs` in ripgrep names the sibling crate `grep_cli` in `pub extern crate grep_cli as cli;`, which a single-root compile cannot find; `src/lib.rs` in pydantic-core uses `env!("CARGO_PKG_VERSION")`, which only cargo sets.
+
+Problems found while running the driver, all in the driver and none in Balk2:
+
+- The dep-info comparison first counted files that `include_str!` and `include_bytes!` read (shell completions, help templates, a test fixture). The repository oracle filters to `.rs` (`rustcReads`); the driver did not. Fixed by applying the same filter.
+- Dep-info files were named after the crate name, so every `src/lib.rs` wrote to the same file and read another crate's output. Fixed by keying the file on the crate path.
+- The driver test used vitest's default 30-second timeout, which the full run exceeds.
+
+Rust module oracle test (`BALK2_RUST_ORACLE=1`) passes 8 of 8 on rustc 1.99.0.
+
+Previously blocked: rustc 1.75.0 from Ubuntu 22.04 could not compile ripgrep, which uses edition 2024. The conda-forge toolchain resolves this.
