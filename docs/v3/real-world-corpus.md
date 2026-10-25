@@ -105,3 +105,43 @@ Counts rose for macro-generated entries because a mention of a name bound by a f
 | pydantic_pydantic-core | 0      | 550             | No change                                                                                                              |
 
 The earlier run reported a macro-generated count for ripgrep that was a bug: a plain miss was classified as macro-generated. That count is gone.
+
+## Sixth run (Python oracles on the real-world repositories, CPython 3.12)
+
+Inventory oracle: CPython's `ast` (`test/python-oracle/dump_inventory.py`) compared with Balk2's inventory (`src/analyzer/python/oracle-inventory.ts`), file by file. Only `.py` files are compared.
+
+| Repository                      | Files | CPython syntax errors | Balk2 mismatches |
+| ------------------------------- | ----- | --------------------- | ---------------- |
+| pallets_click                   | 91    | 0                     | 0                |
+| djangogirls_djangogirls         | 293   | 0                     | 0                |
+| googleapis\_\_google-cloud-python | 157 | 0                   | 0                |
+| pandas-dev\_\_pandas            | 57    | 0                     | 0                |
+| pydantic_pydantic-core          | 124   | 0                     | 0                |
+
+Import-resolution oracle: `test/python-oracle/resolve_oracle.py` imports the modules it checks, so it runs package code from these repositories. It was run under CPython 3.12 in a sandbox virtual environment, with the third-party packages the repositories import installed from PyPI (55 packages; PyQt5 was left out). The repositories' own build steps were not run, so their compiled extensions are not built. The fixture run (CI's `test/python-resolution`) passes, 9 of 9.
+
+Five defects in the oracle were found and fixed in `resolve_oracle.py`:
+
+- `Case.fresh()` removed every module loaded since the start, including standard-library modules. On the real repositories this crashed the interpreter (segmentation fault during `ast.parse`). It now removes only modules loaded from the case directory.
+- A built-in or frozen module (such as `itertools`) has no `__file__`, and was classified as a namespace package. It is now external.
+- A `from` import of a module that is not installed was classified as unresolved. It is now external, the same as an `import` of a missing module.
+- A name that is a submodule (`from click import types`) was reported at the package's `__init__.py`. It is now reported at the submodule's own file.
+- Reading an attribute can raise (Django's settings object does without configuration). Such reads now fall back to the module's namespace.
+
+The comparison covers 6,348 import entries. Pydantic-core's compiled extension was added to the scratch copy of the case from the PyPI wheel for the same version (2.41.5, the version in the repository's `Cargo.toml`), since no Rust toolchain is installed. The Python wrapper files match that wheel exactly. The pandas case is a sparse copy (`pandas/core` and `pandas/io` only), so pandas cannot be imported from it.
+
+The comparison differs on 747 entries:
+
+| Cause                                                                                                                                                                         | Entries |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| pandas: the sparse copy has no `pandas/__init__.py`, `_config`, or `_libs`, so nothing can be imported. Clearing these needs the full repository and a build                    | 229     |
+| Django apps whose models cannot be imported without a configured Django project (djangogirls)                                                                                   | 277     |
+| google-cloud-python: a name under the `google` namespace that the repository also owns. The oracle finds it in an installed third-party package (`google.protobuf`, `google.auth`, `google.longrunning`, `google.rpc`), and Balk2 reports it unresolved (184). Explicit package bindings and submodules are reported at different files (8). Test helpers imported relatively, outside a package (14) | 206     |
+| pydantic-core: the oracle reports the compiled `.so` that defines each name, and Balk2 reports the `.pyi` stub, the only source file in the repository (32)                 | 32      |
+| Platform-specific names (`windll`, `WINFUNCTYPE`, and `_winconsole`, which asserts Windows at import) (click)                                                                  | 3       |
+
+Two decisions are open. First, a name under a namespace package that the repository also owns, and that Balk2 cannot find in the repository, is reported as unresolved. The oracle reports it as external when an installed package provides it. Second, when a package's `__init__.py` binds a submodule name explicitly, Balk2 reports the package binding, and the oracle reports the submodule's own file. Both point at the same module.
+
+For the entries where Balk2 resolves a file and the oracle cannot import, Balk2's target was checked against the source. The check confirmed the target binds the name for most entries. Of the rest, 12 were reviewed by hand: all are aliases (`import pagers_async as pagers`), re-exports, or submodules, and Balk2 is correct for each. No Balk2 defect is confirmed. One known limitation: a name missing from a standard-library module (`from urllib import urlopen`) is reported as external, because Balk2 has no index of standard-library names.
+
+The Rust oracle still needs `rustc` and `cargo`, which are not installed in this environment.

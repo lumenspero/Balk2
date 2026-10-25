@@ -40,8 +40,13 @@ class Case:
         self.base = set(sys.modules)
 
     def fresh(self):
+        # Forget only modules loaded from this case. Standard library and interpreter modules stay:
+        # removing them can crash the interpreter (seen on real repositories under CPython 3.10 and 3.12).
         for name in list(sys.modules):
-            if name not in self.base:
+            if name in self.base:
+                continue
+            file = getattr(sys.modules[name], "__file__", None) or ""
+            if file.startswith(self.directory + os.sep):
                 del sys.modules[name]
         importlib.invalidate_caches()
 
@@ -77,15 +82,40 @@ def probe_module(case, name):
     return dict(case.locate(spec.origin), via="whole")
 
 
+def safe_getattr(obj, name):
+    """getattr that treats any error as a missing attribute (lazy objects such as Django settings can raise)."""
+    try:
+        return getattr(obj, name, None)
+    except Exception:
+        return None
+
+
 def probe_from(case, absname, alias):
     case.fresh()
     try:
         module = importlib.import_module(absname)
     except Exception:
-        return {"kind": "unresolved"}
-    if hasattr(module, alias):
+        # A module that is not installed is external, the same as in probe_module.
+        return {"kind": "unresolved" if case.internal(absname.split(".")[0]) else "external"}
+    try:
+        has_attribute = hasattr(module, alias)
+    except Exception:
+        # Reading the attribute can raise (Django's settings object does without configuration). The name is still bound in the module.
+        has_attribute = alias in vars(module)
+    if has_attribute:
+        try:
+            value = getattr(module, alias)
+        except Exception:
+            value = vars(module).get(alias)
+        if safe_getattr(value, "__name__") == absname + "." + alias and safe_getattr(value, "__file__"):
+            # The attribute is the submodule itself, so its origin is the submodule's own file.
+            return dict(case.locate(value.__file__), via="submodule")
         origin = getattr(module, "__file__", None)
         if origin is None:
+            # A built-in or frozen module has no file, but its names still come from the standard library.
+            spec = getattr(module, "__spec__", None)
+            if spec is not None and spec.origin in ("built-in", "frozen"):
+                return {"kind": "external", "via": "attribute"}
             return {"kind": "namespace"}
         return dict(case.locate(origin), via="attribute")
     spec = find_spec_or_none(absname + "." + alias)
