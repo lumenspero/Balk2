@@ -128,7 +128,8 @@ function parseManifest(
 ): ParsedManifest | undefined {
   let json: unknown;
   try {
-    json = JSON.parse(text);
+    // npm accepts a leading byte-order mark; JSON.parse does not.
+    json = JSON.parse(text.replace(/^\uFEFF/, ''));
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     problems.push({ path, message: `package.json is not valid JSON: ${reason}` });

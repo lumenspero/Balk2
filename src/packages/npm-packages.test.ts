@@ -84,6 +84,12 @@ describe('discoverNpmPackages', () => {
     expect(result.problems[0]?.message).toMatch(/^package\.json is not valid JSON/);
   });
 
+  it('reads a manifest that starts with a byte-order mark', () => {
+    const result = discover({ 'package.json': '\uFEFF{"name":"root"}' });
+    expect(result.packages.map((p) => p.id)).toEqual(['package:npm:.']);
+    expect(result.problems).toEqual([]);
+  });
+
   it('draws no dependency edges outside a workspace', () => {
     const result = discover({
       'package.json': '{"name":"a","dependencies":{"b":"^1.0.0"}}',

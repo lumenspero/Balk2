@@ -82,3 +82,14 @@ describe('scanRepositoryFiles exclusions (V3 Phase 1.3)', () => {
     expect(scanRepositoryFiles(root)).toEqual(['src/index.ts']);
   });
 });
+
+describe('scanRepositoryFiles symbolic links', () => {
+  it('includes a symbolic link to a file and does not follow a link to a directory', () => {
+    write('shared/util.ts', 'export const u = 1;\n');
+    write('src/real.ts', 'export {};\n');
+    fs.symlinkSync(path.join(root, 'shared/util.ts'), path.join(root, 'src/util.ts'));
+    fs.symlinkSync(path.join(root, 'shared'), path.join(root, 'src/shared-dir'));
+
+    expect(scanRepositoryFiles(root)).toEqual(['shared/util.ts', 'src/real.ts', 'src/util.ts']);
+  });
+});

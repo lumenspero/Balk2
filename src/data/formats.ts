@@ -78,7 +78,17 @@ export function isDataArtifact(filePath: string): boolean {
 }
 
 /**
+ * Make an import target a node. A JSON file is an artifact node, created when code imports or
+ * requires it. Other targets are file nodes already.
+ */
+export function ensureImportTarget(graph: ConnectionGraph, target: string): void {
+  if (graph.hasFile(target) || graph.hasArtifact(target)) return;
+  if (detectArtifactFormat(target) === 'json') graph.addArtifact(target, 'json');
+}
+
+/**
  * Scan a list of file paths and add all recognized data artifacts as ArtifactNodes to the graph.
+ * JSON files are left out here; they are added when code references them.
  */
 export function registerDataArtifacts(
   filePaths: readonly string[],
@@ -89,7 +99,8 @@ export function registerDataArtifacts(
     // Manifests are file nodes, registered by registerManifests, not data artifacts.
     if (detectManifestKind(path)) continue;
     const format = detectArtifactFormat(path);
-    if (format) {
+    // JSON becomes an artifact only when code references it (see ensureImportTarget).
+    if (format && format !== 'json') {
       const norm = normalizePath(path);
       graph.addArtifact(norm, format);
       registered.push(norm);

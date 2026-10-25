@@ -3,6 +3,7 @@ import {
   detectArtifactFormat,
   isDataArtifact,
   registerDataArtifacts,
+  ensureImportTarget,
   inferDataRelationshipType,
   addDataRelationship,
 } from './index.js';
@@ -43,8 +44,10 @@ describe('Data Format Detection', () => {
 
     const registered = registerDataArtifacts(files, graph);
 
-    expect(registered).toEqual(['data/raw.json', 'data/titles.parquet']);
-    expect(graph.hasArtifact('data/raw.json')).toBe(true);
+    // JSON is left out until code references it; see ensureImportTarget.
+    expect(registered).toEqual(['data/titles.parquet']);
+    expect(graph.hasArtifact('data/raw.json')).toBe(false);
+    ensureImportTarget(graph, 'data/raw.json');
     expect(graph.getArtifact('data/raw.json')?.format).toBe('json');
     expect(graph.hasArtifact('data/titles.parquet')).toBe(true);
     expect(graph.getArtifact('data/titles.parquet')?.format).toBe('parquet');

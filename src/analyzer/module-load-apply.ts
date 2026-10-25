@@ -2,6 +2,7 @@ import type { ConnectionGraph } from '../graph.js';
 import { runModuleLoadEngine, type ModuleLoadEdge } from '../facts/module-load-engine.js';
 import { moduleLoadFacts } from './module-load-facts.js';
 import type { ModuleLoad } from './module-loads.js';
+import { ensureImportTarget } from '../data/formats.js';
 
 /**
  * Writes module loads to the graph through the module-load engine. Internal loads are applied
@@ -26,6 +27,7 @@ export function applyModuleLoadEdges(
       .getRelationships(edge.from)
       .some((rel) => rel.type === 'imports' && rel.from === edge.from && rel.to === edge.to);
     if (alreadyLinked) continue;
+    ensureImportTarget(graph, edge.to);
     graph.addRelationship('imports', edge.from, edge.to, 'high', {
       evidence: 'ts-program',
       spans: [edge.span],

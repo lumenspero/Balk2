@@ -49,6 +49,7 @@ export type ModuleLoad =
  * `require`, and its edges are not restamped.
  *
  * A `new URL` whose second argument is not `import.meta.url` is not a module load and is skipped.
+ * A `new URL` whose specifier is a literal ending in `/` names a directory and is skipped.
  */
 export function collectModuleLoads(
   repository: RepositoryProgram,
@@ -102,6 +103,8 @@ function describeUrl(
   const args = node.arguments ?? [];
   const [specifier, base] = args;
   if (!specifier || !base || !isImportMetaUrl(base)) return undefined;
+  // A URL that ends in `/` names a directory. It is read as a directory, not loaded as a module.
+  if (ts.isStringLiteralLike(specifier) && specifier.text.endsWith('/')) return undefined;
 
   const parent = node.parent;
   const isWorker =

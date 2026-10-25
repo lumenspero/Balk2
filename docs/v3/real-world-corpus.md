@@ -4,18 +4,18 @@ Public repositories that Phase 13.3 runs every language against. Each one is pin
 
 ## Repositories
 
-| Kind (plan)                         | Repository                       | Commit    | Checkout                                                                            |
-| ----------------------------------- | -------------------------------- | --------- | ----------------------------------------------------------------------------------- |
-| Python: src-layout library          | `pallets/click`                  | `2247b35` | Full                                                                                |
-| Python: Django-style app            | `djangogirls/djangogirls`        | `3a0d52a` | Full                                                                                |
-| Python: data pipeline with pandas   | `pandas-dev/pandas` (see note)   | `6b1799d` | Sparse: `pandas/io`, `pandas/core/frame.py`                                         |
-| Python: namespace-package monorepo  | `googleapis/google-cloud-python` | `eb8a766` | Sparse: `packages/google-api-core`, `packages/google-cloud-core`                    |
-| Rust: multi-crate workspace         | `BurntSushi/ripgrep`             | `6892bc2` | Full                                                                                |
-| Rust: wasm-pack app                 | `rustwasm/wasm-pack-template`    | `a6a6658` | Full                                                                                |
-| Rust: maturin / PyO3 package        | `pydantic/pydantic-core`         | `383eb95` | Full                                                                                |
-| Rust: proc-macro crate and consumer | `dtolnay/async-trait`            | `20fffdd` | Full                                                                                |
-| Rust: Tauri app                     | `tauri-apps/tauri`               | `1fc6d9c` | Sparse: `crates/tauri`, `crates/tauri-build`, `crates/tauri-macros`, `examples/api` |
-| JS/TS: V2 real-world set            | Not run in this pass             |           |                                                                                     |
+| Kind (plan)                         | Repository                                                                | Commit                                     | Checkout                                                                            |
+| ----------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------- |
+| Python: src-layout library          | `pallets/click`                                                           | `2247b35`                                  | Full                                                                                |
+| Python: Django-style app            | `djangogirls/djangogirls`                                                 | `3a0d52a`                                  | Full                                                                                |
+| Python: data pipeline with pandas   | `pandas-dev/pandas` (see note)                                            | `6b1799d`                                  | Sparse: `pandas/io`, `pandas/core/frame.py`                                         |
+| Python: namespace-package monorepo  | `googleapis/google-cloud-python`                                          | `eb8a766`                                  | Sparse: `packages/google-api-core`, `packages/google-cloud-core`                    |
+| Rust: multi-crate workspace         | `BurntSushi/ripgrep`                                                      | `6892bc2`                                  | Full                                                                                |
+| Rust: wasm-pack app                 | `rustwasm/wasm-pack-template`                                             | `a6a6658`                                  | Full                                                                                |
+| Rust: maturin / PyO3 package        | `pydantic/pydantic-core`                                                  | `383eb95`                                  | Full                                                                                |
+| Rust: proc-macro crate and consumer | `dtolnay/async-trait`                                                     | `20fffdd`                                  | Full                                                                                |
+| Rust: Tauri app                     | `tauri-apps/tauri`                                                        | `1fc6d9c`                                  | Sparse: `crates/tauri`, `crates/tauri-build`, `crates/tauri-macros`, `examples/api` |
+| JS/TS: V2 real-world set            | `expressjs/express`, `colinhacks/zod`, `date-fns/date-fns`, `vitejs/vite` | `1c6f1b0`, `afdac65`, `a9739fb`, `82e7aa0` | Full (vite is a full shallow clone, not sparse)                                     |
 
 **Note on pandas.** The plan asks for a data pipeline that uses pandas. `pandas-dev/pandas` is pandas itself, a library, so it stands in for the pandas-heavy codebase. A pipeline repository would be a better match if one is found.
 
@@ -110,13 +110,13 @@ The earlier run reported a macro-generated count for ripgrep that was a bug: a p
 
 Inventory oracle: CPython's `ast` (`test/python-oracle/dump_inventory.py`) compared with Balk2's inventory (`src/analyzer/python/oracle-inventory.ts`), file by file. Only `.py` files are compared.
 
-| Repository                      | Files | CPython syntax errors | Balk2 mismatches |
-| ------------------------------- | ----- | --------------------- | ---------------- |
-| pallets_click                   | 91    | 0                     | 0                |
-| djangogirls_djangogirls         | 293   | 0                     | 0                |
-| googleapis\_\_google-cloud-python | 157 | 0                   | 0                |
-| pandas-dev\_\_pandas            | 57    | 0                     | 0                |
-| pydantic_pydantic-core          | 124   | 0                     | 0                |
+| Repository                        | Files | CPython syntax errors | Balk2 mismatches |
+| --------------------------------- | ----- | --------------------- | ---------------- |
+| pallets_click                     | 91    | 0                     | 0                |
+| djangogirls_djangogirls           | 293   | 0                     | 0                |
+| googleapis\_\_google-cloud-python | 157   | 0                     | 0                |
+| pandas-dev\_\_pandas              | 57    | 0                     | 0                |
+| pydantic_pydantic-core            | 124   | 0                     | 0                |
 
 Import-resolution oracle: `test/python-oracle/resolve_oracle.py` imports the modules it checks, so it runs package code from these repositories. It was run under CPython 3.12 in a sandbox virtual environment, with the third-party packages the repositories import installed from PyPI. The compiled extensions were built from source for pandas (shallow clone at `199f52b`, built with meson-python in chunks). For pydantic-core, the compiled extension from the PyPI wheel of the same version (2.41.5) was used, since no Rust toolchain is installed. The pandas scope is the library code (297 files); test files were not compared. The fixture run (CI's `test/python-resolution`) passes, 9 of 9.
 
@@ -143,15 +143,15 @@ Decisions:
 
 Result: 800 of 11,685 entries differ (pandas library 7,321; djangogirls 1,004; google-cloud-python 1,445; click 687; pydantic-core 1,228). The differences are:
 
-| Cause                                                                                                                                                              | Entries |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| pandas: a compiled extension has a `.pyi` stub, and the oracle reports the `.so` (stub convention)                                                                  | 457     |
-| pydantic-core: the same stub convention                                                                                                                             | 32      |
-| pandas: package binding vs submodule (convention)                                                                                                                  | 7       |
-| pandas: `pandas_parser` and `pandas_datetime` are compiled from C sources and have no Python source in the repository, so Balk2 has no file to report                | 2       |
-| djangogirls: Django apps whose models cannot be imported without a configured Django project                                                                       | 277     |
-| google-cloud-python: package binding vs submodule (convention, 8). Test helpers imported relatively from outside a package, which pytest resolves at runtime (14)      | 22      |
-| click: Windows-only names (`windll`, `WINFUNCTYPE`) and a platform-specific module                                                                                  | 3       |
+| Cause                                                                                                                                                             | Entries |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| pandas: a compiled extension has a `.pyi` stub, and the oracle reports the `.so` (stub convention)                                                                | 457     |
+| pydantic-core: the same stub convention                                                                                                                           | 32      |
+| pandas: package binding vs submodule (convention)                                                                                                                 | 7       |
+| pandas: `pandas_parser` and `pandas_datetime` are compiled from C sources and have no Python source in the repository, so Balk2 has no file to report             | 2       |
+| djangogirls: Django apps whose models cannot be imported without a configured Django project                                                                      | 277     |
+| google-cloud-python: package binding vs submodule (convention, 8). Test helpers imported relatively from outside a package, which pytest resolves at runtime (14) | 22      |
+| click: Windows-only names (`windll`, `WINFUNCTYPE`) and a platform-specific module                                                                                | 3       |
 
 The real-world comparison is a diagnostic, not a CI check. The repository test fails on all five repositories, because it counts the convention differences above and the Django cases.
 
@@ -159,14 +159,14 @@ The real-world comparison is a diagnostic, not a CI check. The repository test f
 
 Rust module oracle: the driver compiles each crate root with `rustc --emit=dep-info` and compares the `.rs` files it reads with the files Balk2 reports as reached when the crate is active (`reachedWhenActive`). `rustc` came from the conda-forge `rust` 1.99.0 package with its `rust-std` package, unpacked without root; cargo was not available because crates.io is not reachable from this environment. The comparison is per crate root, so a crate whose dependencies are not on disk cannot be compiled and is reported as `rustc-no-depinfo`.
 
-| Repository | Crates | Match | Differs | No dep-info |
-|------------|-------:|------:|--------:|------------:|
-| `BurntSushi/ripgrep` | 21 | 20 | 0 | 1 |
-| `dtolnay/async-trait` | 4 | 4 | 0 | 0 |
-| `rustwasm/wasm-pack-template` | 2 | 2 | 0 | 0 |
-| `pydantic/pydantic-core` (Rust crate) | 4 | 3 | 0 | 1 |
-| `tauri-apps/tauri` (sparse checkout) | 10 | 10 | 0 | 0 |
-| **Total** | **41** | **39** | **0** | **2** |
+| Repository                            | Crates |  Match | Differs | No dep-info |
+| ------------------------------------- | -----: | -----: | ------: | ----------: |
+| `BurntSushi/ripgrep`                  |     21 |     20 |       0 |           1 |
+| `dtolnay/async-trait`                 |      4 |      4 |       0 |           0 |
+| `rustwasm/wasm-pack-template`         |      2 |      2 |       0 |           0 |
+| `pydantic/pydantic-core` (Rust crate) |      4 |      3 |       0 |           1 |
+| `tauri-apps/tauri` (sparse checkout)  |     10 |     10 |       0 |           0 |
+| **Total**                             | **41** | **39** |   **0** |       **2** |
 
 The two crates without dep-info fail for environment reasons, not resolver reasons: `crates/grep/src/lib.rs` in ripgrep names the sibling crate `grep_cli` in `pub extern crate grep_cli as cli;`, which a single-root compile cannot find; `src/lib.rs` in pydantic-core uses `env!("CARGO_PKG_VERSION")`, which only cargo sets.
 
@@ -179,3 +179,32 @@ Problems found while running the driver, all in the driver and none in Balk2:
 Rust module oracle test (`BALK2_RUST_ORACLE=1`) passes 8 of 8 on rustc 1.99.0.
 
 Previously blocked: rustc 1.75.0 from Ubuntu 22.04 could not compile ripgrep, which uses edition 2024. The conda-forge toolchain resolves this.
+
+## Eighth run (JS/TS real-world set, with the JSON and symlink changes)
+
+Set chosen by the user from the proposals in the Phase 13.3 review: express (CommonJS library), zod (TypeScript library with a nested tsconfig and path aliases), date-fns (TypeScript, many modules), and vite (TypeScript monorepo with fixtures and playground packages). The V2 set named in the plan was not defined in the repository, so this set is the one reviewed.
+
+Oracle: `ts.resolveModuleName` on every import, re-export, `require`, `import()` and literal `new URL(..., import.meta.url)` specifier, using the nearest `tsconfig.json`. Each internal target is compared with Balk2's `imports` edges for the same file. Edges whose source is a symbol are attributed to their file.
+
+| Repository          | Time | Files | Symbols | Relationships | Oracle edges | Agree | Missing | Extra |
+| ------------------- | ---: | ----: | ------: | ------------: | -----------: | ----: | ------: | ----: |
+| `expressjs/express` | 5.9s |   143 |     938 |           537 |          154 |   154 |       0 |     0 |
+| `colinhacks/zod`    |  32s |   553 |   8,910 |         7,963 |          864 |   864 |       0 |     0 |
+| `date-fns/date-fns` |  18s | 1,833 |   6,597 |        11,920 |        4,994 | 4,994 |       0 |     0 |
+| `vitejs/vite`       |  21s | 1,992 |   8,736 |         7,500 |        2,010 | 2,010 |       0 |     1 |
+
+No crashes. Syntax errors: vite 2, both deliberate fixtures (`syntax-error.js` and `syntax-error.ts`). Manifest problems: entries that point at build output not in the checkout (zod 43 before the fixes below, date-fns 13, vite 6) and one UTF-8 byte-order-mark `package.json` in vite. The byte-order-mark case was a defect and is fixed below. The one extra vite edge is `playground/optimize-deps/dep-incompatible/index.js`, which imports `./sub.js` through a constant URL. Balk2 is right, and the oracle only reads literal specifiers, so it is an oracle limit.
+
+Defects found by this run, all fixed in this pass with regression tests:
+
+1. **Symbolic links were dropped.** The scanner accepted only regular files, so every symlinked source file was missing (vite's `ssr-wasm` sources). Symlinks to files are now included. Symlinks to directories are still not followed, so a cycle cannot be entered.
+2. **`.mts` and `.cts` files were not analyzed**, although the schema lists them as JS/TS. They are now analyzed, and resolution candidates include them.
+3. **Nested `tsconfig.json` files were ignored.** Only the repository root configuration was used, so `paths` aliases in zod's `packages/docs` did not resolve. Module specifiers now resolve with the nearest `tsconfig.json` between the file and the root. The program and checker still use the root configuration.
+4. **A `new URL('./dir/', import.meta.url)` was read as a module load.** A URL ending in `/` names a directory, so it is no longer a load.
+5. **A `package.json` with a byte-order mark failed to parse.** npm accepts it, so the mark is now stripped before parsing.
+
+**JSON files are nodes only when code references them.** Previously every JSON file became an artifact before any code was read, which is what made the V2 map large. Now a JSON file becomes a `json` artifact when code imports or requires it, loads it with `import()` or `new URL`, or reads or writes it at a literal path. JSON files that nothing references are not in the map. In vite there are 403 JSON files on disk and 65 JSON artifacts, all referenced. Other data formats are still registered as before; the JSON rule is the only change to that behavior.
+
+Tests: the full suite passes (eight shards, all green). Three existing tests were updated for the JSON rule, and new tests cover JSON references, symlinks, nested configurations, directory URLs, and the byte-order mark. `tsc`, eslint and prettier are clean on the changed files.
+
+The JS/TS oracle and the timing driver are scratch files in the work copy, not in the repository. They should become committed tests before this section is final, if the CI oracle is to cover JavaScript like the Python and Rust oracles do.

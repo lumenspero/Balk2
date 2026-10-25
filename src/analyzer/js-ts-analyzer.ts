@@ -22,6 +22,7 @@ import { collectStateRelationships } from './state-relationships.js';
 import type { ResourceProtocol } from './resource-protocols.js';
 import { collectResourceRelationships } from './resource-detection.js';
 import type { ConfigProblem } from '../config/config-problem.js';
+import { ensureImportTarget } from '../data/formats.js';
 import type { StateConfig } from '../config/state-config.js';
 import { resolveImportPath } from './resolver.js';
 import type { ConnectionGraph } from '../graph.js';
@@ -74,7 +75,16 @@ export interface RepositoryAnalysis {
 
 export class JsTsAnalyzer implements Analyzer {
   readonly name = 'JsTsAnalyzer';
-  readonly supportedExtensions: readonly string[] = ['.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs'];
+  readonly supportedExtensions: readonly string[] = [
+    '.js',
+    '.jsx',
+    '.ts',
+    '.tsx',
+    '.mjs',
+    '.cjs',
+    '.mts',
+    '.cts',
+  ];
 
   canAnalyze(filePath: string): boolean {
     const normalized = normalizePath(filePath).toLowerCase();
@@ -343,14 +353,14 @@ export class JsTsAnalyzer implements Analyzer {
 
 function isTypeScript(path: string): boolean {
   const p = path.toLowerCase();
-  return p.endsWith('.ts') || p.endsWith('.tsx');
+  return p.endsWith('.ts') || p.endsWith('.tsx') || p.endsWith('.mts') || p.endsWith('.cts');
 }
 
 function getScriptKind(path: string): ts.ScriptKind {
   const p = path.toLowerCase();
   if (p.endsWith('.tsx')) return ts.ScriptKind.TSX;
   if (p.endsWith('.jsx')) return ts.ScriptKind.JSX;
-  if (p.endsWith('.ts')) return ts.ScriptKind.TS;
+  if (p.endsWith('.ts') || p.endsWith('.mts') || p.endsWith('.cts')) return ts.ScriptKind.TS;
   return ts.ScriptKind.JS;
 }
 
@@ -371,6 +381,7 @@ function handleImportDeclaration(
   const targetFile = resolveInternalModule(fromFile, specifier, options);
   if (!targetFile) return;
 
+  ensureImportTarget(graph, targetFile);
   graph.addRelationship('imports', fromFile, targetFile);
 
   if (node.importClause) {
@@ -404,6 +415,7 @@ function handleExportDeclaration(
     const specifier = node.moduleSpecifier.text;
     const targetFile = resolveInternalModule(fromFile, specifier, options);
     if (targetFile) {
+      ensureImportTarget(graph, targetFile);
       graph.addRelationship('imports', fromFile, targetFile);
     }
   }
@@ -429,6 +441,7 @@ function handleRequireCall(
     const specifier = firstArg.text;
     const targetFile = resolveInternalModule(fromFile, specifier, options);
     if (targetFile) {
+      ensureImportTarget(graph, targetFile);
       graph.addRelationship('imports', fromFile, targetFile);
 
       if (

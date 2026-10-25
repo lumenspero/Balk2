@@ -3,6 +3,7 @@ export {
   detectArtifactFormat,
   isDataArtifact,
   registerDataArtifacts,
+  ensureImportTarget,
 } from './formats.js';
 
 export {

@@ -277,6 +277,18 @@ function isExcludedDirectory(parentDir: string, name: string, fullPath: string):
   return false;
 }
 
+/**
+ * A symbolic link whose target is a regular file. Links to directories are not followed, so a
+ * cycle cannot be entered.
+ */
+function isSymlinkToFile(fullPath: string): boolean {
+  try {
+    return fs.statSync(fullPath).isFile();
+  } catch {
+    return false;
+  }
+}
+
 /** Recursively list repository-relative files, sorted, skipping excluded directories and locks. */
 export function scanRepositoryFiles(dir: string, baseDir: string = dir): string[] {
   const results: string[] = [];
@@ -289,7 +301,7 @@ export function scanRepositoryFiles(dir: string, baseDir: string = dir): string[
     if (entry.isDirectory()) {
       if (isExcludedDirectory(dir, entry.name, fullPath)) continue;
       results.push(...scanRepositoryFiles(fullPath, baseDir));
-    } else if (entry.isFile()) {
+    } else if (entry.isFile() || (entry.isSymbolicLink() && isSymlinkToFile(fullPath))) {
       if (DEFAULT_EXCLUDES.has(entry.name) || LOCK_FILES.has(entry.name)) continue;
       results.push(relPath);
     }

@@ -11,6 +11,8 @@ const EXTENSION_CANDIDATES: readonly string[] = [
   '.jsx',
   '.mjs',
   '.cjs',
+  '.mts',
+  '.cts',
   '/index.ts',
   '/index.tsx',
   '/index.js',

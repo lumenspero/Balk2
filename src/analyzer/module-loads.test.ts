@@ -121,3 +121,20 @@ describe('collectModuleLoads: loader receiver rules', () => {
     }
   });
 });
+
+describe('collectModuleLoads on a directory URL', () => {
+  it('reports nothing for a new URL whose specifier names a directory', () => {
+    const fixture = createRepositoryFixture(
+      {
+        'locales/index.ts': 'export {};',
+        'reader.ts': "export const dir = () => new URL('./locales/', import.meta.url);",
+      },
+      OPTIONS,
+    );
+    try {
+      expect(collectModuleLoads(fixture.repository)).toEqual([]);
+    } finally {
+      fixture.cleanup();
+    }
+  });
+});

@@ -50,6 +50,7 @@ export class RepositoryProgram {
   private readonly knownFiles: ReadonlySet<string>;
   private readonly host: ts.ModuleResolutionHost;
   private readonly program: ts.Program;
+  private readonly optionsByDir = new Map<string, ts.CompilerOptions>();
 
   constructor(options: RepositoryProgramOptions) {
     this.rootDir = path.resolve(options.rootDir);
@@ -97,13 +98,63 @@ export class RepositoryProgram {
     );
   }
 
+  /**
+   * A relative specifier naming a JSON file that exists in the repository. Resolved directly, so it
+   * does not depend on TypeScript's resolveJsonModule setting.
+   */
+  private resolveDataFile(containingFile: string, specifier: string): string | undefined {
+    if (!specifier.startsWith('.') || !specifier.toLowerCase().endsWith('.json')) return undefined;
+    const target = path.resolve(path.dirname(containingFile), specifier);
+    const repoPath = toRepositoryPath(this.rootDir, target);
+    if (!repoPath || !ts.sys.fileExists(target)) return undefined;
+    return repoPath;
+  }
+
+  /**
+   * Module-resolution options for a containing file. A nested `tsconfig.json` between the file
+   * and the repository root applies to its own directory tree, as TypeScript's project model does
+   * (its `paths` and `baseUrl` are relative to it). Otherwise the root options apply.
+   */
+  private optionsFor(containingFile: string): ts.CompilerOptions {
+    const chain: string[] = [];
+    let dir = path.dirname(containingFile);
+    let options: ts.CompilerOptions = this.compilerOptions;
+    for (;;) {
+      const cached = this.optionsByDir.get(dir);
+      if (cached) {
+        options = cached;
+        break;
+      }
+      chain.push(dir);
+      if (dir === this.rootDir || !dir.startsWith(this.rootDir + path.sep)) break;
+      const configPath = path.join(dir, 'tsconfig.json');
+      if (ts.sys.fileExists(configPath)) {
+        options = readCompilerOptions(configPath) ?? this.compilerOptions;
+        break;
+      }
+      dir = path.dirname(dir);
+    }
+    for (const entry of chain) this.optionsByDir.set(entry, options);
+    return options;
+  }
+
   resolveModule(fromFile: string, specifier: string): ResolvedModule {
     const normalizedFrom = normalizePath(fromFile);
     const containingFile = path.resolve(this.rootDir, normalizedFrom);
+    const dataFile = this.resolveDataFile(containingFile, specifier);
+    if (dataFile) {
+      return {
+        fromFile: normalizedFrom,
+        specifier,
+        kind: 'internal',
+        path: dataFile,
+        resolution: 'fallback',
+      };
+    }
     const resolved = ts.resolveModuleName(
       specifier,
       containingFile,
-      this.compilerOptions,
+      this.optionsFor(containingFile),
       this.host,
     ).resolvedModule;
 
@@ -154,12 +205,16 @@ export function createRepositoryProgram(options: RepositoryProgramOptions): Repo
 function loadCompilerOptions(rootDir: string): ts.CompilerOptions {
   const configPath = ts.findConfigFile(rootDir, ts.sys.fileExists, 'tsconfig.json');
   if (!configPath) return defaultCompilerOptions();
+  return readCompilerOptions(configPath) ?? defaultCompilerOptions();
+}
 
+/** Undefined when the file cannot be read or has option errors. */
+function readCompilerOptions(configPath: string): ts.CompilerOptions | undefined {
   const readResult = ts.readConfigFile(configPath, ts.sys.readFile);
-  if (readResult.error) return defaultCompilerOptions();
+  if (readResult.error) return undefined;
 
   const parsed = ts.parseJsonConfigFileContent(readResult.config, ts.sys, path.dirname(configPath));
-  if (parsed.errors.length > 0) return defaultCompilerOptions();
+  if (parsed.errors.length > 0) return undefined;
 
   return {
     ...defaultCompilerOptions(),

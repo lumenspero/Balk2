@@ -41,7 +41,8 @@ describe('manifests are not data artifacts (V3 Phase 1.4)', () => {
     const graph = new ConnectionGraph();
     registerDataArtifacts(files, graph);
     const map = graph.build({ generatedAt: '2026-01-01T00:00:00Z' });
-    expect(Object.keys(map.artifacts)).toEqual(['config/app.toml', 'data/a.json']);
+    // data/a.json is JSON, which is registered only when code references it.
+    expect(Object.keys(map.artifacts)).toEqual(['config/app.toml']);
   });
 
   it('registerManifests adds a tagged file node for each manifest', () => {
