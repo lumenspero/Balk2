@@ -8,7 +8,7 @@ import type { SourceSpan } from '../../types.js';
 export type BindingKind = 'wasm-bindgen' | 'pyo3' | 'napi';
 
 /** The language a binding side is written in. A binding joins the two sides, never one side to itself. */
-export type BindingSide = 'rust' | 'javascript';
+export type BindingSide = 'rust' | 'javascript' | 'python';
 
 /** A name a producer exposes to another language, such as a `#[wasm_bindgen]` export. */
 export interface BindingExport {

@@ -113,3 +113,11 @@ function compareConsumers(a: BindingConsumer, b: BindingConsumer): number {
 function compareText(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
+
+/** Several bindings results from one front end, as one result. Order is kept. */
+export function mergeBindings(...results: readonly FrontEndBindings[]): FrontEndBindings {
+  return {
+    exports: results.flatMap((result) => result.exports),
+    consumers: results.flatMap((result) => result.consumers),
+  };
+}

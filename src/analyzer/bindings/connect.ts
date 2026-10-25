@@ -37,7 +37,7 @@ export function connectBindings(
       graph.addRelationship('calls', from, producer.symbolId, producer.confidence, {
         evidence: 'ast',
         spans,
-        metadata: { mechanism: 'wasm-bindgen' },
+        metadata: { mechanism: producer.kind },
       });
       continue;
     }
@@ -56,7 +56,7 @@ export function connectBindings(
       graph.addRelationship('calls', consumer.owner, producer.symbolId, producer.confidence, {
         evidence: 'ast',
         spans,
-        metadata: { mechanism: 'wasm-bindgen' },
+        metadata: { mechanism: producer.kind },
       });
     }
   }

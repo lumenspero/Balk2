@@ -58,6 +58,7 @@ import { parseModuleRecovering } from './python/statement-parser.js';
 import { createImportResolver } from './python/modules/import-resolution.js';
 import { ModuleIndex } from './python/modules/module-index.js';
 import { createSymbolResolver } from './python/modules/module-exports.js';
+import { pythonPyo3Bindings } from './python/pyo3-bindings.js';
 import { analyzeInheritance, toSourceSpan, type InheritanceFile } from './python/inheritance.js';
 import { analyzePythonReferences } from './python/references.js';
 import { analyzePythonSymbols } from './python/symbols.js';
@@ -429,6 +430,7 @@ export class PythonFrontEnd implements LanguageFrontEnd {
       syntaxErrors,
       sourceAnnotations: collectPythonSourceAnnotations(sourceTexts, []),
       manifestProblems,
+      bindings: pythonPyo3Bindings(files),
     };
   }
 }
