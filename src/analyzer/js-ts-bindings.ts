@@ -2,7 +2,12 @@ import { posix } from 'path';
 import * as ts from 'typescript';
 import type { SourceSpan } from '../types.js';
 import { normalizePath } from '../graph.js';
-import type { BindingConsumer, BindingExport, FrontEndBindings } from './bindings/types.js';
+import type {
+  BindingConsumer,
+  BindingExport,
+  BindingKind,
+  FrontEndBindings,
+} from './bindings/types.js';
 import type { RepositoryProgram } from './repository-program.js';
 
 /**
@@ -11,6 +16,12 @@ import type { RepositoryProgram } from './repository-program.js';
  * consumer, which matches only a Rust export. Matching is by specifier, so a JS-to-JS import
  * never matches.
  */
+/**
+ * The binding kinds a JS/TS named import can consume. Each has a Rust producer; the index matches
+ * a consumer only where its kind has one.
+ */
+const CONSUMER_KINDS: readonly BindingKind[] = ['wasm-bindgen', 'napi'];
+
 export function jsTsBindings(repository: RepositoryProgram): FrontEndBindings {
   const exports: BindingExport[] = [];
   const consumers: BindingConsumer[] = [];
@@ -36,14 +47,16 @@ export function jsTsBindings(repository: RepositoryProgram): FrontEndBindings {
         if (bindings === undefined || !ts.isNamedImports(bindings)) continue;
         const specifier = resolveSpecifier(file, statement.moduleSpecifier.text);
         for (const element of bindings.elements) {
-          consumers.push({
-            kind: 'wasm-bindgen',
-            side: 'javascript',
-            specifier,
-            name: (element.propertyName ?? element.name).text,
-            file,
-            span: spanOf(element, sourceFile, file),
-          });
+          for (const kind of CONSUMER_KINDS) {
+            consumers.push({
+              kind,
+              side: 'javascript',
+              specifier,
+              name: (element.propertyName ?? element.name).text,
+              file,
+              span: spanOf(element, sourceFile, file),
+            });
+          }
         }
       }
     }

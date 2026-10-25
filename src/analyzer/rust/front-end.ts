@@ -30,6 +30,7 @@ import type { RustFile, Span } from './items.js';
 import { wasmBindgenBindings, type WasmBindgenCrate } from './names/wasm-bindgen.js';
 import { pyo3Bindings, readMaturinModuleName, type Pyo3Crate } from './names/pyo3-bindings.js';
 import { mergeBindings } from '../bindings/index.js';
+import { napiBindings, readPackageName, type NapiCrate } from './names/napi-bindings.js';
 import { parseRustFile } from './items.js';
 import { bindCalls } from './names/calls.js';
 import { bindBuildScripts } from './names/build-scripts.js';
@@ -482,6 +483,22 @@ export class RustFrontEnd implements LanguageFrontEnd {
       syntaxErrors,
       bindings: mergeBindings(
         wasmBindgenBindings(wasmCrates, parsedFiles),
+        napiBindings(
+          crates.map((crate): NapiCrate => {
+            const node = nodeById.get(crate.id);
+            const packageDir = crate.packageDir ?? '.';
+            return {
+              packageDir,
+              dependsOnNapi: externs.some(
+                (extern) =>
+                  extern.manifest === node?.manifest &&
+                  (extern.name === 'napi' || extern.name === 'napi_derive'),
+              ),
+              packageName: readPackageName(input.rootDir, packageDir),
+            };
+          }),
+          parsedFiles,
+        ),
         pyo3Bindings(
           crates.map((crate): Pyo3Crate => {
             const node = nodeById.get(crate.id);
