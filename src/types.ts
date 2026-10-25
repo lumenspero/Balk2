@@ -219,7 +219,8 @@ export type UnresolvedReason =
   | 'macro-generated-item'
   | 'ambiguous-star-import'
   | 'dynamic-include-path'
-  | 'unresolved-binding';
+  | 'unresolved-binding'
+  | 'dynamic-command';
 
 /**
  * A diagnostic-only node recording code that looks like a connection but could not be

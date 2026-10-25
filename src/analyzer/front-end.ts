@@ -5,6 +5,7 @@ import type { ConfigProblem } from '../config/config-problem.js';
 import type { Annotation, AnnotationProblem } from './annotations.js';
 import type { SyntaxErrorNote } from './repository-program.js';
 import type { FrontEndBindings } from './bindings/types.js';
+import type { ProcessCall } from './process/types.js';
 
 /** Languages a front end can analyze. */
 export type FrontEndLanguage = 'javascript' | 'typescript' | 'python' | 'rust';
@@ -37,6 +38,8 @@ export interface FrontEndResult {
   readonly manifestProblems?: readonly { readonly path: string; readonly message: string }[];
   /** Bindings this front end produces and consumes (V3 Phase 14). Undefined until a front end publishes one. */
   readonly bindings?: FrontEndBindings;
+  /** Calls that start a process, which the build turns into `executes` edges (V3 Phase 14.5). */
+  readonly processes?: readonly ProcessCall[];
 }
 
 /**

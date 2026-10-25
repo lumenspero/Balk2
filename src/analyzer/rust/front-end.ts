@@ -32,6 +32,7 @@ import { pyo3Bindings, readMaturinModuleName, type Pyo3Crate } from './names/pyo
 import { mergeBindings } from '../bindings/index.js';
 import { napiBindings, readPackageName, type NapiCrate } from './names/napi-bindings.js';
 import { parseRustFile } from './items.js';
+import { rustProcesses } from '../process/rust-processes.js';
 import { bindCalls } from './names/calls.js';
 import { bindBuildScripts } from './names/build-scripts.js';
 import { bindIncludes } from './names/includes.js';
@@ -481,6 +482,7 @@ export class RustFrontEnd implements LanguageFrontEnd {
     return {
       problems: [],
       syntaxErrors,
+      processes: rustProcesses(parsedFiles),
       bindings: mergeBindings(
         wasmBindgenBindings(wasmCrates, parsedFiles),
         napiBindings(

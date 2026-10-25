@@ -23,6 +23,7 @@ const REASON_KEYS: Record<UnresolvedReason, true> = {
   'ambiguous-star-import': true,
   'dynamic-include-path': true,
   'unresolved-binding': true,
+  'dynamic-command': true,
 };
 
 /** The kinds `--fail-on` accepts: parse failures, ignored configuration, and each unresolved reason. */

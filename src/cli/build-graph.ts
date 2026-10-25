@@ -19,6 +19,8 @@ import { buildModuleTree, type ModuleTree } from '../analyzer/rust/modules/tree.
 import type { ModuleProblemInput } from './diagnostics.js';
 import { buildBindingIndex, collectConsumers } from '../analyzer/bindings/index.js';
 import { connectBindings } from '../analyzer/bindings/connect.js';
+import { commandEnvironment, connectProcesses } from '../analyzer/process/connect.js';
+import { isMakefile, manifestProcesses } from '../analyzer/process/manifest-processes.js';
 
 const DEFAULT_EXCLUDES = new Set([
   'node_modules',
@@ -189,6 +191,24 @@ export function buildConnectionGraphDetailed(rootDir: string, config?: Balk2Conf
 
   // 5. Cross-language resolution (V3 Phase 14.2): matched bindings become edges.
   connectBindings(graph, bindingIndex, collectConsumers(frontEndBindings));
+
+  // 5b. Process execution (V3 Phase 14.5): literal commands that run a repository script become
+  //     executes edges, and commands that are not literals become observations.
+  // Manifests declare commands too: package.json scripts, Makefile recipes and [project.scripts].
+  const manifestCalls = manifestProcesses(rootDir, files);
+  for (const call of manifestCalls) {
+    if (isMakefile(call.file)) graph.addFile(call.file, 'makefile');
+  }
+  connectProcesses(
+    graph,
+    [
+      ...(jsTsResult.processes ?? []),
+      ...(pythonResult.processes ?? []),
+      ...(rustResult.processes ?? []),
+      ...manifestCalls,
+    ],
+    commandEnvironment(rootDir, rawFiles, repositoryPackages.packages),
+  );
 
   // 6. Mechanism engines. In Phase 1 they still run inside each front end (JS/TS in
   //    analyzeRepository). Phase 2 moves them out of the front ends.
