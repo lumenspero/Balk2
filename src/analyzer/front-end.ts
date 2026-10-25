@@ -4,6 +4,7 @@ import type { Balk2Config } from '../config/balk2-config.js';
 import type { ConfigProblem } from '../config/config-problem.js';
 import type { Annotation, AnnotationProblem } from './annotations.js';
 import type { SyntaxErrorNote } from './repository-program.js';
+import type { FrontEndBindings } from './bindings/types.js';
 
 /** Languages a front end can analyze. */
 export type FrontEndLanguage = 'javascript' | 'typescript' | 'python' | 'rust';
@@ -34,6 +35,8 @@ export interface FrontEndResult {
   readonly sourceAnnotations?: FrontEndSourceAnnotations;
   /** Manifest problems found while finishing package facts, reported as `manifest` diagnostics. */
   readonly manifestProblems?: readonly { readonly path: string; readonly message: string }[];
+  /** Bindings this front end produces and consumes (V3 Phase 14). Undefined until a front end publishes one. */
+  readonly bindings?: FrontEndBindings;
 }
 
 /**

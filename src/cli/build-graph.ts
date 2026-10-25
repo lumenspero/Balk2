@@ -17,6 +17,11 @@ import type { SyntaxErrorNote } from '../analyzer/repository-program.js';
 import { discoverRepositoryPackages } from '../packages/repository-packages.js';
 import { buildModuleTree, type ModuleTree } from '../analyzer/rust/modules/tree.js';
 import type { ModuleProblemInput } from './diagnostics.js';
+import {
+  buildBindingIndex,
+  collectConsumers,
+  resolveBindingConsumers,
+} from '../analyzer/bindings/index.js';
 
 const DEFAULT_EXCLUDES = new Set([
   'node_modules',
@@ -181,9 +186,14 @@ export function buildConnectionGraphDetailed(rootDir: string, config?: Balk2Conf
     ...rustResult.syntaxErrors,
   ];
 
-  // 4. Binding index. Empty until Phase 14 (cross-language boundaries).
+  // 4. Binding index. Built from every front end's published bindings (V3 Phase 14.1). No front
+  //    end publishes one yet, so the index is empty.
+  const frontEndBindings = [jsTsResult.bindings, pythonResult.bindings, rustResult.bindings];
+  const bindingIndex = buildBindingIndex(frontEndBindings);
 
-  // 5. Cross-language resolution. Empty until Phase 14.
+  // 5. Cross-language resolution. Consumers are matched against the index. Edges for matched
+  //    consumers are emitted in Phases 14.2 to 14.4, so for now the graph is not changed.
+  resolveBindingConsumers(bindingIndex, collectConsumers(frontEndBindings));
 
   // 6. Mechanism engines. In Phase 1 they still run inside each front end (JS/TS in
   //    analyzeRepository). Phase 2 moves them out of the front ends.
