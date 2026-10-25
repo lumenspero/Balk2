@@ -550,8 +550,10 @@ function buildCrates(
     });
     indexByPackage.set(root.packageId, index);
   }
+  // A proc-macro package is a library that exports macros, so a `use` of it resolves like a library.
   for (const node of packages.packages) {
-    if (node.ecosystem !== 'cargo' || node.target !== 'lib') continue;
+    if (node.ecosystem !== 'cargo' || (node.target !== 'lib' && node.target !== 'proc-macro'))
+      continue;
     const index = indexByPackage.get(node.id);
     if (index !== undefined && !repoCrates.has(node.name)) repoCrates.set(node.name, index);
   }

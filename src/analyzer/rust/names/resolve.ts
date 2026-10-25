@@ -128,6 +128,9 @@ export function resolveName(
 
   let node = from;
   let index = 0;
+  // The crate whose `extern crate` aliases apply at the current node. It changes when the walk enters
+  // another repository crate, as in `grep::printer::...`.
+  let owner: RustCrateIndex = crate;
 
   if (path.global) {
     if (crate.edition === '2015') {
@@ -137,6 +140,7 @@ export function resolveName(
       if (entry === undefined) return failure(`no extern crate named \`${first}\``);
       if (entry.kind === 'extern') return { kind: 'extern', crate: entry.crate };
       node = entry.index.root;
+      owner = entry.index;
       index = 1;
     }
   } else if (first === 'crate') {
@@ -164,6 +168,7 @@ export function resolveName(
       if (entry === undefined) return { kind: 'not-found' };
       if (entry.kind === 'extern') return { kind: 'extern', crate: entry.crate };
       node = entry.index.root;
+      owner = entry.index;
       index = 1;
     }
     // Otherwise the first segment is local, and the walk below resolves it.
@@ -181,6 +186,18 @@ export function resolveName(
       k === 0 && node === from
         ? lookupScoped(node, name, last ? ns : 'type', from, new Set())
         : lookupIn(node, name, last ? ns : 'type', from, new Set());
+    if (hit === undefined && node.parent === null && owner.externCrates.has(name)) {
+      // An `extern crate ... as` alias at a crate root names the crate it renames (`pub extern crate grep_printer as printer;`).
+      const entry = crateEntry(name, owner, env);
+      if (entry?.kind === 'extern') return { kind: 'extern', crate: entry.crate };
+      if (entry?.kind === 'repo') {
+        if (k === segments.length - 1)
+          return { kind: 'module', node: entry.index.root, id: undefined };
+        node = entry.index.root;
+        owner = entry.index;
+        continue;
+      }
+    }
     if (hit === undefined) return missingName(node, name);
     switch (hit.kind) {
       case 'ambiguous':
