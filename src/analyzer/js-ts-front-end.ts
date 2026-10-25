@@ -7,6 +7,7 @@ import type {
   LanguageFrontEnd,
 } from './front-end.js';
 import { JsTsAnalyzer } from './js-ts-analyzer.js';
+import { jsTsBindings } from './js-ts-bindings.js';
 import { createRepositoryProgram } from './repository-program.js';
 import { collectSourceAnnotations } from './source-annotations-apply.js';
 
@@ -49,6 +50,7 @@ export class JsTsFrontEnd implements LanguageFrontEnd {
       problems: analysis.stateProblems,
       syntaxErrors: repository.syntaxErrors(),
       sourceAnnotations: collectSourceAnnotations(repository, []),
+      bindings: jsTsBindings(repository),
     };
   }
 }

@@ -26,7 +26,8 @@ import type {
   LanguageFrontEnd,
 } from '../front-end.js';
 import type { SyntaxErrorNote } from '../repository-program.js';
-import type { Span } from './items.js';
+import type { RustFile, Span } from './items.js';
+import { wasmBindgenBindings, type WasmBindgenCrate } from './names/wasm-bindgen.js';
 import { parseRustFile } from './items.js';
 import { bindCalls } from './names/calls.js';
 import { bindBuildScripts } from './names/build-scripts.js';
@@ -71,6 +72,7 @@ export class RustFrontEnd implements LanguageFrontEnd {
   analyze(input: FrontEndInput, graph: ConnectionGraph): FrontEndResult {
     const syntaxErrors: SyntaxErrorNote[] = [];
     const rustFiles = new Set<string>();
+    const parsedFiles = new Map<string, RustFile>();
     const sources = new Map<string, string>();
     for (const relFile of input.files) {
       const filePath = normalizePath(relFile);
@@ -86,6 +88,7 @@ export class RustFrontEnd implements LanguageFrontEnd {
       sources.set(filePath, source);
       // The parser recovers past each error, so every file is still analyzed.
       const file = parseRustFile(source);
+      parsedFiles.set(filePath, file);
       for (const e of file.errors) {
         syntaxErrors.push({ path: filePath, line: e.line, column: e.column, message: e.message });
       }
@@ -456,10 +459,26 @@ export class RustFrontEnd implements LanguageFrontEnd {
         },
       }),
     );
+    // wasm-bindgen (V3 Phase 14.2): the crates that depend on wasm_bindgen publish their bindings.
+    const nodeById = new Map((input.packages?.packages ?? []).map((node) => [node.id, node]));
+    const externs = input.packages?.externs ?? [];
+    const wasmCrates: WasmBindgenCrate[] = crates.map((crate) => {
+      const node = nodeById.get(crate.id);
+      const manifest = node?.manifest;
+      return {
+        // A crate without a manifest cannot depend on wasm_bindgen, so the root is a safe default.
+        packageDir: crate.packageDir ?? '.',
+        libName: node?.name ?? '',
+        dependsOnWasmBindgen: externs.some(
+          (extern) => extern.manifest === manifest && extern.name === 'wasm_bindgen',
+        ),
+      };
+    });
     // Source directives in comments (12.7), owned by the function that holds each statement.
     return {
       problems: [],
       syntaxErrors,
+      bindings: wasmBindgenBindings(wasmCrates, parsedFiles),
       sourceAnnotations: collectRustSourceAnnotations(
         sources,
         crates.flatMap(({ index }) => index.functions),
