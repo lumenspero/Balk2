@@ -4,22 +4,24 @@ Items the V3 plan does not require for its current phase, which are deferred to 
 
 Decision recorded in Phase 13 review: deferred items are tracked here, not on GitHub.
 
+Every entry below was approved by the user in Phase 13 review (2026-10-25). Entries marked Not applicable are out of scope for V3 by the plan, not deferred work.
+
 ## Python
 
-- **Subscript write `d[k] = v` is not recorded.** Rare as a shared-state write in the corpora. Reconsider after the Phase 13.3 real-world run shows it matters.
-- **A builtin shadowed by a local is not checked.** Rare. Reconsider with the Python shadowing scenarios if a real repository shows a false edge.
-- **`files()` through a variable is not followed** (`importlib.resources`). The plan's resource forms use a literal anchor. Reconsider with resources in Phase 14.
+- **Subscript write `d[k] = v` is not recorded.** Rare as a shared-state write in the corpora. Reconsider after the Phase 13.3 real-world run shows it matters. _Approved in Phase 13 review, 2026-10-25._
+- **A builtin shadowed by a local is not checked.** Rare. Reconsider with the Python shadowing scenarios if a real repository shows a false edge. _Approved in Phase 13 review, 2026-10-25._
+- **`files()` through a variable is not followed** (`importlib.resources`). The plan's resource forms use a literal anchor. Reconsider with resources in Phase 14. _Approved in Phase 13 review, 2026-10-25._
 
 ## Rust
 
-- **`Library::new` reached through `use libloading::Library` is not read.** The fully qualified form is handled as an observation. Reconsider with the Rust dynamic-load scenarios.
-- **Writes inside a `thread_local!` `with` closure are not read.** Reconsider in Phase 14 if a real repository needs it.
-- **A configured singleton that matches no static is ignored without a diagnostic.** Reconsider when diagnostics for configuration are reviewed in Phase 15.
-- **`lock()` is recorded as a read, without the `access: "lock"` annotation.** The edge is correct, only the annotation is missing. Reconsider in Phase 15 with output.
+- **`Library::new` reached through `use libloading::Library` is not read.** The fully qualified form is handled as an observation. Reconsider with the Rust dynamic-load scenarios. _Approved in Phase 13 review, 2026-10-25._
+- **Writes inside a `thread_local!` `with` closure are not read.** Reconsider in Phase 14 if a real repository needs it. _Approved in Phase 13 review, 2026-10-25._
+- **A configured singleton that matches no static is ignored without a diagnostic.** Reconsider when diagnostics for configuration are reviewed in Phase 15. _Approved in Phase 13 review, 2026-10-25._
+- **`lock()` is recorded as a read, without the `access: "lock"` annotation.** The edge is correct, only the annotation is missing. Reconsider in Phase 15 with output. _Approved in Phase 13 review, 2026-10-25._
 
 ## Not applicable (out of scope for V3)
 
-- **Field and call-result receivers have no type**, in Python and Rust. Plan section "Explicitly Out of Scope for V3": type inference beyond the local rules in 2.4.
+- **Field and call-result receivers have no type**, in Python and Rust. Plan section "Explicitly Out of Scope for V3": type inference beyond the local rules in 2.4. _Approved in Phase 13 review, 2026-10-25._
 
 ## Scheduled for later phases (not deferred)
 
