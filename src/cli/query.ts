@@ -4,6 +4,7 @@ import {
   CONFIDENCE_LEVELS,
   DEFAULT_LIMIT,
   DEFAULT_MAX_DEGREE,
+  LANGUAGES,
   NODE_KINDS,
   QueryError,
   RELATIONSHIP_FAMILIES,
@@ -33,6 +34,8 @@ export const QUERY_USAGE = `balk2 query [options]
   --family <list>          Comma-separated: ${RELATIONSHIP_FAMILIES.join(', ')}
   --min-confidence <level> One of: ${CONFIDENCE_LEVELS.join(', ')} (default medium)
   --node-kind <list>       Comma-separated node kinds at both ends: ${NODE_KINDS.join(', ')}
+  --language <list>        Comma-separated languages: ${LANGUAGES.join(', ')}. Every endpoint with a
+                           known language must be in the list; language-neutral nodes do not exclude
   --limit <n>              Most relationships to print (default ${DEFAULT_LIMIT})
   --no-limit               Print every matching relationship
   --json                   Print JSON instead of text lines
@@ -46,6 +49,7 @@ const VALUE_FLAGS: ReadonlySet<string> = new Set([
   '--family',
   '--min-confidence',
   '--node-kind',
+  '--language',
   '--limit',
   '-o',
   '--output',
@@ -142,6 +146,7 @@ function parseArgs(args: readonly string[]): ParsedArgs {
   const family = values.get('--family');
   const confidence = values.get('--min-confidence');
   const nodeKind = values.get('--node-kind');
+  const language = values.get('--language');
   const limitText = values.get('--limit');
   const traverse = values.get('--traverse');
   const maxDegreeText = values.get('--max-degree');
@@ -203,6 +208,7 @@ function parseArgs(args: readonly string[]): ParsedArgs {
     ...(nodeKind !== undefined
       ? { nodeKinds: parseList(nodeKind, NODE_KINDS, '--node-kind') }
       : {}),
+    ...(language !== undefined ? { languages: parseList(language, LANGUAGES, '--language') } : {}),
   };
 
   return { query, json, ...(output !== undefined ? { output } : {}) };

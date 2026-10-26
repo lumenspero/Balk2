@@ -57,6 +57,13 @@ export const DEFAULT_TRAVERSE: readonly RelationshipFamily[] = ['code'];
  */
 export const DEFAULT_MAX_DEGREE = 50;
 
+/** Languages a query can filter on. Nodes with no language never exclude a relationship. */
+export const LANGUAGES = ['javascript', 'typescript', 'python', 'rust'] as const;
+export type Language = (typeof LANGUAGES)[number];
+
+/** Structural edges that describe packaging. They rank after code edges at the same distance. */
+const PACKAGING_TYPES: ReadonlySet<RelationshipType> = new Set(['declaresModule', 'packageRoot']);
+
 const FAMILY_TYPES: Readonly<Record<RelationshipFamily, readonly RelationshipType[]>> = {
   code: [
     'imports',
@@ -88,6 +95,11 @@ export interface QueryOptions {
   readonly minConfidence?: Confidence;
   /** Keep relationships whose two endpoints both have one of these node kinds. */
   readonly nodeKinds?: readonly NodeKind[];
+  /**
+   * Keep relationships whose endpoints with a known language are all in this list. A relationship
+   * needs at least one such endpoint, so a pipeline of data files alone does not match.
+   */
+  readonly languages?: readonly Language[];
   /** A file path or node id. Limits the result to the neighborhood of this node. */
   readonly focus?: string;
   /** How many hops out from the focus to follow. Defaults to 1. */
@@ -133,6 +145,7 @@ export function nodeKindOf(map: ConnectionMap, id: string): NodeKind | undefined
   if (hasKey(map.metadataKeys, id)) return 'metadata-key';
   if (hasKey(map.resources, id)) return 'resource';
   if (hasKey(map.statePaths, id)) return 'state-path';
+  if (hasKey(map.packages, id)) return 'package';
   if (hasKey(map.unresolved, id)) return 'unresolved-reference';
   return undefined;
 }
@@ -175,12 +188,22 @@ export function queryRelationships(map: ConnectionMap, options: QueryOptions = {
     return kind !== undefined && kinds.has(kind);
   };
 
+  const languages = options.languages ? new Set<string>(options.languages) : undefined;
+  const languageAllowed = (rel: Relationship): boolean => {
+    if (languages === undefined) return true;
+    const known = [rel.from, rel.to]
+      .map((id) => languageOf(map, id))
+      .filter((language): language is string => language !== undefined);
+    return known.length > 0 && known.every((language) => languages.has(language));
+  };
+
   const kept = forwardRelationships(map).filter(
     (rel) =>
       types.has(rel.type) &&
       CONFIDENCE_RANK[rel.confidence] >= minRank &&
       endpointAllowed(rel.from) &&
-      endpointAllowed(rel.to),
+      endpointAllowed(rel.to) &&
+      languageAllowed(rel),
   );
 
   const ordered =
@@ -206,6 +229,15 @@ function resolveFocus(map: ConnectionMap, focus: string): string | undefined {
     if (nodeKindOf(map, candidate) !== undefined) return candidate;
   }
   return undefined;
+}
+
+/** The filterable language of a node: a file's own tag, or the file a symbol belongs to. */
+function languageOf(map: ConnectionMap, id: string): string | undefined {
+  const fileId = hasKey(map.symbols, id) ? (map.symbols[id]?.filePath ?? id) : id;
+  const language = hasKey(map.files, fileId) ? map.files[fileId]?.language : undefined;
+  return language !== undefined && (LANGUAGES as readonly string[]).includes(language)
+    ? language
+    : undefined;
 }
 
 function typesFor(families?: readonly RelationshipFamily[]): ReadonlySet<RelationshipType> {
@@ -267,15 +299,20 @@ function neighborhood(
   return reached;
 }
 
-/** Reached relationships sorted by hop count, then by their position in the canonical order. */
+/**
+ * Reached relationships sorted by hop count, then code edges before packaging edges, then by their
+ * position in the canonical order. Packaging edges are listed last so a limit cuts them first.
+ */
 function orderByDistance(
   canonical: readonly Relationship[],
   reached: ReadonlyMap<Relationship, number>,
 ): Relationship[] {
   const position = new Map(canonical.map((rel, index) => [rel, index]));
+  const rank = (rel: Relationship): number => (PACKAGING_TYPES.has(rel.type) ? 1 : 0);
   return [...reached.keys()].sort(
     (a, b) =>
       (reached.get(a) ?? 0) - (reached.get(b) ?? 0) ||
+      rank(a) - rank(b) ||
       (position.get(a) ?? 0) - (position.get(b) ?? 0),
   );
 }
