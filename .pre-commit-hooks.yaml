@@ -1,0 +1,18 @@
+- id: balk2
+  name: Balk2 connection map
+  description: Regenerates connection-map.json and connection-map.md. When they change, the commit fails once; stage them and commit again.
+  entry: balk2
+  language: node
+  pass_filenames: false
+  always_run: true
+  additional_dependencies: ['@lumenspero/balk2@2.0.1']
+
+- id: balk2-check
+  name: Balk2 connection map is current
+  description: Fails when connection-map.json is out of date with the repository. Changes no files.
+  entry: balk2
+  args: [check]
+  language: node
+  pass_filenames: false
+  always_run: true
+  additional_dependencies: ['@lumenspero/balk2@2.0.1']
