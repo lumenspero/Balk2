@@ -982,12 +982,19 @@ function parseTypeAlias(c: TreeCursor, errors: RustLexNote[]): ItemBody {
   let bounds: Fragment | null = null;
   if (isPunct(c.peek(), ':')) {
     c.next();
-    bounds = fragmentOf(takeUntil(c, (t) => isPunct(t, '=') || isPunct(t, ';')));
+    bounds = fragmentOf(
+      takeUntil(c, (t) => isPunct(t, '=') || isPunct(t, ';') || isWord(t, 'where')),
+    );
   }
+  // A generic associated type may put a where clause before its value (`type Item<'a> where Self: 'a;`
+  // in a trait) or after it (`type Item<'a> = &'a T where Self: 'a;` in an impl). The clause does not
+  // change the name, generics or value, so it is read past and not kept.
+  parseWhere(c);
   let ty: Fragment | null = null;
   if (isPunct(c.peek(), '=')) {
     c.next();
-    ty = fragmentOf(takeUntil(c, (t) => isPunct(t, ';')));
+    ty = fragmentOf(takeUntil(c, (t) => isPunct(t, ';') || isWord(t, 'where')));
+    parseWhere(c);
   }
   if (isPunct(c.peek(), ';')) c.next();
   else fail(errors, c, 'expected `;` after type alias');

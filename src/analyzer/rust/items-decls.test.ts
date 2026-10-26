@@ -126,6 +126,19 @@ describe('rust items: type aliases, constants and statics', () => {
     expect(alias.ty?.raw).toBe('Result < T , E >');
   });
 
+  it('reads a generic associated type with a where clause before or after its value', () => {
+    expect(parseRustFile("trait Lending { type Item<'this> where Self: 'this; }").errors).toEqual(
+      [],
+    );
+    expect(
+      parseRustFile("impl Lending for Owned { type Item<'this> = &'this u8 where Self: 'this; }")
+        .errors,
+    ).toEqual([]);
+    const alias = only("type Item<'this> = &'this u8;", 'type');
+    expect(alias.name).toBe('Item');
+    expect(alias.ty?.raw).toBe("& 'this u8");
+  });
+
   it('reads a constant with its type and value', () => {
     expect(only('const N: usize = 3;', 'const')).toMatchObject({
       name: 'N',

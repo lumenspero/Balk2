@@ -38,6 +38,7 @@
 
 - `generate` keeps the existing `generatedAt` and commit when the sources have not changed. Before, every run rewrote both, so the pre-commit hook always reported a change.
 - Manifest spans are correct on Windows checkouts, which use CRLF line endings.
+- Rust generic associated types with a `where` clause, such as `type Item<'a> where Self: 'a;` in a trait, no longer report a syntax error.
 - A `[project.scripts]` entry finds its module in the manifest's own directory, and its span points at the entry's own line.
 
 ### Known limits
