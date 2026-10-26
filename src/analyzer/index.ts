@@ -15,3 +15,4 @@ export {
 export type { GlobalSymbol } from './global-symbols.js';
 export { JsTsAnalyzer } from './js-ts-analyzer.js';
 export { PythonAnalyzer } from './python-analyzer.js';
+export { RustAnalyzer } from './rust-analyzer.js';

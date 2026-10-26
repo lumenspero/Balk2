@@ -185,4 +185,127 @@ console.log(map.version);
     );
     expect(run(process.execPath, [cliPath, '--help'], consumerDir)).toContain('Usage:');
   });
+  it('loads the language analyzers from an ESM consumer', () => {
+    const consumerDir = installConsumer('analyzers-esm-consumer');
+    const output = run(
+      process.execPath,
+      [
+        '--input-type=module',
+        '--eval',
+        `import { PythonAnalyzer, RustAnalyzer } from '${packageName}';\n` +
+          "console.log(new PythonAnalyzer().name, new RustAnalyzer().name, new RustAnalyzer().canAnalyze('src/lib.rs'));",
+      ],
+      consumerDir,
+    );
+
+    expect(output.trim()).toBe('PythonAnalyzer RustAnalyzer true');
+  });
+
+  it('loads the language analyzers from a CommonJS consumer', () => {
+    const consumerDir = installConsumer('analyzers-cjs-consumer');
+    const output = run(
+      process.execPath,
+      [
+        '--eval',
+        `const { PythonAnalyzer, RustAnalyzer } = require('${packageName}');\n` +
+          "console.log(new PythonAnalyzer().name, new RustAnalyzer().name, new PythonAnalyzer().canAnalyze('a.py'));",
+      ],
+      consumerDir,
+    );
+
+    expect(output.trim()).toBe('PythonAnalyzer RustAnalyzer true');
+  });
+
+  it('exposes the v3 union values and package types to a TypeScript consumer', () => {
+    const consumerDir = installConsumer('v3-types-consumer');
+    fs.writeFileSync(
+      path.join(consumerDir, 'tsconfig.json'),
+      JSON.stringify(
+        {
+          compilerOptions: {
+            target: 'ES2022',
+            module: 'Node16',
+            moduleResolution: 'Node16',
+            strict: true,
+            noEmit: true,
+          },
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    );
+    fs.writeFileSync(
+      path.join(consumerDir, 'index.ts'),
+      `import type { Evidence, NodeKind, PackageEcosystem, PackageNode, SymbolType } from '${packageName}';
+import { PythonAnalyzer, RustAnalyzer } from '${packageName}';
+
+const kind: NodeKind = 'package';
+const ecosystem: PackageEcosystem = 'cargo';
+const symbol: SymbolType[] = ['struct', 'enum', 'trait', 'module', 'macro'];
+const evidence: Evidence = 'manifest';
+const packageNode: PackageNode | undefined = undefined;
+const analyzers = [new PythonAnalyzer(), new RustAnalyzer()];
+
+console.log(kind, ecosystem, symbol.length, evidence, packageNode, analyzers.length);
+`,
+      'utf8',
+    );
+
+    const tsc = path.join(consumerDir, 'node_modules', 'typescript', 'bin', 'tsc');
+    run(process.execPath, [tsc, '--project', 'tsconfig.json'], consumerDir);
+  });
+
+  it('loads the TOML parser the package depends on from the installed tarball', () => {
+    const consumerDir = installConsumer('toml-consumer');
+    const output = run(
+      process.execPath,
+      [
+        '--input-type=module',
+        '--eval',
+        "import { parse } from 'smol-toml';\n" +
+          'console.log(parse(\'[package]\\nname = "core"\').package.name);',
+      ],
+      consumerDir,
+    );
+
+    expect(output.trim()).toBe('core');
+  });
+
+  it('generates maps for Python, Rust and mixed fixtures with the installed CLI', () => {
+    const consumerDir = installConsumer('cli-fixtures-consumer');
+    const cliPath = path.join(
+      consumerDir,
+      'node_modules',
+      '@lumenspero',
+      'balk2',
+      'dist',
+      'cli.js',
+    );
+    const fixtures = ['python-baseline', 'cargo-single', 'mixed-project'];
+
+    for (const name of fixtures) {
+      const work = path.join(tempDir, `work-${name}`);
+      fs.cpSync(path.join(projectRoot, 'test', 'fixtures', name), work, { recursive: true });
+
+      run(process.execPath, [cliPath, 'generate'], work);
+      const map = JSON.parse(fs.readFileSync(path.join(work, 'connection-map.json'), 'utf8')) as {
+        files: Record<string, { language?: string }>;
+      };
+      expect(Object.keys(map.files).length, `${name} has files`).toBeGreaterThan(0);
+      run(process.execPath, [cliPath, 'check'], work);
+
+      if (name === 'mixed-project') {
+        const languages = new Set(Object.values(map.files).map((file) => file.language));
+        // Manifests are file nodes tagged by ecosystem (Phase 1.4), next to the three source languages.
+        expect([...languages].sort()).toEqual([
+          'cargo-manifest',
+          'npm-manifest',
+          'python',
+          'rust',
+          'typescript',
+        ]);
+      }
+    }
+  });
 });

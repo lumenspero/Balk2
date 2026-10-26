@@ -60,7 +60,7 @@ export {
   type StateCoupling,
 } from './graph-queries.js';
 export type { Analyzer, AnalyzerOptions } from './analyzer/index.js';
-export { JsTsAnalyzer, PythonAnalyzer, resolveImportPath } from './analyzer/index.js';
+export { JsTsAnalyzer, PythonAnalyzer, RustAnalyzer, resolveImportPath } from './analyzer/index.js';
 
 export {
   SUPPORTED_DATA_EXTENSIONS,
