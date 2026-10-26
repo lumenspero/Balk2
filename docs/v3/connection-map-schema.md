@@ -184,6 +184,15 @@ For TypeScript consumers, V3 is breaking, as V2 was.
 - `ConnectionMapV2` is exported for code that reads the previous shape.
 - Runtime consumers of JSON see the new tables and fields, but existing fields keep their names and meanings.
 
+## Query: path ranking
+
+`balk2 query` orders neighbors by distance from the focus. Packaging edges (`packageRoot`, `dependsOn`,
+`declaresModule`) rank after code edges, so at the same distance a code neighbor is listed first (Phase 15.2).
+
+Path queries, which find the connections between two nodes, walk only the nodes both ends share. The order
+of neighbors therefore does not change which paths are found or how they are listed. No code change was
+made for path ranking. This was decided in the Phase 15 review.
+
 ## Fixtures for schema tests
 
 - A v2 map written by 2.0.1 reads under v3 with the manifest move applied.

@@ -70,4 +70,17 @@ describe('balk2.schema.json version', () => {
       }),
     ).toBe(false);
   });
+
+  it('accepts a registry method entry that names its registry, as the code reads it', () => {
+    expect(
+      validate({
+        version: 3,
+        protocols: {
+          registries: {
+            methods: [{ method: 'invoke', direction: 'resolve', keyArg: 0, registry: 'commands' }],
+          },
+        },
+      }),
+    ).toBe(true);
+  });
 });

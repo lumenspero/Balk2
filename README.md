@@ -28,8 +28,12 @@ Balk2 scans your codebase and generates two canonical artifacts:
 ## Features
 
 - **Multi-Language Static Analysis**:
-  - **JavaScript & TypeScript**: `.js`, `.jsx`, `.ts`, `.tsx`, `.mjs`, `.cjs`
+  - **JavaScript & TypeScript**: `.js`, `.jsx`, `.ts`, `.tsx`, `.mjs`, `.cjs`, `.mts`, `.cts`
   - **Python**: `.py`
+  - **Rust** (3.0.0 and later): `.rs`, with `Cargo.toml` packages
+
+See [Supported languages](#supported-languages) for what each language recognizes.
+
 - **Code & Symbol Relationships**:
   - Module imports & exports (`imports`, `importedBy`, `exports`)
   - Function & method call graphs (`calls`, `calledBy`)
@@ -74,6 +78,45 @@ This generates:
 
 - `connection-map.json`
 - `connection-map.md`
+
+### Quick starts by language
+
+The same command works in every language. Balk2 reads each supported language in a repository, so you do
+not switch modes.
+
+```bash
+npx @lumenspero/balk2
+```
+
+- **JavaScript and TypeScript.** Run the command at the repository root. If the project has a
+  `tsconfig.json`, Balk2 uses its options for module resolution. Otherwise it uses Node 16 defaults.
+- **Python.** Run the command at the repository root. Imports and calls need no configuration. Project
+  conventions such as pytest fixtures and decorator registries are set under `protocols`; see
+  [python.md](docs/v3/languages/python.md).
+- **Rust (3.0.0 and later).** Run the command at the repository root. Each `Cargo.toml` package is read.
+  The published 2.0.1 package does not read Rust, so use this section after 3.0.0 is released.
+
+If a binding crate uses a name other than the default, set it under `rust.bindings`:
+
+```json
+{
+  "version": 3,
+  "rust": {
+    "bindings": [{ "kind": "pyo3", "crate": "fastpath", "pythonModule": "app.native" }]
+  }
+}
+```
+
+### Supported languages
+
+| Language                | Source files                                                 | Package manifests             | What is read                                                                                                                                                      | Reference                                                              |
+| ----------------------- | ------------------------------------------------------------ | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| JavaScript & TypeScript | `.js`, `.jsx`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `.mts`, `.cts` | `package.json`                | Imports and re-exports, calls, inheritance, events, registries, callbacks, module-level state, data lineage, process execution                                    | [javascript-typescript.md](docs/v3/languages/javascript-typescript.md) |
+| Python                  | `.py`                                                        | `pyproject.toml`, `setup.cfg` | Imports, calls, inheritance, events (pyee, blinker, Django, threading), registries, callbacks, shared state, resources, dynamic loads, PyO3 consumers, subprocess | [python.md](docs/v3/languages/python.md)                               |
+| Rust (3.0.0 and later)  | `.rs`                                                        | `Cargo.toml`                  | Modules and imports, calls, traits, registries, shared state, callbacks, native libraries, wasm-bindgen, napi and PyO3 bindings, process execution                | [rust.md](docs/v3/languages/rust.md)                                   |
+
+The status of each mechanism in each language is in
+[language-parity.md](docs/v3/language-parity.md).
 
 ---
 
@@ -205,7 +248,7 @@ Edit the paths to match your repository. A lineage path that does not exist is r
 
 ### Other configuration sections
 
-Besides `include`, `exclude`, `output` and `data`, `.balk2.json` has sections for `globals`, `protocols` (events, registries, loaders, callbacks, metadata and resources), `state` and `annotations`. Each is described in [`docs/v2`](docs/v2), and the whole file is checked against the published JSON Schema. The schema ships in the package at `dist/balk2.schema.json`. Reference it for editor completion and validation:
+Besides `include`, `exclude`, `output` and `data`, `.balk2.json` has sections for `globals`, `protocols` (events, registries, loaders, callbacks, metadata and resources), `state`, `annotations`, `python` and `rust`. The Python and Rust sections are described in the language documents, [python.md](docs/v3/languages/python.md) and [rust.md](docs/v3/languages/rust.md). The others are described in [`docs/v2`](docs/v2). The whole file is checked against the published JSON Schema, which ships in the package at `dist/balk2.schema.json`. Reference it for editor completion and validation:
 
 ```json
 {
@@ -215,7 +258,39 @@ Besides `include`, `exclude`, `output` and `data`, `.balk2.json` has sections fo
 
 Entries that cannot be used are reported as `config` diagnostics and ignored, so a mistyped setting does not silently do nothing.
 
-Set a top-level `"version": 2` to pin the configuration format of 2.0.0. The key is optional; any other value is reported as a config diagnostic.
+Set a top-level `"version"` to `2` or `3`. The key is optional. Version 3 is the current format. Version 2 files are read unchanged. Any other value is reported as a config diagnostic.
+
+Version 3 adds two things to protocol entries and to the Rust section:
+
+- **`languages`** on a protocol entry limits it to the listed families, `javascript`, `typescript`, `python` or `rust`. An entry without it applies to every language whose syntax supports the form. An entry tagged for a language that does not read it is reported and ignored. For example, configured event methods are read for JavaScript and TypeScript only:
+
+```json
+{
+  "version": 3,
+  "protocols": {
+    "events": {
+      "methods": [
+        { "method": "publish", "direction": "emit", "eventArg": 0, "languages": ["typescript"] }
+      ]
+    }
+  }
+}
+```
+
+- **`rust`** holds two settings. `macros.expressionLike` lists macro names whose arguments are code, so calls inside them are found. `bindings` overrides what the binding engine infers for a crate, such as the output directory of a wasm-bindgen package or the Python module of a PyO3 crate:
+
+```json
+{
+  "version": 3,
+  "rust": {
+    "macros": { "expressionLike": ["log_info"] },
+    "bindings": [
+      { "kind": "wasm-bindgen", "crate": "core", "outDir": "web/pkg" },
+      { "kind": "napi", "crate": "native", "packageName": "@scope/native" }
+    ]
+  }
+}
+```
 
 ---
 

@@ -126,3 +126,10 @@ A receiver name is not typed when an `import` in the same scope rebinds it: `imp
 - A file a SQL function reads (`read_csv`, `read_parquet`, `read_json` and their `_auto` forms) is a read. The target of `COPY … TO '…'` is a write. Both use the same scanner as the JavaScript front end, in `src/facts/duckdb-sql.ts`.
 - SQL is read only from a plain literal, single-quoted, double-quoted or triple-quoted. A formatted or concatenated statement gives nothing.
 - Decision: `duckdb.connect(path)` does not give an edge for the database file. The JavaScript front end does not do so for `new duckdb.Database(path)` either.
+
+## Phase 15 changes (configuration and documentation)
+
+- **No change to Python output for existing configurations.** Phase 15 added configuration version 3 and the `languages` option on protocol entries. A configuration with neither produces the same Python output as before.
+- **`languages` filter.** A protocol entry tagged `python` applies to Python. An entry tagged only for other languages is not applied to Python, and a configuration problem is reported.
+- **Configured event methods are not read for Python.** `protocols.events.methods` applies to JS/TS only. This is Deferred in `docs/v3/deferred.md`. Python events come from the library catalog, as described in `docs/v3/languages/python.md`.
+- **New Python section in the language document.** `docs/v3/languages/python.md` now describes events, the PyO3 consumer side, and process execution.

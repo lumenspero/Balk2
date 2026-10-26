@@ -432,6 +432,9 @@
             }
           ]
         },
+        "registry": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
         "languages": {
           "$ref": "#/$defs/languageList"
         }

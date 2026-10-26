@@ -453,3 +453,12 @@ A `use` of a constant is followed through the crate's module tree. `crate::`, `s
 
 - The Python front end reads DuckDB SQL the same way as JS/TS: `read_*` functions in a SQL string are reads, and `COPY … TO` is a write. It applies to a plain string passed to a DuckDB connection's `execute`, `sql` or `query`, or to the `duckdb` module's `sql`, `execute` or `query`.
 - The shared scanner is `src/facts/duckdb-sql.ts`. The JS front end imports it, so both languages read SQL with the same rules.
+
+## Phase 15 output changes (configuration v3)
+
+- **Configuration version 3** is accepted, alongside version 2. Version 2 files are read unchanged.
+- **`languages` on protocol entries** limits an entry to the listed families. Untagged entries behave as before.
+- **`rust.macros.expressionLike`** lists macro names whose arguments are code. It adds to the built-in list. Without it, Rust output is unchanged.
+- **`rust.bindings`** overrides a binding crate's output directory (wasm-bindgen), package name (napi) or Python module name (PyO3). Without it, the defaults apply as before, with the confidence rules in `docs/v3/languages/rust.md`.
+- **`balk2 query --language`** filters output by language family. It does not change the map.
+- **Path ranking.** No code change. See `docs/v3/connection-map-schema.md`, "Query: path ranking".
