@@ -2,6 +2,7 @@ import { forwardRelationships, getStateCoupling } from '../graph-queries.js';
 import type {
   ConnectionMap,
   EventRelationship,
+  PackageNode,
   Relationship,
   RegistryRelationship,
   StateRelationship,
@@ -86,6 +87,9 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
     incomingMap.get(rel.to)?.push(rel);
   }
 
+  // 2b. Packages, grouped by manifest. Omitted when the repository declares none.
+  pushPackages(lines, map, relationships);
+
   // 3. File Connections
   const files = Object.keys(map.files).sort();
   if (files.length > 0) {
@@ -143,6 +147,7 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
       pushMetadataLinks(lines, outRels);
       pushEventLinks(lines, outRels);
       pushRegistryLinks(lines, outRels);
+      pushDeclaredModules(lines, outRels, inRels);
 
       lines.push('');
     }
@@ -501,6 +506,9 @@ export function renderMarkdown(map: ConnectionMap, options?: MarkdownOptions): s
     }
   }
 
+  // 5a. Language Boundaries: cross-language bindings and process executions.
+  pushLanguageBoundaries(lines, relationships);
+
   // 5b. Unresolved Observations. Internal ones (built-in container bookkeeping) stay in the JSON.
   const unresolvedIds = Object.keys(map.unresolved)
     .filter((id) => map.unresolved[id]?.tier !== 'internal')
@@ -762,6 +770,114 @@ function sourcesOf(incoming: readonly Relationship[], type: Relationship['type']
     .map((r) => r.from)
     .sort();
 }
+
+/** Packages grouped by manifest, each with its target, roots and internal dependencies. */
+function pushPackages(
+  lines: string[],
+  map: ConnectionMap,
+  relationships: readonly Relationship[],
+): void {
+  const packages = Object.values(map.packages);
+  if (packages.length === 0) return;
+
+  const byManifest = new Map<string, PackageNode[]>();
+  for (const pkg of packages) {
+    const group = byManifest.get(pkg.manifest) ?? [];
+    group.push(pkg);
+    byManifest.set(pkg.manifest, group);
+  }
+
+  lines.push('## Packages');
+  lines.push('');
+  for (const manifest of Array.from(byManifest.keys()).sort()) {
+    const group = (byManifest.get(manifest) ?? []).sort((a, b) =>
+      a.id < b.id ? -1 : a.id > b.id ? 1 : 0,
+    );
+    lines.push(`### ${manifest}`);
+    lines.push('');
+    for (const pkg of group) {
+      const label = pkg.target ? `${pkg.name} (${pkg.target})` : pkg.name;
+      const edition = pkg.edition ? `, edition ${pkg.edition}` : '';
+      lines.push(`- **${label}**: ${pkg.ecosystem}${edition}`);
+      if (pkg.roots.length > 0) {
+        lines.push(`  Roots: ${pkg.roots.join(', ')}`);
+      }
+      const dependencies = relationships
+        .filter((r) => r.type === 'dependsOn' && r.from === pkg.id)
+        .map((r) => `${r.to} (${String(r.metadata?.['kind'] ?? 'normal')})`)
+        .sort();
+      for (const dependency of dedupe(dependencies)) {
+        lines.push(`  Depends on: ${dependency}`);
+      }
+    }
+    lines.push('');
+  }
+}
+
+/** Rust module declarations: the files a file declares, and the file that declares it. */
+function pushDeclaredModules(
+  lines: string[],
+  outgoing: readonly Relationship[],
+  incoming: readonly Relationship[],
+): void {
+  const declares = dedupe(annotatedTargets(outgoing, 'declaresModule'));
+  if (declares.length > 0) {
+    lines.push('Declares modules:');
+    for (const target of declares) {
+      lines.push(`  → ${target}`);
+    }
+  }
+
+  const declaredBy = dedupe(sourcesOf(incoming, 'declaresModule'));
+  if (declaredBy.length > 0) {
+    lines.push('Declared by:');
+    for (const source of declaredBy) {
+      lines.push(`  ← ${source}`);
+    }
+  }
+}
+
+/** Bindings between languages, and scripts run as processes, with how each one connects. */
+function pushLanguageBoundaries(lines: string[], relationships: readonly Relationship[]): void {
+  const bindings: string[] = [];
+  const executions: string[] = [];
+
+  for (const rel of relationships) {
+    const mechanism = rel.metadata?.['mechanism'];
+    const loadKind = rel.metadata?.['loadKind'];
+    if (rel.type === 'executes' && mechanism === 'process') {
+      executions.push(`${rel.from} → ${rel.to} (${rel.confidence})`);
+    } else if (
+      rel.type === 'calls' &&
+      typeof mechanism === 'string' &&
+      BINDING_MECHANISMS.has(mechanism)
+    ) {
+      bindings.push(`${rel.from} → ${rel.to} (${mechanism}, ${rel.confidence})`);
+    } else if (rel.type === 'imports' && loadKind === 'wasm-bindgen-module') {
+      bindings.push(`${rel.from} → ${rel.to} (wasm-bindgen-module, ${rel.confidence})`);
+    }
+  }
+
+  if (bindings.length === 0 && executions.length === 0) return;
+
+  lines.push('## Language Boundaries');
+  lines.push('');
+  if (bindings.length > 0) {
+    lines.push('### Bindings');
+    lines.push('');
+    for (const binding of dedupe(bindings).sort()) lines.push(`  ${binding}`);
+    lines.push('');
+  }
+  if (executions.length > 0) {
+    lines.push('### Process Execution');
+    lines.push('');
+    for (const execution of dedupe(executions).sort()) lines.push(`  ${execution}`);
+    lines.push('');
+  }
+}
+
+/** Binding mechanisms written by the cross-language engine (Phase 14). */
+const BINDING_MECHANISMS: ReadonlySet<string> = new Set(['wasm-bindgen', 'pyo3', 'napi']);
 
 function dedupe(items: readonly string[]): string[] {
   return Array.from(new Set(items));
