@@ -199,6 +199,8 @@ export interface CrateIndexInput {
   readonly files: ReadonlySet<string>;
   readonly readText: (file: string) => string;
   readonly edition: string;
+  /** Macro names whose arguments are code (`rust.macros.expressionLike`). */
+  readonly expressionMacros?: readonly string[];
 }
 
 interface Build {
@@ -267,7 +269,9 @@ export function buildCrateIndex(input: CrateIndexInput): RustCrateIndex {
 }
 
 function loadFile(build: Build, file: string): RustFile {
-  const parsed = parseRustFile(build.input.readText(file));
+  const parsed = parseRustFile(build.input.readText(file), {
+    expressionMacros: build.input.expressionMacros,
+  });
   const analysis = analyzeRustSymbols(parsed, file);
   for (const [key, table] of analysis.namespaces) build.namespaces.set(key, table);
   for (const declaration of analysis.declarations) {

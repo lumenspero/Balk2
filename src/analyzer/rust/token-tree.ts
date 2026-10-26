@@ -27,9 +27,20 @@ export interface TokenGroup {
   readonly column: number;
   readonly endLine: number;
   readonly endColumn: number;
+  /** Set when this group holds the arguments of a configured expression macro (`rust.macros.expressionLike`). */
+  readonly codeArguments?: boolean;
 }
 
 export type TokenTree = RustToken | TokenGroup;
+
+/** Options for building token trees. */
+export interface TokenTreeOptions {
+  /**
+   * Macro names, as written before `!`, whose arguments are code (V3 Phase 15.3,
+   * `rust.macros.expressionLike`). Their groups are marked with `codeArguments`.
+   */
+  readonly expressionMacros?: ReadonlySet<string>;
+}
 
 export interface TokenTreeResult {
   readonly trees: readonly TokenTree[];
@@ -55,6 +66,29 @@ function closes(token: RustToken): Delimiter | undefined {
   return OPENER_FOR[token.text];
 }
 
+/**
+ * True when the group about to close follows `name!` and `name` is a configured expression macro.
+ * `parent` holds the trees already closed at this level, so the group's prefix is its last two.
+ */
+function isConfiguredMacroArguments(
+  parent: readonly TokenTree[],
+  expressionMacros: ReadonlySet<string>,
+): boolean {
+  if (expressionMacros.size === 0) return false;
+  const bang = parent.at(-1);
+  const name = parent.at(-2);
+  return (
+    bang !== undefined &&
+    !isTokenGroup(bang) &&
+    bang.kind === 'punct' &&
+    bang.text === '!' &&
+    name !== undefined &&
+    !isTokenGroup(name) &&
+    name.kind === 'ident' &&
+    expressionMacros.has(name.value)
+  );
+}
+
 interface Frame {
   readonly delimiter: Delimiter;
   readonly open: RustToken;
@@ -62,7 +96,11 @@ interface Frame {
 }
 
 /** Builds token trees from a lexer token stream. The endmarker is not part of the result. */
-export function buildTokenTrees(tokens: readonly RustToken[]): TokenTreeResult {
+export function buildTokenTrees(
+  tokens: readonly RustToken[],
+  options: TokenTreeOptions = {},
+): TokenTreeResult {
+  const expressionMacros: ReadonlySet<string> = options.expressionMacros ?? new Set<string>();
   const root: TokenTree[] = [];
   const stack: Frame[] = [];
   const errors: RustLexNote[] = [];
@@ -82,7 +120,8 @@ export function buildTokenTrees(tokens: readonly RustToken[]): TokenTreeResult {
     const frame = stack.pop();
     if (!frame) return;
     const end = closer ?? frame.children.at(-1) ?? frame.open;
-    current().push({
+    const parent = current();
+    parent.push({
       delimiter: frame.delimiter,
       open: frame.open,
       close: closer,
@@ -91,6 +130,7 @@ export function buildTokenTrees(tokens: readonly RustToken[]): TokenTreeResult {
       column: frame.open.column,
       endLine: end.endLine,
       endColumn: end.endColumn,
+      ...(isConfiguredMacroArguments(parent, expressionMacros) ? { codeArguments: true } : {}),
     });
   };
 

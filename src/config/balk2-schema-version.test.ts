@@ -22,6 +22,14 @@ describe('balk2.schema.json version', () => {
   });
 
   it('rejects a top-level key the schema does not define', () => {
-    expect(validate({ version: 3, rust: {} })).toBe(false);
+    expect(validate({ version: 3, notAKey: {} })).toBe(false);
+  });
+
+  it('accepts rust.macros.expressionLike and rejects an unknown rust key', () => {
+    expect(validate({ version: 3, rust: { macros: { expressionLike: ['log_info'] } } })).toBe(true);
+    expect(validate({ version: 3, rust: { macros: { expressionLike: ['log-info'] } } })).toBe(
+      false,
+    );
+    expect(validate({ version: 3, rust: { bindings: [] } })).toBe(false);
   });
 });

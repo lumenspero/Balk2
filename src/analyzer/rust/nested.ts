@@ -170,7 +170,11 @@ function isTemplateArgument(trees: readonly TokenTree[], index: number): boolean
   if (!isPunct(trees[index - 1], '!')) return false;
   const name = trees[index - 2];
   if (name === undefined || isTokenGroup(name) || name.kind !== 'ident') return false;
-  return !macroArgumentsAreCode(name.value);
+  const args = trees[index];
+  return !macroArgumentsAreCode(
+    name.value,
+    args !== undefined && isTokenGroup(args) ? args : undefined,
+  );
 }
 
 function spanOf(group: TokenGroup): Span {

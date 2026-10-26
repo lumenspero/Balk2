@@ -136,13 +136,15 @@ const FIRST_ARGUMENT_MACROS: ReadonlySet<string> = new Set(['matches']);
  * True when a macro's arguments are code. Any other macro's arguments are template or token text, such as a
  * `quote!` body, so they declare nothing and name nothing.
  */
-export function macroArgumentsAreCode(name: string): boolean {
-  return EXPRESSION_MACROS.has(name) || FIRST_ARGUMENT_MACROS.has(name);
+export function macroArgumentsAreCode(name: string, args?: TokenGroup): boolean {
+  return (
+    EXPRESSION_MACROS.has(name) || FIRST_ARGUMENT_MACROS.has(name) || args?.codeArguments === true
+  );
 }
 
 /** The token trees of a macro's arguments that are expressions, to scan like a body (V3 Phase 10.2). */
 function expressionArgsOf(name: string, args: TokenGroup): readonly TokenTree[] {
-  if (EXPRESSION_MACROS.has(name)) return args.children;
+  if (EXPRESSION_MACROS.has(name) || args.codeArguments === true) return args.children;
   if (FIRST_ARGUMENT_MACROS.has(name)) return splitTopLevel(args.children, ',')[0] ?? [];
   return [];
 }

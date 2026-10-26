@@ -4,6 +4,7 @@ import {
   type PathBaseConfig,
 } from './path-base-config.js';
 import { normalizePythonConfig, type PythonConfig } from './python-config.js';
+import { normalizeRustConfig, type RustConfig } from './rust-config.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { Annotation } from '../analyzer/annotations.js';
@@ -70,6 +71,8 @@ export interface Balk2Config {
   readonly annotations?: readonly Annotation[];
   /** Python analysis configuration */
   readonly python?: PythonConfig;
+  /** Rust analysis configuration (V3 Phase 15.3) */
+  readonly rust?: RustConfig;
 }
 
 /** The loaded configuration plus everything in the file that was ignored or unusable. */
@@ -95,6 +98,7 @@ const KNOWN_TOP_LEVEL_KEYS: ReadonlySet<string> = new Set([
   'state',
   'annotations',
   'python',
+  'rust',
 ]);
 
 /**
@@ -159,6 +163,7 @@ export function loadBalk2ConfigDetailed(
   delete config.state;
   delete config.annotations;
   delete config.python;
+  delete config.rust;
 
   if ('globals' in raw) {
     problems.push(...validateGlobalsConfig(raw.globals));
@@ -186,6 +191,11 @@ export function loadBalk2ConfigDetailed(
   if ('python' in raw) {
     const python = normalizePythonConfig(raw.python, problems);
     if (python) config.python = python;
+  }
+
+  if ('rust' in raw) {
+    const rust = normalizeRustConfig(raw.rust, problems);
+    if (rust) config.rust = rust;
   }
 
   if ('data' in raw) {

@@ -92,7 +92,9 @@ export class RustFrontEnd implements LanguageFrontEnd {
       rustFiles.add(filePath);
       sources.set(filePath, source);
       // The parser recovers past each error, so every file is still analyzed.
-      const file = parseRustFile(source);
+      const file = parseRustFile(source, {
+        expressionMacros: input.config?.rust?.macros?.expressionLike,
+      });
       parsedFiles.set(filePath, file);
       for (const e of file.errors) {
         syntaxErrors.push({ path: filePath, line: e.line, column: e.column, message: e.message });
@@ -596,6 +598,7 @@ function buildCrates(
       files: rustFiles,
       readText,
       edition: packageById.get(root.packageId)?.edition ?? '2021',
+      expressionMacros: input.config?.rust?.macros?.expressionLike,
     });
     const target = packageById.get(root.packageId)?.target;
     crates.push({

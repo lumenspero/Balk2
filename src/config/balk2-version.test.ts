@@ -44,7 +44,7 @@ describe('.balk2.json version', () => {
   });
 
   it('reports a top-level key the loader does not read, and allows $schema', () => {
-    const problems = load({ version: 3, $schema: './schema.json', rust: {} }).problems;
-    expect(problems).toEqual([{ path: 'rust', message: 'unknown key ignored' }]);
+    const problems = load({ version: 3, $schema: './schema.json', notAKey: {} }).problems;
+    expect(problems).toEqual([{ path: 'notAKey', message: 'unknown key ignored' }]);
   });
 });

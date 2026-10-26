@@ -68,6 +68,8 @@ export interface ModuleTreeInput {
   /** Repository files, normalized to `/` separators */
   readonly files: ReadonlySet<string>;
   readonly readText: (path: string) => string;
+  /** Macro names whose arguments are code (`rust.macros.expressionLike`). */
+  readonly expressionMacros?: readonly string[];
 }
 
 /** The `#[path]` attribute of one declaration, as far as the map can use it. */
@@ -172,7 +174,8 @@ function walkCrate(root: string, input: ModuleTreeInput, sink: Sink, crate: Crat
     if (current === undefined) break;
     const declarations: Declaration[] = [];
     collectDeclarations(
-      parseRustFile(input.readText(current.file)).items,
+      parseRustFile(input.readText(current.file), { expressionMacros: input.expressionMacros })
+        .items,
       current.file,
       [],
       [],

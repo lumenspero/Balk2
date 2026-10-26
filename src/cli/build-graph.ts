@@ -130,6 +130,7 @@ export function buildConnectionGraphDetailed(rootDir: string, config?: Balk2Conf
     ),
     files: new Set(files),
     readText: (filePath) => fs.readFileSync(path.join(rootDir, filePath), 'utf8'),
+    expressionMacros: config?.rust?.macros?.expressionLike,
   });
   for (const file of moduleTree.files) graph.addFile(file, 'rust');
   for (const edge of moduleTree.edges) {

@@ -466,9 +466,17 @@ export function parseItems(
 }
 
 /** Lexes, builds token trees and parses items for one Rust source file. */
-export function parseRustFile(source: string): RustFile {
+/** Options for parsing a Rust source file. */
+export interface RustParseOptions {
+  /** Macro names whose arguments are code (`rust.macros.expressionLike`), as written before `!`. */
+  readonly expressionMacros?: readonly string[];
+}
+
+export function parseRustFile(source: string, options: RustParseOptions = {}): RustFile {
   const lexed = lexRust(source);
-  const trees = buildTokenTrees(lexed.tokens);
+  const trees = buildTokenTrees(lexed.tokens, {
+    expressionMacros: new Set(options.expressionMacros ?? []),
+  });
   const itemErrors: RustLexNote[] = [];
   const parsed = parseItems(new TreeCursor(trees.trees), itemErrors);
   const errors = [...lexed.errors, ...trees.errors, ...itemErrors].sort(

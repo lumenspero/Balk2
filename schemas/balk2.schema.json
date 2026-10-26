@@ -68,6 +68,9 @@
       "items": {
         "$ref": "#/$defs/annotation"
       }
+    },
+    "rust": {
+      "$ref": "#/$defs/rust"
     }
   },
   "$defs": {
@@ -733,6 +736,26 @@
         "enum": ["javascript", "typescript", "python", "rust"]
       },
       "description": "Languages this entry applies to. javascript and typescript select the JS/TS front end. Omit to apply to every language that reads the protocol."
+    },
+    "rust": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "macros": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "expressionLike": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+              },
+              "description": "Macro names, as written before !, whose arguments are code. Added to the built-in list."
+            }
+          }
+        }
+      }
     }
   }
 }
