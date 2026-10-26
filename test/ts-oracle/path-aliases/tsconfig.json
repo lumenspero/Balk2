@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "paths": {
+      "@app/*": ["src/*"],
+      "@lib": ["src/lib/index.ts"]
+    }
+  }
+}

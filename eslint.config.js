@@ -5,7 +5,14 @@ export default tseslint.config(
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    ignores: ['dist/', 'coverage/', 'node_modules/', '*.js', '!eslint.config.js'],
+    ignores: [
+      'dist/',
+      'coverage/',
+      'node_modules/',
+      'test/ts-oracle/',
+      '*.js',
+      '!eslint.config.js',
+    ],
   },
   {
     files: ['src/**/*.ts'],
