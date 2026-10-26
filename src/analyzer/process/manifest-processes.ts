@@ -84,22 +84,33 @@ function projectScripts(
     const module = (target.split(/[:[]/)[0] ?? '').trim();
     if (module === '') continue;
     const modulePath = module.replace(/\./g, '/');
-    const candidates = ['', 'src/'].flatMap((prefix) => [
-      `${prefix}${modulePath}.py`,
-      `${prefix}${modulePath}/__init__.py`,
+    // The package sits in the manifest's own directory, or in its src/ directory. Repository paths.
+    const candidates = [dir, path.posix.join(dir, 'src')].flatMap((base) => [
+      path.posix.join(base, `${modulePath}.py`),
+      path.posix.join(base, `${modulePath}/__init__.py`),
     ]);
-    const found = candidates.find((candidate) => files.has(candidate)) ?? `${modulePath}.py`;
+    const found =
+      candidates.find((candidate) => files.has(candidate)) ??
+      path.posix.join(dir, `${modulePath}.py`);
     calls.push({
       file,
       owner: file,
       callee: `[project.scripts] ${name}`,
       // Relative to the manifest's directory, which is where the script runs.
       argv: ['python', path.posix.relative(dir, found)],
-      span: lineSpan(file, source, name),
+      span: tomlKeySpan(file, source, name),
       evidence: 'manifest',
       workingDir: dir,
     });
   }
+}
+
+/** The span of the `key = ...` line of a TOML key, or line 1 when no line has that key. */
+function tomlKeySpan(file: string, source: string, key: string): SourceSpan {
+  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(`^\\s*"?${escaped}"?\\s*=`);
+  const line = source.split(/\r?\n/).find((candidate) => pattern.test(candidate));
+  return lineSpan(file, source, line ?? '');
 }
 
 /**
@@ -158,7 +169,7 @@ function readText(rootDir: string, file: string): string | undefined {
 
 /** The span of the first line that contains a needle, or line 1 when none does. */
 function lineSpan(file: string, source: string, needle: string): SourceSpan {
-  const lines = source.split('\n');
+  const lines = source.split(/\r?\n/);
   const index = Math.max(
     0,
     lines.findIndex((line) => line.includes(needle)),

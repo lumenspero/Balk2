@@ -8,19 +8,20 @@ on:
 
 jobs:
   pre-commit:
-    name: pre-commit hooks (${{ matrix.os }})
+    name: pre-commit hooks (${{ matrix.os }}, node ${{ matrix.node-version }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
+        node-version: [18, 20, 22]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Use Node.js 22
+      - name: Use Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ matrix.node-version }}
 
       - name: Use Python 3.12
         uses: actions/setup-python@v5

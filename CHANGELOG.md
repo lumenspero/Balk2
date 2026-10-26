@@ -1,12 +1,53 @@
 # Changelog
 
-## Unreleased
+## 3.0.0
+
+### Breaking changes
+
+- **Connection map version 3.** `connection-map.json` now has `version: 3`. Version 1 and version 2 maps are still read, and `balk2 check` reports them as out of date until they are regenerated.
+- **New union values.** Code that switches over these types must handle the new members:
+  - `NodeKind`: `package`.
+  - `SymbolType`: `struct`, `enum`, `trait`, `module`, `macro`, `variant`.
+  - `StateRootKind`: `module`.
+  - `PackageEcosystem`: `npm`, `python`, `cargo`. `PackageTargetKind`: `lib`, `bin`, `script`, `test`, `example`, `bench`, `build-script`, `proc-macro`.
+  - `Evidence`: `manifest`.
+  - Relationship types: `exports`, `declaresModule`, `dependsOn`, `packageRoot`, `executes`.
+  - `UnresolvedReason`: `unresolved-module-path`, `macro-generated-item`, `ambiguous-star-import`, `dynamic-include-path`, `unresolved-binding`, `dynamic-command`.
+  - `LoadKind`: `include-macro`, `dunder-import`, `spec-from-file`, `run-path`, `run-module`, `wasm-bindgen-module`.
+- **Manifests are file nodes, not artifacts.** Manifest and toolchain files, such as `package.json`, `tsconfig*.json`, `Cargo.toml`, `pyproject.toml`, `setup.cfg`, `ruff.toml` and `rust-toolchain.toml`, are file nodes tagged `npm-manifest`, `python-manifest` or `cargo-manifest`.
+- **Configuration version 3.** `.balk2.json` accepts `"version": 2` or `"version": 3`. The published schema reads both.
+- **`analyzeFile` is deprecated** on `JsTsAnalyzer`, `PythonAnalyzer` and `RustAnalyzer`. Use `generateConnectionMap` for a repository. `analyzeFile` remains for single files.
+- **Python output changes.** Every removed edge is a false positive, and every new edge has a fixture or a unit test. The full list is in `docs/v3/python-changes.md`.
+
+### Added
+
+- **Rust.** Rust is analyzed by a front end of the same kind as Python and JS/TS: crates and Cargo packages, the module tree, names, traits and `impl` blocks, macros, compile-time includes, build scripts and `libloading` observations. Module edges are checked against `rustc` dependency files.
+- **Python.** Python is analyzed with a real tokenizer and parser. Module edges are checked against CPython's `ast` and `importlib`.
+- **JS/TS.** `references` for type positions that name a repository type, and state edges for module-level state.
+- **Process execution.** `package.json` scripts, Makefile recipes, `[project.scripts]` entries, and literal process calls in JS/TS, Python and Rust create `executes` edges.
+- **Cross-language boundaries.** WASM, PyO3, napi-rs, attribute registrations and process execution connect two languages only when both sides provide evidence.
+- **Scanning.** `include` accepts either the v2 array of globs or an object `{ patterns, tests }`; `tests` defaults to true, and test files are tagged. `target/` (with a `Cargo.toml` beside it), `.venv/` and `venv/` (with a `pyvenv.cfg`), and `node_modules/` are never scanned. Lock files are not scanned.
 
 - **Package nodes.** Every named `package.json`, every Cargo target and every `pyproject.toml` project is a `package` node in `connection-map.json`. A repository whose `package.json` files are in `include` gains these nodes, a `packageRoot` edge from each package to its entry files, and `dependsOn` edges between workspace packages. A `dependsOn` edge comes from an npm `workspace:` spec, or from a version range that the workspace package's version satisfies. Only the manifests in `include` are read, and an entry that points into an excluded directory such as `dist/` is neither a root nor a problem.
 - **Repeated dependencies.** When a package declares the same dependency more than once, the map keeps the most production-relevant kind (normal, build, peer, optional, then dev). A `cfg` or `implicit` flag is kept only when every such declaration has it.
 - **Entry points.** A Python `[project.scripts]` entry gets a `packageRoot` edge to its module. An entry point in a group gets a `registers` edge from a `registry:entry-points:<group>#<name>` key to its target.
 - **uv workspace membership.** A `workspace = true` source must name a member of the enclosing `[tool.uv.workspace]`. A source to a project outside `members`, or inside `exclude`, draws no `dependsOn` edge and is reported as a `manifest` diagnostic.
 - **Manifest diagnostics.** A manifest that cannot be read or parsed, a workspace glob that matches no package, a missing entry file and an unresolved entry point appear as `manifest` diagnostics in `generate` and `check`.
+
+### Fixed
+
+- `generate` keeps the existing `generatedAt` and commit when the sources have not changed. Before, every run rewrote both, so the pre-commit hook always reported a change.
+- Manifest spans are correct on Windows checkouts, which use CRLF line endings.
+- A `[project.scripts]` entry finds its module in the manifest's own directory, and its span points at the entry's own line.
+
+### Known limits
+
+- Items not covered by V3 are listed in `docs/v3/deferred.md`, with the reason and the phase that might reconsider each.
+- Partial cells in the V3 column, and the limits behind them, are listed in `docs/v3/language-parity.md`. The Rust `libloading` cell (row 16) is Partial. Approval for it is pending.
+
+### Upgrading
+
+- Pre-commit: set the `rev` to `3.0.0`. The hooks run `@lumenspero/balk2@3.0.0`.
 
 ## 2.0.1
 

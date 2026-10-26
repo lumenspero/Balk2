@@ -8,26 +8,28 @@ on:
 
 jobs:
   digests:
-    name: digests (${{ matrix.os }})
+    name: digests (${{ matrix.os }}, node ${{ matrix.node-version }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
+        node-version: [18, 20, 22]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Use Node.js 22
+      - name: Use Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ matrix.node-version }}
 
       - name: Install dependencies
         run: npm ci
 
       # Each fixture is generated from a repeated run, a fresh copy and a reversed creation order,
-      # and the test fails on any byte difference. The digests are then compared across operating
-      # systems in the compare job below.
+      # and the test fails on any byte difference. A CRLF copy of each fixture must also match its
+      # LF output, since Windows checks out text files with CRLF. The digests are then compared
+      # across operating systems and Node versions in the compare job below.
       - name: Generate fixture digests
         shell: bash
         env:
@@ -38,41 +40,55 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: digests-${{ matrix.os }}
+          name: digests-${{ matrix.os }}-node${{ matrix.node-version }}
           path: ${{ runner.temp }}/digests.json
           if-no-files-found: error
 
   compare:
-    name: compare digests across operating systems
+    name: compare digests across operating systems and Node versions
     needs: digests
     runs-on: ubuntu-latest
     steps:
-      - name: Download Linux digests
+      - name: Download every digest file
         uses: actions/download-artifact@v4
         with:
-          name: digests-ubuntu-latest
-          path: linux
+          pattern: digests-*
+          path: digests
 
-      - name: Download Windows digests
-        uses: actions/download-artifact@v4
-        with:
-          name: digests-windows-latest
-          path: windows
-
-      # Byte-identical output means identical digests for every fixture. A fixture missing from
-      # either side fails too.
-      - name: Fail if any fixture differs between Linux and Windows
+      # Byte-identical output means identical digests for every fixture, on every operating system
+      # and Node version. A missing run or a missing fixture fails too.
+      - name: Fail if any fixture differs
         run: |
-          node -e "
+          node <<'JS'
           const fs = require('fs');
-          const linux = JSON.parse(fs.readFileSync('linux/digests.json', 'utf8'));
-          const windows = JSON.parse(fs.readFileSync('windows/digests.json', 'utf8'));
-          const names = [...new Set([...Object.keys(linux), ...Object.keys(windows)])].sort();
-          const problems = names.filter((name) => linux[name] !== windows[name]);
-          if (names.length === 0 || problems.length > 0) {
-            for (const name of problems) console.error('differs across operating systems: ' + name);
-            console.error(names.length + ' fixtures compared, ' + problems.length + ' differ');
+          const path = require('path');
+          const expectedRuns = 6; // 2 operating systems x 3 Node versions
+          const find = (dir) =>
+            fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+              const full = path.join(dir, entry.name);
+              if (entry.isDirectory()) return find(full);
+              return entry.name === 'digests.json' ? [full] : [];
+            });
+          const files = find('digests').sort();
+          if (files.length !== expectedRuns) {
+            console.error(`expected ${expectedRuns} digest files, found ${files.length}`);
             process.exit(1);
           }
-          console.log(names.length + ' fixtures are byte-identical on Linux and Windows');
-          "
+          const runs = files.map((file) => [file, JSON.parse(fs.readFileSync(file, 'utf8'))]);
+          const [baseFile, base] = runs[0];
+          const names = [...new Set(runs.flatMap(([, digests]) => Object.keys(digests)))].sort();
+          let problems = 0;
+          for (const [file, digests] of runs) {
+            for (const name of names) {
+              if (digests[name] !== base[name]) {
+                console.error(`differs across runs: ${name} in ${file} (compared with ${baseFile})`);
+                problems++;
+              }
+            }
+          }
+          if (names.length === 0 || problems > 0) {
+            console.error(`${names.length} fixtures compared, ${problems} differences`);
+            process.exit(1);
+          }
+          console.log(`${names.length} fixtures are byte-identical across ${runs.length} runs`);
+          JS

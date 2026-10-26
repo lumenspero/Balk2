@@ -37,6 +37,18 @@ function listFiles(directory: string, prefix = ''): string[] {
   return out;
 }
 
+/** A fresh copy of a fixture whose text files use CRLF line endings, as a Windows checkout does. */
+function crlfCopy(source: string): string {
+  const dir = freshCopy(source, false);
+  for (const rel of listFiles(dir)) {
+    const file = path.join(dir, rel);
+    const text = fs.readFileSync(file, 'utf8');
+    if (text.includes('\0') || text.includes('\r')) continue;
+    fs.writeFileSync(file, text.replace(/\n/g, '\r\n'));
+  }
+  return dir;
+}
+
 /** A fresh copy of a fixture, with its files created in the given order. */
 function freshCopy(source: string, reverse: boolean): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'balk2-determinism-'));
@@ -90,6 +102,19 @@ describe('connection map output is deterministic on real repositories (V3 Phase 
       expect(reversed.md, 'reversed creation order, Markdown').toBe(first.md);
 
       digests[name] = sha256(`${first.json}\u0000${first.md}`);
+    });
+  }
+
+  // Windows checks out text files with CRLF (.gitattributes: text=auto). Line endings must not
+  // change any position, so a CRLF copy has to produce the same map as the LF copy.
+  for (const name of fixtureNames) {
+    it(`${name} with CRLF line endings matches LF`, () => {
+      const source = path.join(FIXTURES, name);
+      const lf = generate(freshCopy(source, false));
+      const crlf = generate(crlfCopy(source));
+
+      expect(crlf.json, 'CRLF, JSON').toBe(lf.json);
+      expect(crlf.md, 'CRLF, Markdown').toBe(lf.md);
     });
   }
 });

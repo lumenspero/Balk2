@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -12,30 +12,31 @@ const npmCli = process.env.npm_execpath;
 let tempDir = '';
 let tarballPath = '';
 
-function run(command: string, args: readonly string[], cwd: string): string {
-  try {
-    return execFileSync(command, args, {
-      cwd,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
+/**
+ * Runs a child process and waits for it. Every call in this file is awaited, never run with
+ * execFileSync: a synchronous wait holds the test worker, which cannot answer vitest's RPC
+ * (onTaskUpdate, 60 second limit), and the run then fails with "Timeout calling onTaskUpdate".
+ */
+function run(command: string, args: readonly string[], cwd: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(command, args, { cwd, encoding: 'utf8' }, (error, stdout, stderr) => {
+      if (error) {
+        const output = [String(stdout).trim(), String(stderr).trim()].filter(Boolean).join('\n');
+        if (output) error.message = `${error.message}\n${output}`;
+        reject(error);
+        return;
+      }
+      resolve(stdout);
     });
-  } catch (error) {
-    if (error instanceof Error && 'stdout' in error && 'stderr' in error) {
-      const output = [String(error.stdout).trim(), String(error.stderr).trim()]
-        .filter(Boolean)
-        .join('\n');
-      if (output) error.message = `${error.message}\n${output}`;
-    }
-    throw error;
-  }
+  });
 }
 
-function runNpm(args: readonly string[], cwd: string): string {
+function runNpm(args: readonly string[], cwd: string): Promise<string> {
   if (!npmCli) throw new Error('npm_execpath is required to run packed-package tests');
   return run(process.execPath, [npmCli, ...args], cwd);
 }
 
-function installConsumer(name: string): string {
+async function installConsumer(name: string): Promise<string> {
   const consumerDir = path.join(tempDir, name);
   fs.mkdirSync(consumerDir, { recursive: true });
   fs.writeFileSync(
@@ -43,7 +44,7 @@ function installConsumer(name: string): string {
     JSON.stringify({ name, private: true, version: '0.0.0' }, null, 2),
     'utf8',
   );
-  runNpm(
+  await runNpm(
     ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--package-lock=false', tarballPath],
     consumerDir,
   );
@@ -56,11 +57,11 @@ function installConsumer(name: string): string {
 const describePackage = process.env.BALK2_PACKAGE_TEST === 'true' ? describe : describe.skip;
 
 describePackage('packed package contract', () => {
-  beforeAll(() => {
+  beforeAll(async () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'balk2-package-test-'));
-    runNpm(['run', 'build'], projectRoot);
+    await runNpm(['run', 'build'], projectRoot);
 
-    const packResult = JSON.parse(runNpm(['pack', '--json'], projectRoot)) as Array<{
+    const packResult = JSON.parse(await runNpm(['pack', '--json'], projectRoot)) as Array<{
       filename: string;
       files: Array<{ path: string }>;
     }>;
@@ -79,9 +80,9 @@ describePackage('packed package contract', () => {
     if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it('loads the documented root API from an ESM consumer', () => {
-    const consumerDir = installConsumer('esm-consumer');
-    const output = run(
+  it('loads the documented root API from an ESM consumer', async () => {
+    const consumerDir = await installConsumer('esm-consumer');
+    const output = await run(
       process.execPath,
       [
         '--input-type=module',
@@ -96,9 +97,9 @@ describePackage('packed package contract', () => {
     expect(output.trim()).toBe('0 json');
   });
 
-  it('loads the documented root API from a CommonJS consumer', () => {
-    const consumerDir = installConsumer('cjs-consumer');
-    const output = run(
+  it('loads the documented root API from a CommonJS consumer', async () => {
+    const consumerDir = await installConsumer('cjs-consumer');
+    const output = await run(
       process.execPath,
       [
         '--eval',
@@ -112,8 +113,8 @@ describePackage('packed package contract', () => {
     expect(output.trim()).toBe('0 json');
   });
 
-  it('resolves root declarations for a Node16 TypeScript consumer', () => {
-    const consumerDir = installConsumer('typescript-consumer');
+  it('resolves root declarations for a Node16 TypeScript consumer', async () => {
+    const consumerDir = await installConsumer('typescript-consumer');
     fs.writeFileSync(
       path.join(consumerDir, 'tsconfig.json'),
       JSON.stringify(
@@ -143,11 +144,11 @@ console.log(map.version);
     );
 
     const tsc = path.join(consumerDir, 'node_modules', 'typescript', 'bin', 'tsc');
-    run(process.execPath, [tsc, '--project', 'tsconfig.json'], consumerDir);
+    await run(process.execPath, [tsc, '--project', 'tsconfig.json'], consumerDir);
   });
 
-  it('ships the same schema as the source in the installed package', () => {
-    const consumerDir = installConsumer('schema-consumer');
+  it('ships the same schema as the source in the installed package', async () => {
+    const consumerDir = await installConsumer('schema-consumer');
     const shipped = path.join(
       consumerDir,
       'node_modules',
@@ -162,8 +163,8 @@ console.log(map.version);
     );
   });
 
-  it('runs the installed CLI and reports its package version', () => {
-    const consumerDir = installConsumer('cli-consumer');
+  it('runs the installed CLI and reports its package version', async () => {
+    const consumerDir = await installConsumer('cli-consumer');
     const cliPath = path.join(
       consumerDir,
       'node_modules',
@@ -180,14 +181,15 @@ console.log(map.version);
     ) as { version: string; exports: Record<string, unknown> };
 
     expect(packageJson.exports).toHaveProperty('.');
-    expect(run(process.execPath, [cliPath, '--version'], consumerDir).trim()).toBe(
+    expect((await run(process.execPath, [cliPath, '--version'], consumerDir)).trim()).toBe(
       `balk2 v${packageJson.version}`,
     );
-    expect(run(process.execPath, [cliPath, '--help'], consumerDir)).toContain('Usage:');
+    expect(await run(process.execPath, [cliPath, '--help'], consumerDir)).toContain('Usage:');
   });
-  it('loads the language analyzers from an ESM consumer', () => {
-    const consumerDir = installConsumer('analyzers-esm-consumer');
-    const output = run(
+
+  it('loads the language analyzers from an ESM consumer', async () => {
+    const consumerDir = await installConsumer('analyzers-esm-consumer');
+    const output = await run(
       process.execPath,
       [
         '--input-type=module',
@@ -201,9 +203,9 @@ console.log(map.version);
     expect(output.trim()).toBe('PythonAnalyzer RustAnalyzer true');
   });
 
-  it('loads the language analyzers from a CommonJS consumer', () => {
-    const consumerDir = installConsumer('analyzers-cjs-consumer');
-    const output = run(
+  it('loads the language analyzers from a CommonJS consumer', async () => {
+    const consumerDir = await installConsumer('analyzers-cjs-consumer');
+    const output = await run(
       process.execPath,
       [
         '--eval',
@@ -216,8 +218,8 @@ console.log(map.version);
     expect(output.trim()).toBe('PythonAnalyzer RustAnalyzer true');
   });
 
-  it('exposes the v3 union values and package types to a TypeScript consumer', () => {
-    const consumerDir = installConsumer('v3-types-consumer');
+  it('exposes the v3 union values and package types to a TypeScript consumer', async () => {
+    const consumerDir = await installConsumer('v3-types-consumer');
     fs.writeFileSync(
       path.join(consumerDir, 'tsconfig.json'),
       JSON.stringify(
@@ -253,12 +255,12 @@ console.log(kind, ecosystem, symbol.length, evidence, packageNode, analyzers.len
     );
 
     const tsc = path.join(consumerDir, 'node_modules', 'typescript', 'bin', 'tsc');
-    run(process.execPath, [tsc, '--project', 'tsconfig.json'], consumerDir);
+    await run(process.execPath, [tsc, '--project', 'tsconfig.json'], consumerDir);
   });
 
-  it('loads the TOML parser the package depends on from the installed tarball', () => {
-    const consumerDir = installConsumer('toml-consumer');
-    const output = run(
+  it('loads the TOML parser the package depends on from the installed tarball', async () => {
+    const consumerDir = await installConsumer('toml-consumer');
+    const output = await run(
       process.execPath,
       [
         '--input-type=module',
@@ -272,8 +274,8 @@ console.log(kind, ecosystem, symbol.length, evidence, packageNode, analyzers.len
     expect(output.trim()).toBe('core');
   });
 
-  it('generates maps for Python, Rust and mixed fixtures with the installed CLI', () => {
-    const consumerDir = installConsumer('cli-fixtures-consumer');
+  it('generates maps for Python, Rust and mixed fixtures with the installed CLI', async () => {
+    const consumerDir = await installConsumer('cli-fixtures-consumer');
     const cliPath = path.join(
       consumerDir,
       'node_modules',
@@ -288,12 +290,12 @@ console.log(kind, ecosystem, symbol.length, evidence, packageNode, analyzers.len
       const work = path.join(tempDir, `work-${name}`);
       fs.cpSync(path.join(projectRoot, 'test', 'fixtures', name), work, { recursive: true });
 
-      run(process.execPath, [cliPath, 'generate'], work);
+      await run(process.execPath, [cliPath, 'generate'], work);
       const map = JSON.parse(fs.readFileSync(path.join(work, 'connection-map.json'), 'utf8')) as {
         files: Record<string, { language?: string }>;
       };
       expect(Object.keys(map.files).length, `${name} has files`).toBeGreaterThan(0);
-      run(process.execPath, [cliPath, 'check'], work);
+      await run(process.execPath, [cliPath, 'check'], work);
 
       if (name === 'mixed-project') {
         const languages = new Set(Object.values(map.files).map((file) => file.language));

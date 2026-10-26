@@ -8,15 +8,19 @@ on:
 
 jobs:
   ts-oracle:
-    name: ts-oracle (TypeScript resolveModuleName)
+    name: ts-oracle (TypeScript resolveModuleName, node ${{ matrix.node-version }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [18, 20, 22]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Use Node.js 22
+      - name: Use Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ matrix.node-version }}
 
       - name: Install dependencies
         run: npm ci

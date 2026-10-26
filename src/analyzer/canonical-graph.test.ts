@@ -1,4 +1,6 @@
+import * as path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import { buildConnectionGraph } from '../cli/build-graph.js';
 import { ConnectionGraph } from '../graph.js';
 import { EVENT_CORPUS } from '../testing/event-corpus.js';
 import { analyzeFixture as analyzeEvent } from '../testing/event-metrics.js';
@@ -39,7 +41,7 @@ function analyzeModuleLoad(index: number): ConnectionMap {
 }
 
 /**
- * One fixture per relationship family, plus both mixed-mechanism fixtures. Each snapshot holds the
+ * One fixture per relationship family, plus the mixed-mechanism fixtures and the mixed repository. Each snapshot holds the
  * whole canonical graph, so a change in any node or edge, including structural ones, shows up.
  */
 const CASES: ReadonlyArray<readonly [string, () => ConnectionMap]> = [
@@ -50,7 +52,14 @@ const CASES: ReadonlyArray<readonly [string, () => ConnectionMap]> = [
   ['globals', (): ConnectionMap => analyzeGlobalFixture(GLOBAL_CORPUS[0]!)],
   ['mixed-full-path', (): ConnectionMap => analyzeMixedFixture(MIXED_CORPUS[0]!)],
   ['mixed-other-receiver', (): ConnectionMap => analyzeMixedFixture(MIXED_CORPUS[1]!)],
+  ['mixed-project', (): ConnectionMap => analyzeRepositoryFixture('mixed-project')],
 ];
+
+/** A repository under test/fixtures, read from disk the way `balk2 generate` reads it. */
+function analyzeRepositoryFixture(name: string): ConnectionMap {
+  const root = path.resolve(__dirname, '../../test/fixtures', name);
+  return buildConnectionGraph(root).build({ generatedAt: '2026-01-01T00:00:00.000Z' });
+}
 
 describe('canonical graph snapshots', () => {
   it.each(CASES)('keeps the whole graph stable: %s', async (slug, build) => {

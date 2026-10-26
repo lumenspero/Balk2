@@ -7,11 +7,10 @@ export default defineConfig({
     // a busy machine. The 5s default is too tight when test files run side by side.
     testTimeout: 30_000,
     hookTimeout: 180_000,
-    // Each worker runs long synchronous TypeScript builds. vitest answers worker calls such as
-    // onTaskUpdate over RPC, and that RPC has a fixed 60s timeout that this vitest version does not
-    // expose. With one worker per spare core, the runner is starved and reports "Timeout calling
-    // onTaskUpdate" even though every test passed, which fails the run. Half the cores keeps
-    // enough headroom for the runner to answer in time.
+    // Vitest's worker RPC (onTaskUpdate) gives up after 60 seconds without an answer. A worker that
+    // waits on a synchronous child process cannot answer, so tests must await child processes (see
+    // src/package.test.ts). Fewer forks than cores also leave the runner headroom on small CI
+    // machines. This is a margin, not the fix.
     poolOptions: {
       forks: { maxForks: Math.max(1, Math.floor(os.cpus().length / 2)) },
     },

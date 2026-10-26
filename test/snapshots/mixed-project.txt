@@ -1,0 +1,31 @@
+# nodes: files
+crates/core/Cargo.toml
+crates/core/src/lib.rs
+pipeline/main.py
+pipeline/normalize.py
+web/package.json
+web/src/app.ts
+web/src/parse.ts
+# nodes: symbols
+crates/core/src/lib.rs:score
+pipeline/main.py:start
+pipeline/normalize.py:run
+web/src/app.ts:run
+web/src/parse.ts:parse
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+calls web/src/app.ts:run -> web/src/parse.ts:parse [high]
+exports crates/core/src/lib.rs -> crates/core/src/lib.rs:score [high]
+exports pipeline/main.py -> pipeline/main.py:start [high]
+exports pipeline/normalize.py -> pipeline/normalize.py:run [high]
+exports web/src/app.ts -> web/src/app.ts:run [high]
+exports web/src/parse.ts -> web/src/parse.ts:parse [high]
+imports web/src/app.ts -> web/src/parse.ts [high]
+packageRoot package:cargo:crates/core#lib:core -> crates/core/src/lib.rs [high]
+packageRoot package:npm:web -> web/src/app.ts [high]

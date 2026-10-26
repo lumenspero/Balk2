@@ -220,4 +220,25 @@ describe('manifest process execution (Phase 14.5)', () => {
     expect(edges).toHaveLength(2);
     expect(edges.find((e) => e.to !== 'src/pkg/cli.py')?.to.endsWith('.py')).toBe(false);
   });
+
+  it('a [project.scripts] entry in a nested project finds its package there, and reports its own line', () => {
+    const root = repoWith({
+      'apps/cli/pyproject.toml':
+        '[project]\nname = "acme-cli"\n\n[project.scripts]\nacme = "acme_cli.main:run"\ngone = "nothere:go"\n',
+      'apps/cli/acme_cli/main.py': 'def run():\n    pass\n',
+    });
+    const graph = buildConnectionGraph(root);
+    expect(manifestEdgesOf(graph)).toContainEqual({
+      from: 'apps/cli/pyproject.toml',
+      to: 'apps/cli/acme_cli/main.py',
+      evidence: 'manifest',
+    });
+    const map = graph.build({ generatedAt: '2026-01-01T00:00:00.000Z' });
+    const missing = Object.values(map.unresolved).filter(
+      (u) => u.reason === 'unresolved-module-path',
+    );
+    expect(missing).toHaveLength(1);
+    expect(missing[0]?.location.startLine).toBe(6);
+    expect(missing[0]?.subject).not.toContain('..');
+  });
 });

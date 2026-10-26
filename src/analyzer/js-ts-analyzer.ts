@@ -73,6 +73,9 @@ export interface RepositoryAnalysis {
   readonly stateProblems: readonly ConfigProblem[];
 }
 
+/**
+ * @deprecated Use `generateConnectionMap` for a repository. `analyzeFile` remains for single files.
+ */
 export class JsTsAnalyzer implements Analyzer {
   readonly name = 'JsTsAnalyzer';
   readonly supportedExtensions: readonly string[] = [

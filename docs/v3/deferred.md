@@ -13,6 +13,8 @@ Every entry below was approved by the user in Phase 13 review (2026-10-25). Entr
 - **`files()` through a variable is not followed** (`importlib.resources`). The plan's resource forms use a literal anchor. Reconsider with resources in Phase 14. _Approved in Phase 13 review, 2026-10-25._
 - **Configured event methods (`protocols.events.methods`) are not read for Python.** V3 keeps configured method protocols to JS/TS. Python event calls are read from the library catalog instead (pyee, blinker, Django signals, `threading.Event`). Reconsider after V3 if a repository has event methods that the catalog cannot name. _Approved in Phase 15 review, 2026-10-26 (option B)._
 
+- **A Python `lib` package whose manifest declares no import roots contributes no root.** Its modules resolve only through configured `python.roots`, a `src/` layout or the repository root. A library outside those places is not found by its import name. Reconsider when a real repository has a `lib` package outside those locations. _Added in Phase 16 review. Awaiting the user's approval._
+
 ## Rust
 
 - **`Library::new` reached through `use libloading::Library` is not read.** The fully qualified form is handled as an observation. Reconsider with the Rust dynamic-load scenarios. _Approved in Phase 13 review, 2026-10-25._

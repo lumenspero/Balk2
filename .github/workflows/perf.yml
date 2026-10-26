@@ -1,26 +1,30 @@
 name: perf
 
-# Non-blocking performance budget run. Not a required check until a few runs show stable numbers.
+# Performance budgets. A run fails when a measured time is over the budget stored for its platform
+# in test/perf-budgets.json. Runs on pull requests, pushes to main and on demand.
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
   push:
     branches: [main]
 
 jobs:
   perf:
-    name: perf (${{ matrix.os }})
+    name: perf (${{ matrix.os }}, node ${{ matrix.node-version }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
+        node-version: [18, 20, 22]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Use Node.js 22
+      - name: Use Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ matrix.node-version }}
 
       - name: Install dependencies
         run: npm ci
@@ -36,5 +40,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: perf-${{ matrix.os }}
+          name: perf-${{ matrix.os }}-node${{ matrix.node-version }}
           path: perf-output.txt
+          if-no-files-found: warn

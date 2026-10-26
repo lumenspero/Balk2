@@ -52,15 +52,21 @@ Each language's recognized forms, resolution rules, mechanisms, limits and Not a
 - **Row 6, Rust (field and call-result receivers).** A receiver that is a field (`self.store.save()`) or a call result (`make().save()`) has no type. V3 gives receivers types only from annotated bindings and constructor results (2.4), and inference through fields and call results is outside the V3 scope. This is a scope decision, recorded so the cell is not Deferred. The same limit applies to Python.
 - **Row 13, Rust.** Name-keyed event channels do not exist in Rust. Channels connect by passing values. Configured method protocols still apply to types that declare both a subscribe and an emit method, using the same `event-like` rule as JS/TS.
 
-## Partial cells, and what closes them
+## Partial cells in the V3 column
 
-- **Row 2, JS/TS.** Barrels record only a file-level `imports` edge. D9 adds `exports` for the re-exported names.
-- **Row 5, Python.** Calls on one line only, and only to names in the same file or directly imported. Phase 3 (multi-line tokenizer) and Phase 5 (scoped resolution) close it.
-- **Row 6, JS/TS.** Calls such as `user.save()` where `user` is bound to `new User()`, and `super.save()`, are recorded from the checker's receiver type. Only methods of repository classes count.
-- **Row 6, Rust.** Only annotated bindings and constructor results give a receiver type. Inference through generics, auto-deref and chained method results is out of scope for V3. The same limit applies to Python.
-- **Row 8, Python.** Base classes and inherited method calls, including `super()` and `self.` calls through the method resolution order, are recorded (Phase 5.3).
-- **Row 16, Rust.** `libloading` paths are observation-only. A literal path is not a source-level dependency in the way an import is.
-- **Row 26, JS/TS.** Conditions are not recorded as metadata today.
+One cell is Partial at release:
+
+- **Row 16, Rust.** `libloading` paths are observation-only. A literal path is recorded as an observation, not a source-level dependency in the way an import is. Documented in `languages/rust.md` (Native libraries).
+
+The release notes need an explicit approval for this cell. **Approval: pending the user's decision. Not yet given.**
+
+## Limits in cells marked Supported
+
+- **Row 6, Rust and Python.** Only annotated bindings and constructor results give a receiver type. Inference through generics, auto-deref, chained method results and flow-sensitive narrowing is out of scope for V3. Documented in `languages/rust.md` and `languages/python.md`.
+
+## Plan amendments in Phase 16
+
+- **16.3, the same event name on two receivers, Rust.** The plan asks for a Rust counterpart. Rust has no name-keyed event channel (row 13), so there is no name to connect or to fail to connect. This case is Not applicable for Rust, with that reason, and is skipped for Rust in `src/analyzer/false-positive-mutations.test.ts`. Decided in Phase 16 review; the user can reverse it.
 
 ## Differences in shared representation
 
@@ -128,7 +134,7 @@ Phase 12 exit criteria are met. The parity suite has 95 tests, and every renditi
 
 Phase 13 exit is conditionally met. Two parts of the budget check still need a run outside this environment, listed below.
 
-**Parity matrix.** No cell is Deferred. The deferred items in `docs/v3/deferred.md` were approved by the user on 2026-10-25, and the Not applicable rows are recorded above with their reasons. Partial cells remain, as listed in "Partial cells, and what closes them".
+**Parity matrix.** No cell is Deferred. The deferred items in `docs/v3/deferred.md` were approved by the user on 2026-10-25, and the Not applicable rows are recorded above with their reasons. Partial cells remain, as listed in "Partial cells in the V3 column".
 
 **Accuracy suites.** `npm run test:accuracy` runs 7 files and 227 tests, and all pass. Recall and declared false positives meet the budget for each family and language covered.
 
