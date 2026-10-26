@@ -1,0 +1,78 @@
+name: determinism
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  digests:
+    name: digests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Each fixture is generated from a repeated run, a fresh copy and a reversed creation order,
+      # and the test fails on any byte difference. The digests are then compared across operating
+      # systems in the compare job below.
+      - name: Generate fixture digests
+        shell: bash
+        env:
+          BALK2_DETERMINISM_OUT: ${{ runner.temp }}/digests.json
+        run: npx vitest run src/cli/determinism-fixtures.test.ts
+
+      - name: Upload digests
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.os }}
+          path: ${{ runner.temp }}/digests.json
+          if-no-files-found: error
+
+  compare:
+    name: compare digests across operating systems
+    needs: digests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Linux digests
+        uses: actions/download-artifact@v4
+        with:
+          name: digests-ubuntu-latest
+          path: linux
+
+      - name: Download Windows digests
+        uses: actions/download-artifact@v4
+        with:
+          name: digests-windows-latest
+          path: windows
+
+      # Byte-identical output means identical digests for every fixture. A fixture missing from
+      # either side fails too.
+      - name: Fail if any fixture differs between Linux and Windows
+        run: |
+          node -e "
+          const fs = require('fs');
+          const linux = JSON.parse(fs.readFileSync('linux/digests.json', 'utf8'));
+          const windows = JSON.parse(fs.readFileSync('windows/digests.json', 'utf8'));
+          const names = [...new Set([...Object.keys(linux), ...Object.keys(windows)])].sort();
+          const problems = names.filter((name) => linux[name] !== windows[name]);
+          if (names.length === 0 || problems.length > 0) {
+            for (const name of problems) console.error('differs across operating systems: ' + name);
+            console.error(names.length + ' fixtures compared, ' + problems.length + ' differ');
+            process.exit(1);
+          }
+          console.log(names.length + ' fixtures are byte-identical on Linux and Windows');
+          "
