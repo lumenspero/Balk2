@@ -296,44 +296,39 @@ Version 3 adds two things to protocol entries and to the Rust section:
 
 ## Programmatic API
 
-Balk2 provides a complete TypeScript / JavaScript API for programmatic usage:
+For a repository, call `generateConnectionMap`. It scans the repository with the same configuration as the CLI, writes `connection-map.json` and `connection-map.md`, and returns the map and the diagnostics:
+
+```typescript
+import { generateConnectionMap } from '@lumenspero/balk2';
+
+const { jsonPath, mdPath, map, diagnostics } = generateConnectionMap({
+  cwd: './my-repo',
+  output: 'connection-map',
+});
+```
+
+Options: `cwd` is the repository root (default: the current directory). `output` is a directory, or a path ending in `.json` or `.md` (default: `connection-map`). `timestamp` replaces the generation time, for tests.
+
+To analyze one file into a graph, use the per-file analyzers. They see only that file, plus the files listed in `knownFiles` and the files readable under `rootDir` (both are optional options on `analyzeFile`):
 
 ```typescript
 import {
   ConnectionGraph,
   JsTsAnalyzer,
-  PythonAnalyzer,
-  registerDataArtifacts,
   renderMarkdown,
   serializeConnectionMap,
-  generateConnectionMap,
 } from '@lumenspero/balk2';
+import * as fs from 'node:fs';
 
-// High-level API: Generate map for a directory
-const { jsonPath, mdPath, map, diagnostics } = generateConnectionMap({
-  cwd: './my-repo',
-  output: 'connection-map',
-});
-
-// Low-level API: Custom graph construction
 const graph = new ConnectionGraph();
-const jsAnalyzer = new JsTsAnalyzer();
-const pyAnalyzer = new PythonAnalyzer();
+new JsTsAnalyzer().analyzeFile('src/main.ts', fs.readFileSync('src/main.ts', 'utf8'), graph);
 
-// Analyze source files
-pyAnalyzer.analyzeFile('scripts/collect.py', pythonCode, graph);
-jsAnalyzer.analyzeFile('src/main.ts', tsCode, graph);
-
-// Build canonical ConnectionMap object
-const mapObj = graph.build({
-  commit: 'a81f32c',
-  generatedAt: new Date().toISOString(),
-});
-
-// Render artifacts
-const markdownString = renderMarkdown(mapObj);
-const jsonString = serializeConnectionMap(mapObj);
+const map = graph.build({ commit: 'a81f32c', generatedAt: new Date().toISOString() });
+const markdown = renderMarkdown(map);
+const json = serializeConnectionMap(map);
 ```
+
+`PythonAnalyzer` is deprecated. Its `analyzeFile` still works for a single Python file, but for a Python repository use `generateConnectionMap`, which resolves imports across files.
 
 The package root is the supported programmatic entry point. Balk2 ships both ESM and CommonJS runtime entries with matching TypeScript declarations:
 
@@ -347,7 +342,7 @@ const { ConnectionGraph } = require('@lumenspero/balk2');
 
 Direct imports from `@lumenspero/balk2/dist/*` are not part of the public API.
 
-The `ConnectionMap` type is version 2 and is not compatible with version 1. Version 1 maps are still read by `deserializeConnectionMap`. See [CHANGELOG.md](CHANGELOG.md) for the migration.
+The `ConnectionMap` type is version 3. `deserializeConnectionMap` still reads versions 1 and 2. Consumers that switch over the node, relationship, evidence or reason unions must handle the values V3 added; see [`docs/v3/connection-map-schema.md`](docs/v3/connection-map-schema.md). See [CHANGELOG.md](CHANGELOG.md) for the migration.
 
 ---
 

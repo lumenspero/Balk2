@@ -212,9 +212,9 @@ and its command line runs through a shell.
 - A relative `import_module` name without a `package=` argument is not resolved, and records nothing.
 - A `spec_from_file_location` or `run_path` path resolves only when it is a literal path inside the
   repository.
-- `PythonAnalyzer.analyzeFile` analyzes one file. Facts that depend on another file's contents are
-  missing unless that file is passed in or readable under `rootDir`. Use `PythonFrontEnd` for a
-  repository. `PythonAnalyzer` is deprecated.
+- `PythonAnalyzer.analyzeFile` (deprecated) analyzes one file. Facts that depend on another file's contents are
+  missing unless that file is passed in `knownFiles` or readable under `rootDir`. For a repository, use
+  `generateConnectionMap`, which resolves imports across files.
 
 ## Not applicable in Python
 

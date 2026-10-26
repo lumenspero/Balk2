@@ -11,9 +11,9 @@ import { analyzePythonSources } from './python-front-end.js';
  * the text of files readable under `options.rootDir`. A file's facts that depend on another file's
  * contents are missing when that file is neither readable nor passed in.
  *
- * For a repository, use `PythonFrontEnd`, or `analyzePythonSources`.
+ * For a repository, use `generateConnectionMap`, which the CLI also uses.
  *
- * @deprecated Use `PythonFrontEnd`.
+ * @deprecated Use `generateConnectionMap` for a repository. `analyzeFile` remains for single files.
  */
 export class PythonAnalyzer implements Analyzer {
   readonly name = 'PythonAnalyzer';
