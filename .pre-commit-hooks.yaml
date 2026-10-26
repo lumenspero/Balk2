@@ -1,7 +1,7 @@
 - id: balk2
   name: Balk2 connection map
   description: Regenerates connection-map.json and connection-map.md. When they change, the commit fails once; stage them and commit again. Needs Node 18+ and npm on the PATH.
-  entry: npx --yes --package @lumenspero/balk2@2.0.1 balk2
+  entry: npx --yes --package @lumenspero/balk2@3.0.0 balk2
   language: system
   pass_filenames: false
   always_run: true
@@ -9,7 +9,7 @@
 - id: balk2-check
   name: Balk2 connection map is current
   description: Fails when connection-map.json is out of date with the repository. Changes no files. Needs Node 18+ and npm on the PATH.
-  entry: npx --yes --package @lumenspero/balk2@2.0.1 balk2 check
+  entry: npx --yes --package @lumenspero/balk2@3.0.0 balk2 check
   language: system
   pass_filenames: false
   always_run: true

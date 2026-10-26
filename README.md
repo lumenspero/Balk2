@@ -153,7 +153,7 @@ Balk2 provides [pre-commit](https://pre-commit.com) hooks, so a repository can r
 repos:
   - repo: https://github.com/lumenspero/Balk2
     # Use a release that includes .pre-commit-hooks.yaml (3.0.0 or later).
-    rev: <release tag>
+    rev: v3.0.0
     hooks:
       - id: balk2 # regenerates connection-map.json and connection-map.md
       - id: balk2-check # fails when the map is out of date; changes no files
