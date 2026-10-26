@@ -143,6 +143,32 @@ Installs a Git `pre-commit` hook in `.git/hooks/pre-commit`. The hook automatica
 npx @lumenspero/balk2 install
 ```
 
+If the repository already uses the [pre-commit](#pre-commit) framework, `install` does not change its hook. It prints the configuration to add instead.
+
+### Pre-commit
+
+Balk2 provides [pre-commit](https://pre-commit.com) hooks, so a repository can run it without a `package.json`. Add this to `.pre-commit-config.yaml`:
+
+```yaml
+repos:
+  - repo: https://github.com/lumenspero/Balk2
+    # Use a release that includes .pre-commit-hooks.yaml (3.0.0 or later).
+    rev: <release tag>
+    hooks:
+      - id: balk2 # regenerates connection-map.json and connection-map.md
+      - id: balk2-check # fails when the map is out of date; changes no files
+```
+
+Then run `pre-commit install`. To try the hooks without committing, run `pre-commit run balk2 --all-files` or `pre-commit run balk2-check --all-files`.
+
+**Requirements.** The hooks use `language: script`, so they run on the machine's own tools and do not install Node for you. Node 18 or later and npm must be on the PATH. The hooks run the Balk2 package through `npx`.
+
+**Behavior.**
+
+- `balk2` regenerates the map. The map records the commit it was generated from and the time, so it changes on most commits. When it changes, the commit stops once. Stage `connection-map.json` and `connection-map.md`, then commit again.
+- `balk2-check` fails when `connection-map.json` does not match the repository. It changes no files, so it suits a guard that must not modify anything, such as a CI step.
+- The hooks run the package version pinned in `scripts/balk2-hook.sh`. Update the pin with the release.
+
 ### `balk2 uninstall`
 
 Removes the installed Balk2 Git pre-commit hook.
