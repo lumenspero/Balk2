@@ -30,7 +30,7 @@ jobs:
         env:
           BALK2_PERF: '1'
         run: |
-          npx vitest run src/analyzer/js-perf.test.ts src/analyzer/rust/rust-perf.test.ts src/analyzer/python-perf.test.ts 2>&1 | tee perf-output.txt
+          npx vitest run src/analyzer/js-perf.test.ts src/analyzer/rust/rust-perf.test.ts src/analyzer/python-perf.test.ts src/cli/generated-dirs.test.ts 2>&1 | tee perf-output.txt
 
       - name: Upload perf output
         if: always()
