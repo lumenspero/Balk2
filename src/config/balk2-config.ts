@@ -79,6 +79,24 @@ export interface LoadedBalk2Config {
   readonly problems: readonly ConfigProblem[];
 }
 
+/** Configuration format versions this release reads. Version 2 files stay valid under version 3. */
+const SUPPORTED_CONFIG_VERSIONS: readonly number[] = [2, 3];
+
+/** Top-level keys the loader reads. `$schema` is editor metadata and is allowed. */
+const KNOWN_TOP_LEVEL_KEYS: ReadonlySet<string> = new Set([
+  '$schema',
+  'version',
+  'include',
+  'exclude',
+  'output',
+  'data',
+  'globals',
+  'protocols',
+  'state',
+  'annotations',
+  'python',
+]);
+
 /**
  * Load and parse .balk2.json configuration file if present.
  *
@@ -125,11 +143,16 @@ export function loadBalk2ConfigDetailed(
   const raw = parsed as Record<string, unknown>;
   const problems: ConfigProblem[] = [];
   const config: Record<string, unknown> = { ...raw };
-  if ('version' in raw && raw.version !== 2) {
+  if ('version' in raw && !SUPPORTED_CONFIG_VERSIONS.includes(raw.version as number)) {
     problems.push({
       path: 'version',
-      message: 'unsupported configuration version; this release reads version 2',
+      message: 'unsupported configuration version; this release reads versions 2 and 3',
     });
+  }
+  for (const key of Object.keys(raw)) {
+    if (!KNOWN_TOP_LEVEL_KEYS.has(key)) {
+      problems.push({ path: key, message: 'unknown key ignored' });
+    }
   }
   delete config.globals;
   delete config.protocols;

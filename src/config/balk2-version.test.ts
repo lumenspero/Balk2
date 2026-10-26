@@ -28,13 +28,23 @@ describe('.balk2.json version', () => {
     expect(load({ include: ['src/**'] }).problems).toEqual([]);
   });
 
+  it('accepts version 3, the configuration format of 3.0.0', () => {
+    expect(load({ version: 3 }).problems).toEqual([]);
+  });
+
   it('reports any other version as a config problem', () => {
     const problems = load({ version: 1 }).problems;
     expect(problems).toEqual([
       {
         path: 'version',
-        message: 'unsupported configuration version; this release reads version 2',
+        message: 'unsupported configuration version; this release reads versions 2 and 3',
       },
     ]);
+    expect(load({ version: 4 }).problems[0]?.path).toBe('version');
+  });
+
+  it('reports a top-level key the loader does not read, and allows $schema', () => {
+    const problems = load({ version: 3, $schema: './schema.json', rust: {} }).problems;
+    expect(problems).toEqual([{ path: 'rust', message: 'unknown key ignored' }]);
   });
 });

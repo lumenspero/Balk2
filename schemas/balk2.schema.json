@@ -10,8 +10,8 @@
     },
     "version": {
       "type": "integer",
-      "const": 2,
-      "description": "Configuration format version. Balk2 2.0.0 reads version 2; the key is optional."
+      "enum": [2, 3],
+      "description": "Configuration format version. Balk2 3.0.0 reads versions 2 and 3; the key is optional."
     },
     "include": {
       "anyOf": [
