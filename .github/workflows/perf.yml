@@ -1,7 +1,8 @@
 name: perf
 
-# Performance budgets. A run fails when a measured time is over the budget stored for its platform
-# in test/perf-budgets.json. Runs on pull requests, pushes to main and on demand.
+# Non-blocking performance budget run. Not a required check until a few runs show stable numbers.
+# A run fails when a measured time is over the budget stored for its platform in test/perf-budgets.json.
+# Runs on pull requests, pushes to main and on demand.
 on:
   workflow_dispatch:
   pull_request:

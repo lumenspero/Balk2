@@ -4,9 +4,12 @@ import { expect } from 'vitest';
 
 /**
  * Phase 0.7 performance budgets for the perf tests. Budgets live in test/perf-budgets.json, keyed
- * first by process.platform ('linux', 'win32') and then by test name. A missing or null entry means
- * there is no baseline yet: the test logs its time and asserts nothing. Set each budget to 1.5x the
- * first measured time on that platform.
+ * by process.platform ('linux', 'win32'), then by test name. A missing or null entry means there is
+ * no baseline yet: the test logs its time and asserts nothing.
+ *
+ * Each budget is 1.5x the slowest measured time seen on that platform across runs (the Node version
+ * makes little difference, but runner-to-runner variance is large). Set the budgets from several
+ * runs, not one, and recalibrate when the runner images change.
  *
  * Imported only by the perf tests, which run in CI under BALK2_PERF=1 (see .github/workflows/perf.yml).
  */
