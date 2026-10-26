@@ -1,3 +1,9 @@
+import {
+  appliesTo,
+  JS_TS_LANGUAGES,
+  scopeEvents,
+  scopeRegistries,
+} from '../config/protocol-scope.js';
 import { pathBaseOrder } from '../config/path-base-config.js';
 import { normalizePath, type ConnectionGraph } from '../graph.js';
 import type {
@@ -38,12 +44,12 @@ export class JsTsFrontEnd implements LanguageFrontEnd {
       dataPaths: new Set(input.files.map(normalizePath)),
       pathBase: pathBaseOrder(config, 'javascript'),
       globals: config?.globals,
-      events: config?.protocols?.events,
-      registries: config?.protocols?.registries,
-      loaders: config?.protocols?.loaders,
-      callbacks: config?.protocols?.callbacks,
-      metadata: config?.protocols?.metadata,
-      resources: config?.protocols?.resources,
+      events: scopeEvents(config?.protocols?.events, JS_TS_LANGUAGES),
+      registries: scopeRegistries(config?.protocols?.registries, JS_TS_LANGUAGES),
+      loaders: appliesTo(config?.protocols?.loaders, JS_TS_LANGUAGES),
+      callbacks: appliesTo(config?.protocols?.callbacks, JS_TS_LANGUAGES),
+      metadata: appliesTo(config?.protocols?.metadata, JS_TS_LANGUAGES),
+      resources: appliesTo(config?.protocols?.resources, JS_TS_LANGUAGES),
       state: config?.state,
     });
 

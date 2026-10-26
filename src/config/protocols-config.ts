@@ -1,3 +1,4 @@
+import { scopeEntry, withLanguages } from './protocol-scope.js';
 import {
   BUILT_IN_EVENT_PROTOCOLS,
   type EventArgKind,
@@ -60,6 +61,7 @@ const METHOD_KEYS = new Set([
   'optionsArg',
   'once',
   'receiver',
+  'languages',
 ]);
 const BUILT_IN_METHODS = new Set(BUILT_IN_EVENT_PROTOCOLS.map((protocol) => protocol.method));
 
@@ -194,6 +196,8 @@ function normalizeMethods(
     const path = `protocols.events.methods[${index}]`;
     const protocol = normalizeMethod(entry, path, problems);
     if (!protocol) return;
+    const scope = scopeEntry(entry, path, 'events.methods', problems);
+    if (!scope) return;
 
     const first = firstIndexOf.get(protocol.method);
     if (first !== undefined) {
@@ -204,7 +208,7 @@ function normalizeMethods(
       return;
     }
     firstIndexOf.set(protocol.method, index);
-    protocols.push(protocol);
+    protocols.push(withLanguages(protocol, scope));
   });
   return protocols;
 }

@@ -1,3 +1,4 @@
+import { appliesTo, PYTHON_LANGUAGES, scopeRegistries } from '../config/protocol-scope.js';
 import { pathBaseOrder } from '../config/path-base-config.js';
 import type { StateSingleton } from '../config/state-config.js';
 import type { PathBase } from '../facts/path-value.js';
@@ -403,6 +404,7 @@ export class PythonFrontEnd implements LanguageFrontEnd {
       }
     }
 
+    const pyRegistries = scopeRegistries(input.config?.protocols?.registries, PYTHON_LANGUAGES);
     const manifestProblems = analyzePythonSources(
       files,
       new Set(input.files.map(normalizePath)),
@@ -412,11 +414,11 @@ export class PythonFrontEnd implements LanguageFrontEnd {
         roots: input.config?.python?.roots,
         pathBase: pathBaseOrder(input.config, 'python'),
         identityDecorators: input.config?.python?.identityDecorators,
-        nameInjection: input.config?.protocols?.registries?.nameInjection,
-        attributes: input.config?.protocols?.registries?.attributes,
-        methods: input.config?.protocols?.registries?.methods,
+        nameInjection: pyRegistries?.nameInjection,
+        attributes: pyRegistries?.attributes,
+        methods: pyRegistries?.methods,
         singletons: input.config?.state?.singletons,
-        resources: input.config?.protocols?.resources,
+        resources: appliesTo(input.config?.protocols?.resources, PYTHON_LANGUAGES),
         entryPoints: input.packages
           ? {
               packages: input.packages.python.packages,

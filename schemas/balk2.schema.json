@@ -319,6 +319,9 @@
               "$ref": "#/$defs/nameTypeRule"
             }
           ]
+        },
+        "languages": {
+          "$ref": "#/$defs/languageList"
         }
       }
     },
@@ -425,6 +428,9 @@
               "$ref": "#/$defs/nameTypeRule"
             }
           ]
+        },
+        "languages": {
+          "$ref": "#/$defs/languageList"
         }
       }
     },
@@ -441,6 +447,9 @@
         },
         "keyArg": {
           "$ref": "#/$defs/argIndex"
+        },
+        "languages": {
+          "$ref": "#/$defs/languageList"
         }
       }
     },
@@ -471,6 +480,9 @@
         },
         "registry": {
           "$ref": "#/$defs/nonEmptyString"
+        },
+        "languages": {
+          "$ref": "#/$defs/languageList"
         }
       }
     },
@@ -484,6 +496,9 @@
         },
         "decorator": {
           "$ref": "#/$defs/nonEmptyString"
+        },
+        "languages": {
+          "$ref": "#/$defs/languageList"
         }
       }
     },
@@ -500,6 +515,9 @@
         },
         "target": {
           "$ref": "#/$defs/nonEmptyString"
+        },
+        "languages": {
+          "$ref": "#/$defs/languageList"
         }
       }
     },
@@ -513,6 +531,9 @@
         },
         "registry": {
           "$ref": "#/$defs/nonEmptyString"
+        },
+        "languages": {
+          "$ref": "#/$defs/languageList"
         }
       }
     },
@@ -529,6 +550,9 @@
         },
         "receiver": {
           "$ref": "#/$defs/nameTypeRule"
+        },
+        "languages": {
+          "$ref": "#/$defs/languageList"
         }
       }
     },
@@ -542,6 +566,9 @@
         },
         "callbackArg": {
           "$ref": "#/$defs/argIndex"
+        },
+        "languages": {
+          "$ref": "#/$defs/languageList"
         }
       }
     },
@@ -555,6 +582,9 @@
         },
         "specifierArg": {
           "$ref": "#/$defs/argIndex"
+        },
+        "languages": {
+          "$ref": "#/$defs/languageList"
         }
       }
     },
@@ -589,6 +619,9 @@
         },
         "reads": {
           "type": "boolean"
+        },
+        "languages": {
+          "$ref": "#/$defs/languageList"
         }
       }
     },
@@ -691,6 +724,15 @@
           "enum": ["high", "medium", "low"]
         }
       }
+    },
+    "languageList": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": ["javascript", "typescript", "python", "rust"]
+      },
+      "description": "Languages this entry applies to. javascript and typescript select the JS/TS front end. Omit to apply to every language that reads the protocol."
     }
   }
 }

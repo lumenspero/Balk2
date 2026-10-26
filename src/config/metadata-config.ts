@@ -1,9 +1,10 @@
+import { scopeEntry, withLanguages } from './protocol-scope.js';
 import type { MetadataProtocol } from '../analyzer/metadata-protocols.js';
 import type { ConfigProblem } from './config-problem.js';
 import { isRecord } from './protocol-fields.js';
 
 const BASE = 'protocols.metadata';
-const METADATA_KEYS = new Set(['key', 'defines', 'reads']);
+const METADATA_KEYS = new Set(['key', 'defines', 'reads', 'languages']);
 
 /**
  * Validate `protocols.metadata`. Nothing is matched unless listed here. An entry with no key, or
@@ -25,13 +26,15 @@ export function normalizeMetadata(
     const path = `${BASE}[${index}]`;
     const protocol = normalizeMetadataEntry(entry, path, problems);
     if (!protocol) return;
+    const scope = scopeEntry(entry, path, 'metadata', problems);
+    if (!scope) return;
 
     if (seen.has(protocol.key)) {
       problems.push({ path, message: `duplicate metadata key "${protocol.key}" ignored` });
       return;
     }
     seen.add(protocol.key);
-    protocols.push(protocol);
+    protocols.push(withLanguages(protocol, scope));
   });
 
   return protocols.length > 0 ? protocols : undefined;

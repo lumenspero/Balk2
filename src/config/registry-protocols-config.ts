@@ -1,3 +1,4 @@
+import { scopeEntry, withLanguages, type ProtocolKind } from './protocol-scope.js';
 import {
   BUILT_IN_REGISTRY_PROTOCOLS,
   type RegistryAttributeRule,
@@ -35,11 +36,11 @@ const REGISTRY_KEYS = new Set([
   'manifest',
   'discover',
 ]);
-const DECORATOR_KEYS = new Set(['name', 'registry', 'keyArg']);
-const NAME_INJECTION_KEYS = new Set(['registry', 'decorator']);
-const ATTRIBUTE_KEYS = new Set(['name', 'key', 'registry']);
-const MANIFEST_KEYS = new Set(['registry', 'key', 'target']);
-const DISCOVER_KEYS = new Set(['glob', 'registry']);
+const DECORATOR_KEYS = new Set(['name', 'registry', 'keyArg', 'languages']);
+const NAME_INJECTION_KEYS = new Set(['registry', 'decorator', 'languages']);
+const ATTRIBUTE_KEYS = new Set(['name', 'key', 'registry', 'languages']);
+const MANIFEST_KEYS = new Set(['registry', 'key', 'target', 'languages']);
+const DISCOVER_KEYS = new Set(['glob', 'registry', 'languages']);
 const METHOD_KEYS = new Set([
   'method',
   'direction',
@@ -48,6 +49,7 @@ const METHOD_KEYS = new Set([
   'valueArg',
   'receiver',
   'registry',
+  'languages',
 ]);
 const DIRECTIONS: readonly RegistryDirection[] = ['register', 'resolve', 'route'];
 const KEY_FROM_VALUES = ['typeArgument'] as const;
@@ -182,6 +184,8 @@ function normalizeMethods(
     const path = `protocols.registries.methods[${index}]`;
     const protocol = normalizeMethod(entry, path, problems);
     if (!protocol) return;
+    const scope = scopeEntry(entry, path, 'registries.methods', problems);
+    if (!scope) return;
 
     const first = firstIndexOf.get(protocol.method);
     if (first !== undefined) {
@@ -192,7 +196,7 @@ function normalizeMethods(
       return;
     }
     firstIndexOf.set(protocol.method, index);
-    protocols.push(protocol);
+    protocols.push(withLanguages(protocol, scope));
   });
   return protocols;
 }
@@ -362,9 +366,13 @@ function normalizeEntries<T>(
   }
 
   const entries: T[] = [];
+  const kind = path.replace(/^protocols\./, '') as ProtocolKind;
   value.forEach((entry: unknown, index) => {
-    const normalized = normalize(entry, `${path}[${index}]`, problems);
-    if (normalized !== undefined) entries.push(normalized);
+    const entryPath = `${path}[${index}]`;
+    const normalized = normalize(entry, entryPath, problems);
+    if (normalized === undefined) return;
+    const scope = scopeEntry(entry, entryPath, kind, problems);
+    if (scope) entries.push(withLanguages(normalized, scope));
   });
   return entries;
 }

@@ -1,9 +1,10 @@
+import { scopeEntry, withLanguages } from './protocol-scope.js';
 import type { CallbackProtocol } from '../analyzer/callback-protocols.js';
 import type { ConfigProblem } from './config-problem.js';
 import { IDENTIFIER_PATTERN, isArgIndex, isRecord, MAX_ARG_INDEX } from './protocol-fields.js';
 
 const BASE = 'protocols.callbacks';
-const CALLBACK_KEYS = new Set(['function', 'callbackArg']);
+const CALLBACK_KEYS = new Set(['function', 'callbackArg', 'languages']);
 
 /**
  * Validate `protocols.callbacks`. A list with no built-ins, so nothing is linked unless the
@@ -25,13 +26,15 @@ export function normalizeCallbacks(
     const path = `${BASE}[${index}]`;
     const callback = normalizeCallback(entry, path, problems);
     if (!callback) return;
+    const scope = scopeEntry(entry, path, 'callbacks', problems);
+    if (!scope) return;
 
     if (seen.has(callback.function)) {
       problems.push({ path, message: `duplicate callback "${callback.function}" ignored` });
       return;
     }
     seen.add(callback.function);
-    callbacks.push(callback);
+    callbacks.push(withLanguages(callback, scope));
   });
 
   return callbacks.length > 0 ? callbacks : undefined;

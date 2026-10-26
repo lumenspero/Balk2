@@ -1,3 +1,4 @@
+import { RUST_LANGUAGES, scopeRegistries } from '../../config/protocol-scope.js';
 /**
  * The Rust front end. It parses each Rust file and writes its named items to the graph as symbols,
  * the same way the Python front end does (9.1). It then binds the `use` declarations of each Cargo
@@ -326,7 +327,7 @@ export class RustFrontEnd implements LanguageFrontEnd {
         configured: [],
         facts: attributeRegistrations(
           crates.map((c) => ({ index: c.index })),
-          input.config?.protocols?.registries?.attributes ?? [],
+          scopeRegistries(input.config?.protocols?.registries, RUST_LANGUAGES)?.attributes ?? [],
         ),
       }),
     );
@@ -338,7 +339,7 @@ export class RustFrontEnd implements LanguageFrontEnd {
         facts: rustRegistryFacts(
           crates.map((c) => c.index),
           env,
-          input.config?.protocols?.registries?.methods ?? [],
+          scopeRegistries(input.config?.protocols?.registries, RUST_LANGUAGES)?.methods ?? [],
         ),
       }),
     );

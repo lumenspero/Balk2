@@ -1,3 +1,4 @@
+import { scopeEntry, withLanguages } from './protocol-scope.js';
 import type { ReceiverRule } from '../analyzer/event-protocols.js';
 import type { LoaderProtocol } from '../analyzer/loader-protocols.js';
 import type { ConfigProblem } from './config-problem.js';
@@ -10,7 +11,7 @@ import {
 } from './protocol-fields.js';
 
 const BASE = 'protocols.loaders';
-const LOADER_KEYS = new Set(['function', 'specifierArg', 'receiver']);
+const LOADER_KEYS = new Set(['function', 'specifierArg', 'receiver', 'languages']);
 
 /**
  * Validate `protocols.loaders`. Loaders are a list with no built-ins, so nothing matches unless the
@@ -35,6 +36,8 @@ export function normalizeLoaders(
     const path = `${BASE}[${index}]`;
     const loader = normalizeLoader(entry, path, problems);
     if (!loader) return;
+    const scope = scopeEntry(entry, path, 'loaders', problems);
+    if (!scope) return;
 
     const id = loaderId(loader);
     if (seen.has(id)) {
@@ -42,7 +45,7 @@ export function normalizeLoaders(
       return;
     }
     seen.add(id);
-    loaders.push(loader);
+    loaders.push(withLanguages(loader, scope));
   });
 
   return loaders.length > 0 ? loaders : undefined;
