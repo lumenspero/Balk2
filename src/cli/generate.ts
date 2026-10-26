@@ -1,11 +1,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { serializeConnectionMap } from '../serialize.js';
+import { deserializeConnectionMap, serializeConnectionMap } from '../serialize.js';
 import { renderMarkdown } from '../renderer/markdown-renderer.js';
 import { getGitCommitHash } from './git-utils.js';
 import { loadBalk2ConfigDetailed } from '../config/index.js';
 import { buildConnectionGraphDetailed } from './build-graph.js';
 import { formatConfigWarnings, formatSyntaxWarnings } from './problem-warnings.js';
+import type { ConnectionGraph } from '../graph.js';
 import type { ConnectionMap } from '../types.js';
 import { collectDiagnostics, type Diagnostic } from './diagnostics.js';
 
@@ -42,18 +43,21 @@ export function generateConnectionMap(options: GenerateOptions = {}): GenerateRe
     ...formatSyntaxWarnings(built.syntaxErrors),
   ];
 
-  // Build connection map
-  const commit = getGitCommitHash(rootDir);
-  const generatedAt = options.timestamp ?? new Date().toISOString();
-
-  const map = graph.build({
-    ...(commit ? { commit } : {}),
-    generatedAt,
-  });
-
-  // Determine output file paths
+  // Build the connection map. When the previous map would be identical apart from its generation
+  // stamp and commit, keep it, so a repository that has not changed is not rewritten. The
+  // pre-commit hook depends on this: it fails whenever the hook changes a file.
   const outputTarget = options.output ?? balk2Config?.output;
   const { jsonPath, mdPath } = resolveOutputPaths(rootDir, outputTarget);
+  const previous = readPreviousMap(jsonPath);
+  const commit = getGitCommitHash(rootDir);
+  const generatedAt = options.timestamp ?? new Date().toISOString();
+  const map =
+    previous && sameApartFromStamp(graph, previous)
+      ? previous.map
+      : graph.build({
+          ...(commit ? { commit } : {}),
+          generatedAt,
+        });
 
   // Ensure output directory exists
   const jsonDir = path.dirname(jsonPath);
@@ -61,12 +65,9 @@ export function generateConnectionMap(options: GenerateOptions = {}): GenerateRe
     fs.mkdirSync(jsonDir, { recursive: true });
   }
 
-  // Serialize and write artifacts
-  const jsonContent = serializeConnectionMap(map);
-  const mdContent = renderMarkdown(map);
-
-  fs.writeFileSync(jsonPath, jsonContent, 'utf8');
-  fs.writeFileSync(mdPath, mdContent, 'utf8');
+  // Serialize and write artifacts, each only when its content changes
+  writeIfChanged(jsonPath, serializeConnectionMap(map));
+  writeIfChanged(mdPath, renderMarkdown(map));
 
   const diagnostics = collectDiagnostics(
     map,
@@ -123,4 +124,46 @@ export function resolveOutputPaths(
     jsonPath: path.join(rootDir, 'connection-map.json'),
     mdPath: path.join(rootDir, 'connection-map.md'),
   };
+}
+
+interface PreviousMap {
+  readonly json: string;
+  readonly map: ConnectionMap;
+}
+
+/** The map already on disk, or undefined when there is none or it cannot be read. */
+function readPreviousMap(jsonPath: string): PreviousMap | undefined {
+  let json: string;
+  try {
+    json = fs.readFileSync(jsonPath, 'utf8');
+  } catch {
+    return undefined;
+  }
+  try {
+    return { json, map: deserializeConnectionMap(json) };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Whether the graph, built with the previous map's commit and timestamp, serializes to exactly the
+ * previous file. This is the same comparison `check` makes.
+ */
+function sameApartFromStamp(graph: ConnectionGraph, previous: PreviousMap): boolean {
+  const stamped = graph.build({
+    commit: previous.map.repository.commit,
+    generatedAt: previous.map.repository.generatedAt,
+  });
+  return serializeConnectionMap(stamped).trim() === previous.json.trim();
+}
+
+function writeIfChanged(filePath: string, content: string): void {
+  let current: string | undefined;
+  try {
+    current = fs.readFileSync(filePath, 'utf8');
+  } catch {
+    current = undefined;
+  }
+  if (current !== content) fs.writeFileSync(filePath, content, 'utf8');
 }

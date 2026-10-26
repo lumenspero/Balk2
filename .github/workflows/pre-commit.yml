@@ -1,0 +1,113 @@
+name: pre-commit
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  pre-commit:
+    name: pre-commit hooks (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Use Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install pre-commit
+        run: python -m pip install pre-commit
+
+      # The hooks run Balk2 through npx, so pack this checkout and point the hooks at the tarball.
+      # cygpath gives Windows a path that pre-commit's command splitting keeps intact.
+      - name: Build and pack Balk2
+        shell: bash
+        run: |
+          npm ci
+          npm run build
+          NAME=$(npm pack --json | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8'))[0].filename")
+          TGZ="$(cygpath -m "$GITHUB_WORKSPACE/$NAME" 2>/dev/null || echo "$GITHUB_WORKSPACE/$NAME")"
+          echo "TGZ=$TGZ" >> "$GITHUB_ENV"
+
+      - name: Create a Python repository without package.json
+        shell: bash
+        run: |
+          REPO="$RUNNER_TEMP/py-repo"
+          cp -r test/pre-commit/python-repo "$REPO"
+          cd "$REPO"
+          test ! -e package.json
+          git init -q
+          git add -A
+          git -c user.name=ci -c user.email=ci@example.invalid commit -qm "fixture"
+          npx --yes --package "$TGZ" balk2
+          git add -A
+          git -c user.name=ci -c user.email=ci@example.invalid commit -qm "generated connection map"
+
+      # The published hook definition pins @lumenspero/balk2@2.0.1, which regenerates the map on
+      # every run and so cannot pass a commit. This job tests the code in this checkout instead:
+      # the same hook definitions, with only the entry pointed at the packed tarball. The pin moves
+      # to the release that includes this fix, and that release is tested after it is published.
+      - name: Build the hook repository from this checkout's hook definitions
+        shell: bash
+        run: |
+          HOOKS="$RUNNER_TEMP/hooks-repo"
+          mkdir -p "$HOOKS"
+          node -e "
+          const fs = require('fs');
+          const text = fs.readFileSync(process.argv[1], 'utf8');
+          fs.writeFileSync(
+            process.argv[2],
+            text.replace(/npx --yes --package @lumenspero\/balk2@\S+/g, 'npx --yes --package ' + process.argv[3]),
+          );
+          " "$GITHUB_WORKSPACE/.pre-commit-hooks.yaml" "$HOOKS/.pre-commit-hooks.yaml" "$TGZ"
+          cd "$HOOKS"
+          git init -q
+          git add -A
+          git -c user.name=ci -c user.email=ci@example.invalid commit -qm "hooks"
+
+      # Each step checks the exit code and the message that explains it, so a hook that fails for
+      # another reason does not pass as the expected failure.
+      - name: Run the hooks against the Python repository
+        shell: bash
+        run: |
+          HOOKS="$RUNNER_TEMP/hooks-repo"
+          cd "$RUNNER_TEMP/py-repo"
+          expect() {
+            local want="$1" label="$2" pattern="$3"
+            shift 3
+            set +e
+            "$@" > "$RUNNER_TEMP/last.log" 2>&1
+            local got=$?
+            set -e
+            cat "$RUNNER_TEMP/last.log"
+            if [ "$got" -ne "$want" ]; then
+              echo "::error::$label: exit $got, expected $want"
+              exit 1
+            fi
+            if [ -n "$pattern" ] && ! grep -q "$pattern" "$RUNNER_TEMP/last.log"; then
+              echo "::error::$label: output does not contain '$pattern'"
+              exit 1
+            fi
+            echo "$label: as expected"
+          }
+          hook() { python -m pre_commit try-repo "$HOOKS" "$@" --all-files; }
+
+          expect 0 "balk2 on an unchanged repository" "Passed" hook balk2
+          expect 0 "balk2-check on an unchanged repository" "Passed" hook balk2-check
+
+          printf 'def extra():\n    return 3\n' > pkg/c.py
+          expect 1 "balk2-check after a source change" "out of date" hook balk2-check
+          expect 1 "balk2 regenerates the map" "files were modified by this hook" hook balk2
+          expect 0 "balk2-check after regeneration" "Passed" hook balk2-check
