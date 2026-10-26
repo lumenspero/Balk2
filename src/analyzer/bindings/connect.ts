@@ -1,4 +1,5 @@
 import type { ConnectionGraph } from '../../graph.js';
+import type { RelationshipType } from '../../types.js';
 import { resolveBindingConsumers, type BindingIndex } from './index.js';
 import type { BindingConsumer, BindingMatch } from './types.js';
 
@@ -9,15 +10,18 @@ export interface BindingResolution {
 }
 
 /**
- * Step 5, cross-language resolution (V3 Phase 14.2). A matched binding becomes a graph edge:
+ * Step 5, cross-language resolution (V3 Phase 14.2, 14.6). A matched binding becomes a graph edge:
  *
  * - A Rust export imported by JS/TS: `calls` from the consumer (its owner, or its file) to the
  *   exported Rust function.
  * - A JS/TS module imported by a Rust extern block: `imports` from the Rust file to the module
  *   (`wasm-bindgen-module`), and `calls` from the extern fn to the JS export.
  *
- * An edge is written only when both ends exist in the graph. Ambiguous and unmatched consumers
- * write nothing.
+ * A consumer whose module is a binding producer but which names nothing that producer exports is an
+ * `unresolved-binding` observation (14.6). A module with no binding producer writes nothing, and
+ * an ambiguous consumer writes nothing.
+ *
+ * An edge is written only when both ends exist in the graph.
  */
 export function connectBindings(
   graph: ConnectionGraph,
@@ -26,6 +30,10 @@ export function connectBindings(
 ): BindingResolution[] {
   const resolutions = resolveBindingConsumers(index, consumers);
   for (const { consumer, match } of resolutions) {
+    if (match.status === 'missing-name') {
+      reportUnresolvedBinding(graph, consumer);
+      continue;
+    }
     if (match.status !== 'matched') continue;
     const producer = match.export;
     const spans = [consumer.span];
@@ -61,4 +69,29 @@ export function connectBindings(
     }
   }
   return resolutions;
+}
+
+/**
+ * The consumer names something its binding producer does not export. The observation is written
+ * from the consumer, as the relationship it would have made, so the broken binding is visible in
+ * the map. It is keyed by the consumer's location, so one consumer reports once.
+ */
+function reportUnresolvedBinding(graph: ConnectionGraph, consumer: BindingConsumer): void {
+  const owner =
+    consumer.owner !== undefined && graph.hasSymbol(consumer.owner)
+      ? consumer.owner
+      : consumer.file;
+  if (!graph.hasFile(owner) && !graph.hasSymbol(owner)) return;
+  const attempted: RelationshipType = consumer.side === 'rust' ? 'calls' : 'imports';
+  const unresolved = graph.addUnresolved({
+    reason: 'unresolved-binding',
+    attempted,
+    subject: `${consumer.specifier}:${consumer.name}`,
+    location: consumer.span,
+    detail: `${consumer.specifier} is a ${consumer.kind} binding, and it does not export ${consumer.name}`,
+  });
+  graph.addRelationship(attempted, owner, unresolved.id, 'low', {
+    evidence: 'ast',
+    spans: [consumer.span],
+  });
 }
