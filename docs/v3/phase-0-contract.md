@@ -8,7 +8,7 @@ JavaScript/TypeScript, Python and Rust are equally supported languages. The same
 
 ## Status at 3.0.0
 
-- **Decisions.** D1–D8 were confirmed by the user and D9 was approved. D3 is in effect: the connection map is `version: 3` and the configuration `version` accepts `2` or `3`. The package is `3.0.0`, reached through the `3.0.0-rc.1` release candidate.
+- **Decisions.** D1–D8 were confirmed by the user and D9 was approved. D3 is in effect: the connection map is `version: 3` and the configuration `version` accepts `2` or `3`. The package is `3.0.0`, reached through the `3.0.0-rc.1` and `3.0.0-rc.2` release candidates.
 - **Languages.** JS/TS, Python and Rust are all analyzed. The per-mechanism status is in `docs/v3/language-parity.md`.
 - **Package representation.** One `package` node kind covers npm, Python and Cargo (D4).
 - **Approvals for 3.0.0.** The Rust `libloading` Partial cell (row 16) and the deferred Python `lib` item are approved.

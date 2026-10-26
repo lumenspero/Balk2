@@ -94,7 +94,7 @@ npx @lumenspero/balk2
   conventions such as pytest fixtures and decorator registries are set under `protocols`; see
   [python.md](docs/v3/languages/python.md).
 - **Rust (3.0.0 and later).** Run the command at the repository root. Each `Cargo.toml` package is read.
-  The published 2.0.1 package does not read Rust, so use this section after 3.0.0 is released.
+  The published 2.0.1 package does not read Rust, so Rust needs 3.0.0 or later.
 
 If a binding crate uses a name other than the default, set it under `rust.bindings`:
 

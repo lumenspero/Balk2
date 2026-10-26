@@ -48,7 +48,7 @@
 
 ### Upgrading
 
-- Pre-commit: set the `rev` to `3.0.0`. The hooks run `@lumenspero/balk2@3.0.0`.
+- Pre-commit: set the `rev` to `v3.0.0`. The hooks run `@lumenspero/balk2@3.0.0`.
 
 ## 2.0.1
 
