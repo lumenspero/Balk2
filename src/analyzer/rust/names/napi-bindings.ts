@@ -8,7 +8,7 @@
  *
  * The consumer is the JS/TS package declared by the `package.json` beside the crate's `Cargo.toml`,
  * and its name is the import specifier. That is inferred from the layout, so its confidence is
- * medium. `rust.bindings[]` configuration is Phase 15.3.
+ * medium. A configured `packageName` (`rust.bindings[]`, Phase 15.3) replaces it at high confidence.
  *
  * Only top-level items are read. Methods in `impl` blocks are not bound in this phase.
  */
@@ -25,6 +25,8 @@ export interface NapiCrate {
   readonly dependsOnNapi: boolean;
   /** The `name` of the `package.json` beside the crate, when it has one. */
   readonly packageName: string | undefined;
+  /** The npm package name from configuration, which replaces `packageName` when set. */
+  readonly configuredPackageName?: string;
 }
 
 /** The napi-rs exports of every file of the given crates. */
@@ -35,7 +37,8 @@ export function napiBindings(
   const exports: BindingExport[] = [];
   for (const [file, parsed] of files) {
     const crate = crateOwning(file, crates);
-    if (crate === undefined || !crate.dependsOnNapi || crate.packageName === undefined) continue;
+    const packageName = crate?.configuredPackageName ?? crate?.packageName;
+    if (crate === undefined || !crate.dependsOnNapi || packageName === undefined) continue;
     for (const item of parsed.items) {
       if (item.kind !== 'fn' && item.kind !== 'struct') continue;
       const attr = attrNamed(item.attrs, 'napi');
@@ -45,11 +48,11 @@ export function napiBindings(
       exports.push({
         kind: 'napi',
         side: 'rust',
-        specifier: crate.packageName,
+        specifier: packageName,
         name,
         symbolId: `${file}:${item.name}`,
         file,
-        confidence: 'medium',
+        confidence: crate.configuredPackageName !== undefined ? 'high' : 'medium',
       });
     }
   }

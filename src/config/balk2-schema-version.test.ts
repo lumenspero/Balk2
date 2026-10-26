@@ -30,6 +30,44 @@ describe('balk2.schema.json version', () => {
     expect(validate({ version: 3, rust: { macros: { expressionLike: ['log-info'] } } })).toBe(
       false,
     );
-    expect(validate({ version: 3, rust: { bindings: [] } })).toBe(false);
+  });
+
+  it('accepts rust.bindings entries for each kind and rejects a key the kind does not use', () => {
+    expect(validate({ version: 3, rust: { bindings: [] } })).toBe(true);
+    expect(
+      validate({
+        version: 3,
+        rust: {
+          bindings: [
+            { kind: 'wasm-bindgen', crate: 'core', outDir: 'web/pkg' },
+            { kind: 'napi', crate: 'native', packageName: '@scope/native' },
+            { kind: 'pyo3', crate: 'py', pythonModule: 'my_pkg.native' },
+          ],
+        },
+      }),
+    ).toBe(true);
+    expect(
+      validate({
+        version: 3,
+        rust: { bindings: [{ kind: 'napi', crate: 'n', pythonModule: 'x' }] },
+      }),
+    ).toBe(false);
+  });
+
+  it('rejects an unknown binding kind, a missing crate, and an unsafe outDir', () => {
+    expect(validate({ version: 3, rust: { bindings: [{ kind: 'cgo', crate: 'x' }] } })).toBe(false);
+    expect(validate({ version: 3, rust: { bindings: [{ kind: 'pyo3' }] } })).toBe(false);
+    expect(
+      validate({
+        version: 3,
+        rust: { bindings: [{ kind: 'wasm-bindgen', crate: 'c', outDir: '/abs' }] },
+      }),
+    ).toBe(false);
+    expect(
+      validate({
+        version: 3,
+        rust: { bindings: [{ kind: 'wasm-bindgen', crate: 'c', outDir: '../x' }] },
+      }),
+    ).toBe(false);
   });
 });

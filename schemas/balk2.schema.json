@@ -754,6 +754,74 @@
               "description": "Macro names, as written before !, whose arguments are code. Added to the built-in list."
             }
           }
+        },
+        "bindings": {
+          "type": "array",
+          "description": "Overrides for values the binding engine infers. A configured value is high confidence.",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["kind", "crate"],
+                "properties": {
+                  "kind": {
+                    "const": "wasm-bindgen"
+                  },
+                  "crate": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+                    "description": "Cargo package name."
+                  },
+                  "outDir": {
+                    "type": "string",
+                    "pattern": "^(?![/\\\\])(?!.*\\\\)(?!(.*/)?\\.\\.(/|$)).+$",
+                    "description": "Repository-relative directory, without a leading /, a backslash, or a .. segment."
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["kind", "crate"],
+                "properties": {
+                  "kind": {
+                    "const": "napi"
+                  },
+                  "crate": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+                    "description": "Cargo package name."
+                  },
+                  "packageName": {
+                    "type": "string",
+                    "pattern": "^(@[a-z0-9-~][a-z0-9-._~]*/)?[a-z0-9-~][a-z0-9-._~]*$",
+                    "description": "npm package name."
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["kind", "crate"],
+                "properties": {
+                  "kind": {
+                    "const": "pyo3"
+                  },
+                  "crate": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+                    "description": "Cargo package name."
+                  },
+                  "pythonModule": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_]\\w*(\\.[A-Za-z_]\\w*)*$",
+                    "description": "Dotted Python module name."
+                  }
+                }
+              }
+            ]
+          }
         }
       }
     }

@@ -2,6 +2,7 @@
  * PyO3 and maturin bindings (V3 Phase 14.3), read from the crates that depend on `pyo3`.
  *
  * A `#[pymodule]` function names a Python extension module. Its module name is, in order: the
+ * `pythonModule` of the crate's `rust.bindings[]` entry (high, Phase 15.3), the
  * `[tool.maturin] module-name` of the crate's `pyproject.toml` (high), the `#[pyo3(name = "...")]`
  * on the function (high), or the function's own name (medium). Its members are the functions
  * registered in its body with `wrap_pyfunction!`, the classes registered with `add_class::<T>()`,
@@ -26,6 +27,8 @@ export interface Pyo3Crate {
   readonly dependsOnPyo3: boolean;
   /** `[tool.maturin] module-name` from the crate's `pyproject.toml`, when it names one. */
   readonly maturinModule: string | undefined;
+  /** The Python module name from configuration, which takes precedence when set. */
+  readonly pythonModule?: string;
   /** The crate's parsed items and names, for resolving members. */
   readonly index: RustCrateIndex;
 }
@@ -60,9 +63,13 @@ export function pyo3Bindings(
       const moduleAttr = attrNamed(item.attrs, 'pymodule');
       if (moduleAttr === undefined) continue;
       const pyo3Name = pyo3NameOf(item.attrs);
-      const moduleName = crate.maturinModule ?? pyo3Name ?? item.name;
+      const moduleName = crate.pythonModule ?? crate.maturinModule ?? pyo3Name ?? item.name;
       const confidence =
-        crate.maturinModule !== undefined || pyo3Name !== undefined ? 'high' : 'medium';
+        crate.pythonModule !== undefined ||
+        crate.maturinModule !== undefined ||
+        pyo3Name !== undefined
+          ? 'high'
+          : 'medium';
       const body = item.body === null ? '' : flatten(item.body);
 
       const registered = new Set<string>();

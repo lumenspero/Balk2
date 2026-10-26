@@ -1,3 +1,5 @@
+import { overrideFor, overridesOfKind } from './binding-overrides.js';
+import type { ConfigProblem } from '../../config/config-problem.js';
 import { RUST_LANGUAGES, scopeRegistries } from '../../config/protocol-scope.js';
 /**
  * The Rust front end. It parses each Rust file and writes its named items to the graph as symbols,
@@ -481,13 +483,50 @@ export class RustFrontEnd implements LanguageFrontEnd {
         ),
       };
     });
+    // Configured binding overrides (V3 Phase 15.3). An entry that matches no usable crate is reported.
+    const configProblems: ConfigProblem[] = [];
+    const bindingConfig = input.config?.rust?.bindings;
+    const nodeOf = (crate: { readonly id: string }): ReturnType<typeof nodeById.get> =>
+      nodeById.get(crate.id);
+    const nameOf = (crate: { readonly id: string }): string => nodeOf(crate)?.name ?? '';
+    const externOf = (crate: { readonly id: string }, names: readonly string[]): boolean =>
+      externs.some(
+        (extern) => extern.manifest === nodeOf(crate)?.manifest && names.includes(extern.name),
+      );
+    const wasmOverrides = overridesOfKind(
+      bindingConfig,
+      'wasm-bindgen',
+      wasmCrates.map((c) => ({ name: c.libName, dependsOn: c.dependsOnWasmBindgen })),
+      configProblems,
+      'wasm_bindgen',
+    );
+    const napiOverrides = overridesOfKind(
+      bindingConfig,
+      'napi',
+      crates.map((crate) => ({
+        name: nameOf(crate),
+        dependsOn: externOf(crate, ['napi', 'napi_derive']),
+      })),
+      configProblems,
+      'napi',
+    );
+    const pyo3Overrides = overridesOfKind(
+      bindingConfig,
+      'pyo3',
+      crates.map((crate) => ({ name: nameOf(crate), dependsOn: externOf(crate, ['pyo3']) })),
+      configProblems,
+      'pyo3',
+    );
     // Source directives in comments (12.7), owned by the function that holds each statement.
     return {
-      problems: [],
+      problems: configProblems,
       syntaxErrors,
       processes: rustProcesses(parsedFiles),
       bindings: mergeBindings(
-        wasmBindgenBindings(wasmCrates, parsedFiles),
+        wasmBindgenBindings(
+          wasmCrates.map((c) => ({ ...c, outDir: overrideFor(wasmOverrides, c.libName)?.outDir })),
+          parsedFiles,
+        ),
         napiBindings(
           crates.map((crate): NapiCrate => {
             const node = nodeById.get(crate.id);
@@ -500,6 +539,7 @@ export class RustFrontEnd implements LanguageFrontEnd {
                   (extern.name === 'napi' || extern.name === 'napi_derive'),
               ),
               packageName: readPackageName(input.rootDir, packageDir),
+              configuredPackageName: overrideFor(napiOverrides, nameOf(crate))?.packageName,
             };
           }),
           parsedFiles,
@@ -514,6 +554,7 @@ export class RustFrontEnd implements LanguageFrontEnd {
                 (extern) => extern.manifest === node?.manifest && extern.name === 'pyo3',
               ),
               maturinModule: readMaturinModuleName(input.rootDir, packageDir),
+              pythonModule: overrideFor(pyo3Overrides, nameOf(crate))?.pythonModule,
               index: crate.index,
             };
           }),

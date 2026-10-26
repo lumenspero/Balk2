@@ -10,8 +10,9 @@
  *   or `raw_module = "..."` (relative to the file). Its JS export name is `js_name` or the Rust
  *   name, and the function is the consumer's owner.
  *
- * Only top-level items are read. Functions inside inline modules, `impl` blocks and configured
- * output directories are not yet bound.
+ * A configured `outDir` (`rust.bindings[]`, Phase 15.3) replaces the default output path and makes
+ * the export high confidence. Only top-level items are read; functions inside inline modules and
+ * `impl` blocks are not bound.
  */
 import { posix } from 'path';
 import type { BindingConsumer, BindingExport, FrontEndBindings } from '../../bindings/types.js';
@@ -26,6 +27,8 @@ export interface WasmBindgenCrate {
   readonly libName: string;
   /** True when the crate depends on `wasm_bindgen`, normally or for development. */
   readonly dependsOnWasmBindgen: boolean;
+  /** Repository-relative directory the wasm-pack output is written to, from configuration. */
+  readonly outDir?: string;
 }
 
 const WASM_PATH = 'wasm_bindgen';
@@ -48,11 +51,14 @@ export function wasmBindgenBindings(
         exports.push({
           kind: 'wasm-bindgen',
           side: 'rust',
-          specifier: posix.join(crate.packageDir, 'pkg', `${crate.libName}.js`),
+          specifier:
+            crate.outDir !== undefined
+              ? posix.join(crate.outDir, `${crate.libName}.js`)
+              : posix.join(crate.packageDir, 'pkg', `${crate.libName}.js`),
           name: jsNameOf(attr) ?? item.name,
           symbolId: `${file}:${item.name}`,
           file,
-          confidence: 'medium',
+          confidence: crate.outDir !== undefined ? 'high' : 'medium',
         });
       } else if (item.kind === 'extern_block') {
         const blockAttr = wasmAttr(item.attrs);
