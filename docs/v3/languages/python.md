@@ -92,6 +92,9 @@ strings are values, not types. Only the first argument of `Annotated` is a type.
 - Conditional definitions (`try`/`except` or `if` twins) keep one symbol, and their bases are merged.
 - A name imported in several branches (a `try`/`except ImportError` fallback) counts every branch. A
   call through it goes to each target, at medium confidence, since only one of them runs.
+- A configured protocol entry with a `languages` list applies to Python only when the list names
+  `python`. An entry without one applies to Python wherever the form exists. An entry tagged only for
+  JS/TS or Rust is dropped for Python and reported as a configuration problem.
 
 ## Mechanisms
 
@@ -146,6 +149,41 @@ low confidence.
 link to the resource file they name, with `mechanism: "api"`. A configured loader (`protocols.resources`,
 such as `env.get_template('x.html')`) links with `mechanism: "loader"`. A package or path that is not a
 string literal is a `dynamic-resource-specifier` observation.
+
+## Events
+
+Event calls are read on objects of the library types below, matched by their dotted import name. The
+channel comes from the receiver or from the library, as the last column says.
+
+| Library            | Classes                                                                           | Subscribe    | Unsubscribe       | Emit                  | Channel                                           |
+| ------------------ | --------------------------------------------------------------------------------- | ------------ | ----------------- | --------------------- | ------------------------------------------------- |
+| pyee               | `pyee.EventEmitter`, `pyee.base.EventEmitter`, `pyee.asyncio.AsyncIOEventEmitter` | `on`, `once` | `remove_listener` | `emit`                | the event name passed to the method, per receiver |
+| blinker            | `blinker.signal`                                                                  | `connect`    | `disconnect`      | `send`                | the name the signal was built with, process-wide  |
+| Django             | `django.dispatch.Signal`                                                          | `connect`    | `disconnect`      | `send`, `send_robust` | the variable the signal is bound to, per receiver |
+| threading, asyncio | `threading.Event`, `asyncio.Event`, `asyncio.locks.Event`                         | `wait`       |                   | `set`                 | the variable the event is bound to, per receiver  |
+
+- A channel is scoped by the receiver's binding, so two objects never share a channel. The exception is
+  blinker, whose named signals share one process-wide namespace.
+- A repository class counts as an emitter when a base it names, directly or through its repository
+  MRO, is one of the library classes above.
+- Only receivers that are plain names are read. `self.bus.emit(...)` and a call result are not.
+- An event name the source does not state as a plain literal is an observation, not an edge.
+- Configured event methods (`protocols.events.methods`) are not read for Python. This is deferred; see
+  `docs/v3/deferred.md`.
+
+## PyO3 consumers
+
+`from <module> import name`, where `<module>` is the module a PyO3 `#[pymodule]` crate declares (see
+`rust.md`, Binding crates), produces `calls` edges from the Python file to each function and class the
+module registers, with mechanism `pyo3`. The module name comes from `rust.bindings` `pythonModule`, then
+`[tool.maturin] module-name`, then the `#[pymodule]` name. A name the module does not register produces no
+edge. `import module` followed by `module.name(...)` is not bound yet.
+
+## Process execution
+
+The `subprocess` calls `run`, `call`, `check_call`, `check_output` and `Popen` produce `executes` edges.
+The command is the first positional argument, or the `args` keyword. `os.system` also produces an edge,
+and its command line runs through a shell.
 
 ## Limits
 

@@ -11,6 +11,7 @@ Every entry below was approved by the user in Phase 13 review (2026-10-25). Entr
 - **Subscript write `d[k] = v` is not recorded.** Rare as a shared-state write in the corpora. Reconsider after the Phase 13.3 real-world run shows it matters. _Approved in Phase 13 review, 2026-10-25._
 - **A builtin shadowed by a local is not checked.** Rare. Reconsider with the Python shadowing scenarios if a real repository shows a false edge. _Approved in Phase 13 review, 2026-10-25._
 - **`files()` through a variable is not followed** (`importlib.resources`). The plan's resource forms use a literal anchor. Reconsider with resources in Phase 14. _Approved in Phase 13 review, 2026-10-25._
+- **Configured event methods (`protocols.events.methods`) are not read for Python.** V3 keeps configured method protocols to JS/TS. Python event calls are read from the library catalog instead (pyee, blinker, Django signals, `threading.Event`). Reconsider after V3 if a repository has event methods that the catalog cannot name. _Approved in Phase 15 review, 2026-10-26 (option B)._
 
 ## Rust
 
