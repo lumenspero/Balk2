@@ -160,3 +160,8 @@ Phase 13 is complete when those two items are measured. Everything else in the e
 - **Path ranking.** No code change. The effect is recorded in `docs/v3/connection-map-schema.md`.
 - **Windows determinism.** The `ci.yml` matrix runs the test suite on `windows-latest`, which covers it for
   Phase 15 review. The `perf` workflow remains a non-required check.
+- **Four-repository map check.** Generated maps for a JS/TS-only, a Python-only, a Rust-only and a mixed
+  fixture. The fixed sections (Repository Overview, Packages, File Connections, Symbol Connections, Machine-Readable
+  Graph) appear in all four. `## Language Boundaries` appears only when a binding or process execution exists.
+  The Python fixture has one, from a `[project.scripts]` entry, so its map has the extra section. Accepted in Phase
+  15 review, 2026-10-26. The plan's exit criterion is read with this rule: empty sections are omitted (15.1).
