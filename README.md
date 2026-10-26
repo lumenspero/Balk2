@@ -161,13 +161,13 @@ repos:
 
 Then run `pre-commit install`. To try the hooks without committing, run `pre-commit run balk2 --all-files` or `pre-commit run balk2-check --all-files`.
 
-**Requirements.** The hooks use `language: script`, so they run on the machine's own tools and do not install Node for you. Node 18 or later and npm must be on the PATH. The hooks run the Balk2 package through `npx`.
+**Requirements.** The hooks run the Balk2 package through `npx`, using the Node and npm already on the machine. pre-commit does not install Node for them. Node 18 or later and npm must be on the PATH.
 
 **Behavior.**
 
 - `balk2` regenerates the map. The map records the commit it was generated from and the time, so it changes on most commits. When it changes, the commit stops once. Stage `connection-map.json` and `connection-map.md`, then commit again.
 - `balk2-check` fails when `connection-map.json` does not match the repository. It changes no files, so it suits a guard that must not modify anything, such as a CI step.
-- The hooks run the package version pinned in `scripts/balk2-hook.sh`. Update the pin with the release.
+- The hooks run the package version pinned in `.pre-commit-hooks.yaml`. Update the pin with the release.
 
 ### `balk2 uninstall`
 
