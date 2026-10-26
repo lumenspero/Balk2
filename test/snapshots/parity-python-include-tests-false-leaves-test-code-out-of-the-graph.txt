@@ -1,0 +1,13 @@
+# nodes: files
+util.py
+# nodes: symbols
+util.py:help
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+exports util.py -> util.py:help [high]

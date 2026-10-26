@@ -1,0 +1,19 @@
+# nodes: files
+shape.ts
+square.ts
+# nodes: symbols
+shape.ts:Shape
+square.ts:Square
+square.ts:Square.area
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+exports shape.ts -> shape.ts:Shape [high]
+exports square.ts -> square.ts:Square [high]
+implements square.ts:Square -> shape.ts:Shape [high]
+imports square.ts -> shape.ts [high]

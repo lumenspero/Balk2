@@ -1,0 +1,23 @@
+# nodes: files
+a.py
+app.py
+b.py
+# nodes: symbols
+a.py:run
+app.py:fn
+app.py:go
+b.py:run
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+exports a.py -> a.py:run [high]
+exports app.py -> app.py:fn [high]
+exports app.py -> app.py:go [high]
+exports b.py -> b.py:run [high]
+imports app.py -> a.py [high]
+imports app.py -> b.py [high]

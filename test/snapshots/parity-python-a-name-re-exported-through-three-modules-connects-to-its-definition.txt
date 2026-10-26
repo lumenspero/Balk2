@@ -1,0 +1,22 @@
+# nodes: files
+a.py
+b.py
+c.py
+main.py
+# nodes: symbols
+c.py:helper
+main.py:run
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+calls main.py:run -> c.py:helper [high]
+exports c.py -> c.py:helper [high]
+exports main.py -> main.py:run [high]
+imports a.py -> b.py [high]
+imports b.py -> c.py [high]
+imports main.py -> a.py [high]

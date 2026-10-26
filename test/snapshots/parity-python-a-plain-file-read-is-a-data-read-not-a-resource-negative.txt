@@ -1,0 +1,14 @@
+# nodes: files
+app/__init__.py
+app/loader.py
+# nodes: symbols
+app/loader.py:load
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+exports app/loader.py -> app/loader.py:load [high]

@@ -1,0 +1,25 @@
+# nodes: files
+main.py
+# nodes: symbols
+main.py:a
+main.py:b
+main.py:on_ready
+main.py:publish
+main.py:start
+# nodes: artifacts
+# nodes: eventChannels
+event:main.py:a#ready
+event:main.py:b#ready
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+emits main.py:publish -> event:main.py:a#ready [high]
+exports main.py -> main.py:a [high]
+exports main.py -> main.py:b [high]
+exports main.py -> main.py:on_ready [high]
+exports main.py -> main.py:publish [high]
+exports main.py -> main.py:start [high]
+subscribes main.py:on_ready -> event:main.py:b#ready [high]

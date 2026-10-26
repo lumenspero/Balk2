@@ -1,0 +1,21 @@
+# nodes: files
+a.py
+b.py
+main.py
+# nodes: symbols
+a.py:parse
+b.py:parse
+main.py:run
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+calls main.py:run -> a.py:parse [high]
+exports a.py -> a.py:parse [high]
+exports b.py -> b.py:parse [high]
+exports main.py -> main.py:run [high]
+imports main.py -> a.py [high]

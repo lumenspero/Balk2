@@ -1,0 +1,24 @@
+# nodes: files
+Cargo.toml
+src/lib.rs
+# nodes: symbols
+src/lib.rs:STORE
+src/lib.rs:State
+src/lib.rs:bump
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+state:src/lib.rs:STORE#count
+# nodes: unresolved
+# relationships
+exports src/lib.rs -> src/lib.rs:STORE [high]
+exports src/lib.rs -> src/lib.rs:State [high]
+exports src/lib.rs -> src/lib.rs:bump [high]
+packageRoot package:cargo:.#lib:demo -> src/lib.rs [high]
+readsState src/lib.rs:bump -> state:src/lib.rs:STORE#count [high]
+references src/lib.rs:STORE -> src/lib.rs:State [high]
+references src/lib.rs:bump -> src/lib.rs:STORE [high]
+writesState src/lib.rs:bump -> state:src/lib.rs:STORE#count [high]

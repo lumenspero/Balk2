@@ -1,0 +1,22 @@
+# nodes: files
+Cargo.toml
+src/lib.rs
+# nodes: symbols
+src/lib.rs:go
+src/lib.rs:other
+src/lib.rs:users
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+registry:routes#/users
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+exports src/lib.rs -> src/lib.rs:go [high]
+exports src/lib.rs -> src/lib.rs:other [high]
+exports src/lib.rs -> src/lib.rs:users [high]
+packageRoot package:cargo:.#lib:app -> src/lib.rs [high]
+registers registry:routes#/users -> src/lib.rs:users [high]
+routesTo src/lib.rs:go -> registry:routes#/users [high]

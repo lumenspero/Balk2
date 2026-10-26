@@ -1,0 +1,28 @@
+# nodes: files
+Cargo.toml
+src/a.rs
+src/b.rs
+src/lib.rs
+# nodes: symbols
+src/a.rs:make
+src/b.rs:make
+src/lib.rs:run
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+unresolved:ambiguous-star-import:src/lib.rs:8:5
+# relationships
+calls src/lib.rs -> unresolved:ambiguous-star-import:src/lib.rs:8:5 [low]
+declaresModule src/lib.rs -> src/a.rs [high]
+declaresModule src/lib.rs -> src/b.rs [high]
+exports src/a.rs -> src/a.rs:make [high]
+exports src/b.rs -> src/b.rs:make [high]
+exports src/lib.rs -> src/lib.rs:run [high]
+imports src/lib.rs -> src/a.rs [high]
+imports src/lib.rs -> src/b.rs [high]
+packageRoot package:cargo:.#lib:demo -> src/lib.rs [high]
+references src/lib.rs -> unresolved:ambiguous-star-import:src/lib.rs:8:5 [low]

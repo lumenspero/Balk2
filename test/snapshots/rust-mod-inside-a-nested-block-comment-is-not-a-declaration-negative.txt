@@ -1,0 +1,17 @@
+# nodes: files
+Cargo.toml
+src/ghost.rs
+src/lib.rs
+# nodes: symbols
+src/ghost.rs:ghost
+src/lib.rs:run
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+exports src/lib.rs -> src/lib.rs:run [high]
+packageRoot package:cargo:.#lib:demo -> src/lib.rs [high]

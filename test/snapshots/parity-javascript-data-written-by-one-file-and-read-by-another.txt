@@ -1,0 +1,19 @@
+# nodes: files
+read.ts
+write.ts
+# nodes: symbols
+read.ts:load
+write.ts:save
+# nodes: artifacts
+data/out.json
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+consumes read.ts -> data/out.json [high]
+exports read.ts -> read.ts:load [high]
+exports write.ts -> write.ts:save [high]
+generates write.ts -> data/out.json [high]

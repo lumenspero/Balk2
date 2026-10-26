@@ -1,0 +1,13 @@
+# nodes: files
+broken.py
+# nodes: symbols
+broken.py:ok
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+exports broken.py -> broken.py:ok [high]

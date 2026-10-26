@@ -1,0 +1,15 @@
+# nodes: files
+shadow.py
+# nodes: symbols
+shadow.py:helper
+shadow.py:run
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+exports shadow.py -> shadow.py:helper [high]
+exports shadow.py -> shadow.py:run [high]

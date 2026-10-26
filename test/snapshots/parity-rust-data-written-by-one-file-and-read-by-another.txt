@@ -1,0 +1,24 @@
+# nodes: files
+Cargo.toml
+src/lib.rs
+src/read.rs
+src/write.rs
+# nodes: symbols
+src/read.rs:load
+src/write.rs:save
+# nodes: artifacts
+data/out.json
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+consumes src/read.rs -> data/out.json [high]
+declaresModule src/lib.rs -> src/read.rs [high]
+declaresModule src/lib.rs -> src/write.rs [high]
+exports src/read.rs -> src/read.rs:load [high]
+exports src/write.rs -> src/write.rs:save [high]
+generates src/write.rs -> data/out.json [high]
+packageRoot package:cargo:.#lib:demo -> src/lib.rs [high]

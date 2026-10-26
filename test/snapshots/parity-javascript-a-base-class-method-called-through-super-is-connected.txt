@@ -1,0 +1,21 @@
+# nodes: files
+base.ts
+child.ts
+# nodes: symbols
+base.ts:Base
+base.ts:Base.save
+child.ts:Child
+child.ts:Child.save
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+calls child.ts:Child.save -> base.ts:Base.save [high]
+exports base.ts -> base.ts:Base [high]
+exports child.ts -> child.ts:Child [high]
+extends child.ts:Child -> base.ts:Base [high]
+imports child.ts -> base.ts [high]

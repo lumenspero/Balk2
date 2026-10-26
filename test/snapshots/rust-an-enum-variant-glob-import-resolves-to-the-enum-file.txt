@@ -1,0 +1,25 @@
+# nodes: files
+Cargo.toml
+src/draw.rs
+src/lib.rs
+src/shape.rs
+# nodes: symbols
+src/draw.rs:run
+src/shape.rs:Mode
+src/shape.rs:Mode.Fast
+src/shape.rs:Mode.Slow
+src/shape.rs:fast
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+calls src/draw.rs:run -> src/shape.rs:fast [high]
+declaresModule src/lib.rs -> src/draw.rs [high]
+declaresModule src/lib.rs -> src/shape.rs [high]
+imports src/draw.rs -> src/shape.rs [high]
+packageRoot package:cargo:.#lib:demo -> src/lib.rs [high]
+references src/draw.rs:run -> src/shape.rs:Mode [high]

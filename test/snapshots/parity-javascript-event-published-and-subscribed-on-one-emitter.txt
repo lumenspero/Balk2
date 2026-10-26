@@ -1,0 +1,29 @@
+# nodes: files
+main.ts
+# nodes: symbols
+main.ts:Bus
+main.ts:Bus.emit
+main.ts:Bus.on
+main.ts:bus
+main.ts:onReady
+main.ts:publish
+main.ts:start
+# nodes: artifacts
+# nodes: eventChannels
+event:main.ts:bus#ready
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+calls main.ts -> main.ts:Bus [high]
+calls main.ts:publish -> main.ts:Bus.emit [high]
+calls main.ts:start -> main.ts:Bus.on [high]
+emits main.ts:publish -> event:main.ts:bus#ready [high]
+exports main.ts -> main.ts:Bus [high]
+exports main.ts -> main.ts:bus [high]
+exports main.ts -> main.ts:onReady [high]
+exports main.ts -> main.ts:publish [high]
+exports main.ts -> main.ts:start [high]
+subscribes main.ts:onReady -> event:main.ts:bus#ready [high]

@@ -1,0 +1,21 @@
+# nodes: files
+loader.py
+plugins/alpha.py
+# nodes: symbols
+loader.py:load_fixed
+loader.py:load_named
+plugins/alpha.py:run
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+unresolved:dynamic-module-specifier:loader.py:9:12
+# relationships
+exports loader.py -> loader.py:load_fixed [high]
+exports loader.py -> loader.py:load_named [high]
+exports plugins/alpha.py -> plugins/alpha.py:run [high]
+imports loader.py:load_fixed -> plugins/alpha.py [high]
+imports loader.py:load_named -> unresolved:dynamic-module-specifier:loader.py:9:12 [low]

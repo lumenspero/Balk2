@@ -1,0 +1,23 @@
+# nodes: files
+Cargo.toml
+src/lib.rs
+src/main_mod.rs
+src/model.rs
+# nodes: symbols
+src/main_mod.rs:f
+src/model.rs:User
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+declaresModule src/lib.rs -> src/main_mod.rs [high]
+declaresModule src/lib.rs -> src/model.rs [high]
+exports src/main_mod.rs -> src/main_mod.rs:f [high]
+exports src/model.rs -> src/model.rs:User [high]
+imports src/main_mod.rs -> src/model.rs [high]
+packageRoot package:cargo:.#lib:demo -> src/lib.rs [high]
+references src/main_mod.rs:f -> src/model.rs:User [high]

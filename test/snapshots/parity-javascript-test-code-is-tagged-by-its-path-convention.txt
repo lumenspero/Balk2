@@ -1,0 +1,18 @@
+# nodes: files
+util.test.ts
+util.ts
+# nodes: symbols
+util.test.ts:check
+util.ts:help
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+calls util.test.ts:check -> util.ts:help [high]
+exports util.test.ts -> util.test.ts:check [high]
+exports util.ts -> util.ts:help [high]
+imports util.test.ts -> util.ts [high]

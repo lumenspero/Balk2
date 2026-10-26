@@ -1,0 +1,20 @@
+# nodes: files
+Cargo.toml
+src/image.rs
+src/lib.rs
+# nodes: symbols
+src/image.rs:Image
+src/lib.rs:make
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+declaresModule src/lib.rs -> src/image.rs [high]
+exports src/image.rs -> src/image.rs:Image [high]
+exports src/lib.rs -> src/lib.rs:make [high]
+packageRoot package:cargo:.#lib:demo -> src/lib.rs [high]
+references src/lib.rs:make -> src/image.rs:Image [high]

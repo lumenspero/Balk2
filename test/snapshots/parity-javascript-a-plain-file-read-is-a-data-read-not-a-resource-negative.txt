@@ -1,0 +1,13 @@
+# nodes: files
+app/loader.ts
+# nodes: symbols
+app/loader.ts:load
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+exports app/loader.ts -> app/loader.ts:load [high]

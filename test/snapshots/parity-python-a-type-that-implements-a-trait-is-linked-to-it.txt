@@ -1,0 +1,18 @@
+# nodes: files
+iface.py
+impl.py
+# nodes: symbols
+iface.py:Shape
+impl.py:Square
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+exports iface.py -> iface.py:Shape [high]
+exports impl.py -> impl.py:Square [high]
+implements impl.py:Square -> iface.py:Shape [high]
+imports impl.py -> iface.py [high]

@@ -1,0 +1,18 @@
+# nodes: files
+app.py
+lib/helpers/util.py
+# nodes: symbols
+app.py:main
+lib/helpers/util.py:help
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+calls app.py:main -> lib/helpers/util.py:help [high]
+exports app.py -> app.py:main [high]
+exports lib/helpers/util.py -> lib/helpers/util.py:help [high]
+imports app.py -> lib/helpers/util.py [high]

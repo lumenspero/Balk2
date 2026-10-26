@@ -1,0 +1,30 @@
+# nodes: files
+app.py
+base.py
+mid.py
+# nodes: symbols
+app.py:App
+app.py:App.go
+base.py:Base
+base.py:Base.run
+mid.py:Mid
+mid.py:Mid.run
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+calls app.py:App.go -> mid.py:Mid.run [high]
+calls mid.py:Mid.run -> base.py:Base.run [high]
+exports app.py -> app.py:App [high]
+exports base.py -> base.py:Base [high]
+exports mid.py -> mid.py:Mid [high]
+extends app.py:App -> mid.py:Mid [high]
+extends mid.py:Mid -> base.py:Base [high]
+imports app.py -> mid.py [high]
+imports mid.py -> base.py [high]
+references app.py -> mid.py:Mid [high]
+references mid.py -> base.py:Base [high]

@@ -1,0 +1,17 @@
+# nodes: files
+Cargo.toml
+src/lib.rs
+# nodes: symbols
+src/lib.rs:open
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+unresolved:dynamic-module-specifier:src/lib.rs:2:22
+# relationships
+exports src/lib.rs -> src/lib.rs:open [high]
+imports src/lib.rs:open -> unresolved:dynamic-module-specifier:src/lib.rs:2:22 [low]
+packageRoot package:cargo:.#lib:demo -> src/lib.rs [high]

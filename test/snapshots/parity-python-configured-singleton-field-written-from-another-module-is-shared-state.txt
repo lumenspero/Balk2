@@ -1,0 +1,23 @@
+# nodes: files
+main.py
+store.py
+# nodes: symbols
+main.py:bump
+store.py:Store
+store.py:store
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+state:store.py:store#count
+# nodes: unresolved
+# relationships
+calls store.py -> store.py:Store [high]
+exports main.py -> main.py:bump [high]
+exports store.py -> store.py:Store [high]
+exports store.py -> store.py:store [high]
+imports main.py -> store.py [high]
+readsState main.py:bump -> state:store.py:store#count [high]
+writesState main.py:bump -> state:store.py:store#count [high]

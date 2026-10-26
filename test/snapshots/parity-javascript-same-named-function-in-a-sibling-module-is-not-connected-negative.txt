@@ -1,0 +1,21 @@
+# nodes: files
+a.ts
+b.ts
+main.ts
+# nodes: symbols
+a.ts:parse
+b.ts:parse
+main.ts:run
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+calls main.ts:run -> a.ts:parse [high]
+exports a.ts -> a.ts:parse [high]
+exports b.ts -> b.ts:parse [high]
+exports main.ts -> main.ts:run [high]
+imports main.ts -> a.ts [high]

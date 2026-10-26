@@ -1,0 +1,19 @@
+# nodes: files
+Cargo.toml
+src/imp.rs
+src/lib.rs
+src/win.rs
+# nodes: symbols
+src/imp.rs:open
+src/win.rs:open
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+declaresModule src/lib.rs -> src/imp.rs [high]
+declaresModule src/lib.rs -> src/win.rs [high]
+packageRoot package:cargo:.#lib:demo -> src/lib.rs [high]

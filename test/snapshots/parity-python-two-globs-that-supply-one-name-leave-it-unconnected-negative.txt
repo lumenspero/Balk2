@@ -1,0 +1,21 @@
+# nodes: files
+a.py
+b.py
+main.py
+# nodes: symbols
+a.py:make
+b.py:make
+main.py:run
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+exports a.py -> a.py:make [high]
+exports b.py -> b.py:make [high]
+exports main.py -> main.py:run [high]
+imports main.py -> a.py [high]
+imports main.py -> b.py [high]

@@ -1,0 +1,22 @@
+# nodes: files
+base.py
+child.py
+# nodes: symbols
+base.py:Base
+base.py:Base.save
+child.py:Child
+child.py:Child.save
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+calls child.py:Child.save -> base.py:Base.save [high]
+exports base.py -> base.py:Base [high]
+exports child.py -> child.py:Child [high]
+extends child.py:Child -> base.py:Base [high]
+imports child.py -> base.py [high]
+references child.py -> base.py:Base [high]

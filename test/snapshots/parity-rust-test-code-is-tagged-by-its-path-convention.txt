@@ -1,0 +1,19 @@
+# nodes: files
+Cargo.toml
+src/lib.rs
+tests/test.rs
+# nodes: symbols
+src/lib.rs:help
+tests/test.rs:works
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+dependsOn package:cargo:.#test:test -> package:cargo:.#lib:demo [high]
+exports src/lib.rs -> src/lib.rs:help [high]
+packageRoot package:cargo:.#lib:demo -> src/lib.rs [high]
+packageRoot package:cargo:.#test:test -> tests/test.rs [high]

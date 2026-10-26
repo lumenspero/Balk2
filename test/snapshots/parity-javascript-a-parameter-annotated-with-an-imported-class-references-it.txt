@@ -1,0 +1,18 @@
+# nodes: files
+main.ts
+model.ts
+# nodes: symbols
+main.ts:f
+model.ts:User
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+exports main.ts -> main.ts:f [high]
+exports model.ts -> model.ts:User [high]
+imports main.ts -> model.ts [high]
+references main.ts:f -> model.ts:User [high]

@@ -1,0 +1,22 @@
+# nodes: files
+main.ts
+# nodes: symbols
+main.ts:User
+main.ts:load
+main.ts:register
+main.ts:registry
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+registry:main.ts:registry#user
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+exports main.ts -> main.ts:User [high]
+exports main.ts -> main.ts:load [high]
+exports main.ts -> main.ts:register [high]
+exports main.ts -> main.ts:registry [high]
+registers registry:main.ts:registry#user -> main.ts:User [high]
+resolves main.ts:load -> registry:main.ts:registry#user [high]

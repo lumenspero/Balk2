@@ -1,0 +1,20 @@
+# nodes: files
+Cargo.toml
+src/lib.rs
+src/user.rs
+# nodes: symbols
+src/lib.rs:kinds!
+src/user.rs:make
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+unresolved:macro-generated-item:src/user.rs:1:1
+# relationships
+calls src/lib.rs -> src/lib.rs:kinds! [high]
+declaresModule src/lib.rs -> src/user.rs [high]
+packageRoot package:cargo:.#lib:demo -> src/lib.rs [high]
+references src/user.rs -> unresolved:macro-generated-item:src/user.rs:1:1 [low]

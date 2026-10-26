@@ -1,0 +1,16 @@
+# nodes: files
+app/__init__.py
+app/loader.py
+# nodes: symbols
+app/loader.py:load
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+resource:app/templates/card.html
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+exports app/loader.py -> app/loader.py:load [high]
+usesResource app/loader.py:load -> resource:app/templates/card.html [high]

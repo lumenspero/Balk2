@@ -1,0 +1,18 @@
+# nodes: files
+app.py
+names.py
+# nodes: symbols
+app.py:run
+names.py:label
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+calls app.py:run -> names.py:label [high]
+exports app.py -> app.py:run [high]
+exports names.py -> names.py:label [high]
+imports app.py -> names.py [high]

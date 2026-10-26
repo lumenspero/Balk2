@@ -1,0 +1,19 @@
+# nodes: files
+read.py
+write.py
+# nodes: symbols
+read.py:load
+write.py:save
+# nodes: artifacts
+data/out.json
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+consumes read.py -> data/out.json [high]
+exports read.py -> read.py:load [high]
+exports write.py -> write.py:save [high]
+generates write.py -> data/out.json [high]

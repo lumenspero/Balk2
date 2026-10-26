@@ -1,0 +1,22 @@
+# nodes: files
+Cargo.toml
+src/lib.rs
+src/manager.rs
+src/manager/webview.rs
+# nodes: symbols
+src/manager.rs:make
+src/manager/webview.rs:Manager
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+declaresModule src/lib.rs -> src/manager.rs [high]
+declaresModule src/manager.rs -> src/manager/webview.rs [high]
+exports src/manager.rs -> src/manager.rs:make [high]
+exports src/manager/webview.rs -> src/manager/webview.rs:Manager [high]
+packageRoot package:cargo:.#lib:demo -> src/lib.rs [high]
+references src/manager.rs:make -> src/manager/webview.rs:Manager [high]

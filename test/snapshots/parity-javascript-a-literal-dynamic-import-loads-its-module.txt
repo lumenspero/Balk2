@@ -1,0 +1,18 @@
+# nodes: files
+main.ts
+util.ts
+# nodes: symbols
+main.ts:load
+main.ts:m
+util.ts:help
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+exports main.ts -> main.ts:load [high]
+exports util.ts -> util.ts:help [high]
+imports main.ts:load -> util.ts [high]

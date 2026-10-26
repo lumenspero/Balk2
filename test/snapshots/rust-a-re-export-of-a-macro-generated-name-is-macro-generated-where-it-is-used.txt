@@ -1,0 +1,25 @@
+# nodes: files
+Cargo.toml
+src/errors/mod.rs
+src/errors/types.rs
+src/lib.rs
+# nodes: symbols
+src/errors/types.rs:kinds!
+src/lib.rs:make
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+unresolved:macro-generated-item:src/errors/mod.rs:3:1
+unresolved:macro-generated-item:src/lib.rs:3:1
+# relationships
+calls src/errors/types.rs -> src/errors/types.rs:kinds! [high]
+declaresModule src/errors/mod.rs -> src/errors/types.rs [high]
+declaresModule src/lib.rs -> src/errors/mod.rs [high]
+exports src/lib.rs -> src/lib.rs:make [high]
+imports src/errors/mod.rs -> unresolved:macro-generated-item:src/errors/mod.rs:3:1 [low]
+packageRoot package:cargo:.#lib:demo -> src/lib.rs [high]
+references src/lib.rs -> unresolved:macro-generated-item:src/lib.rs:3:1 [low]

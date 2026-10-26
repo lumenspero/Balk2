@@ -1,0 +1,16 @@
+# nodes: files
+main.py
+# nodes: symbols
+main.py:setup
+main.py:worker
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+exports main.py -> main.py:setup [high]
+exports main.py -> main.py:worker [high]
+passesCallback main.py:setup -> main.py:worker [high]

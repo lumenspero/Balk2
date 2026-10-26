@@ -1,0 +1,23 @@
+# nodes: files
+Cargo.toml
+crates/app/Cargo.toml
+crates/app/src/lib.rs
+crates/derive/Cargo.toml
+crates/derive/src/lib.rs
+# nodes: symbols
+crates/app/src/lib.rs:handler
+crates/derive/src/lib.rs:route
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+dependsOn package:cargo:crates/app#lib:app -> package:cargo:crates/derive#proc-macro:my_derive [high]
+exports crates/app/src/lib.rs -> crates/app/src/lib.rs:handler [high]
+exports crates/derive/src/lib.rs -> crates/derive/src/lib.rs:route [high]
+packageRoot package:cargo:crates/app#lib:app -> crates/app/src/lib.rs [high]
+packageRoot package:cargo:crates/derive#proc-macro:my_derive -> crates/derive/src/lib.rs [high]
+references crates/app/src/lib.rs:handler -> crates/derive/src/lib.rs:route [high]

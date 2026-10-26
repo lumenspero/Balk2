@@ -1,0 +1,27 @@
+# nodes: files
+app.ts
+# nodes: symbols
+app.ts:Users
+app.ts:Users.list
+app.ts:go
+app.ts:navigate
+app.ts:other
+app.ts:route
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+registry:routes#/users
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+calls app.ts:Users.list -> app.ts:route [high]
+calls app.ts:go -> app.ts:navigate [high]
+calls app.ts:other -> app.ts:navigate [high]
+exports app.ts -> app.ts:Users [high]
+exports app.ts -> app.ts:go [high]
+exports app.ts -> app.ts:navigate [high]
+exports app.ts -> app.ts:other [high]
+registers registry:routes#/users -> app.ts:Users.list [high]
+routesTo app.ts:go -> registry:routes#/users [high]

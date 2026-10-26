@@ -1,0 +1,17 @@
+# nodes: files
+state.py
+# nodes: symbols
+state.py:bump
+state.py:counter
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+state:state.py:counter
+# nodes: unresolved
+# relationships
+exports state.py -> state.py:bump [high]
+exports state.py -> state.py:counter [high]
+writesState state.py:bump -> state:state.py:counter [high]

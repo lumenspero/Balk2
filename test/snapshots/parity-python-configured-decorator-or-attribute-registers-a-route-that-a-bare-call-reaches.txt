@@ -1,0 +1,22 @@
+# nodes: files
+m.py
+# nodes: symbols
+m.py:app
+m.py:go
+m.py:other
+m.py:users
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+registry:routes#/users
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+exports m.py -> m.py:app [high]
+exports m.py -> m.py:go [high]
+exports m.py -> m.py:other [high]
+exports m.py -> m.py:users [high]
+registers registry:routes#/users -> m.py:users [high]
+routesTo m.py:go -> registry:routes#/users [high]

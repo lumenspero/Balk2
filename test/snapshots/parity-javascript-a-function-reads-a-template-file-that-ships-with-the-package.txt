@@ -1,0 +1,20 @@
+# nodes: files
+app/loader.ts
+app/render.ts
+# nodes: symbols
+app/loader.ts:load
+app/render.ts:renderTemplate
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+resource:app/templates/card.html
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+calls app/loader.ts:load -> app/render.ts:renderTemplate [high]
+exports app/loader.ts -> app/loader.ts:load [high]
+exports app/render.ts -> app/render.ts:renderTemplate [high]
+imports app/loader.ts -> app/render.ts [high]
+usesResource app/loader.ts:load -> resource:app/templates/card.html [high]

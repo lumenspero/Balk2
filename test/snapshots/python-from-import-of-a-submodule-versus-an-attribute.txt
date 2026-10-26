@@ -1,0 +1,19 @@
+# nodes: files
+app.py
+pkg/__init__.py
+pkg/util.py
+# nodes: symbols
+pkg/__init__.py:value
+pkg/util.py:helper
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+exports pkg/__init__.py -> pkg/__init__.py:value [high]
+exports pkg/util.py -> pkg/util.py:helper [high]
+imports app.py -> pkg/__init__.py [high]
+imports app.py -> pkg/util.py [high]

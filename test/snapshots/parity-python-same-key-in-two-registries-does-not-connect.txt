@@ -1,0 +1,23 @@
+# nodes: files
+main.py
+# nodes: symbols
+main.py:User
+main.py:a
+main.py:b
+main.py:find
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+registry:main.py:a#user
+registry:main.py:b#user
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+exports main.py -> main.py:User [high]
+exports main.py -> main.py:a [high]
+exports main.py -> main.py:b [high]
+exports main.py -> main.py:find [high]
+registers registry:main.py:a#user -> main.py:User [high]
+resolves main.py:find -> registry:main.py:b#user [high]

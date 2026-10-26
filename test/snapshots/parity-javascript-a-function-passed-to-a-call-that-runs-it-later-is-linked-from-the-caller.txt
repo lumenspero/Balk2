@@ -1,0 +1,21 @@
+# nodes: files
+app.ts
+bus.ts
+# nodes: symbols
+app.ts:ready
+app.ts:setup
+bus.ts:onReady
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+calls app.ts:setup -> bus.ts:onReady [high]
+exports app.ts -> app.ts:ready [high]
+exports app.ts -> app.ts:setup [high]
+exports bus.ts -> bus.ts:onReady [high]
+imports app.ts -> bus.ts [high]
+passesCallback app.ts:setup -> app.ts:ready [high]

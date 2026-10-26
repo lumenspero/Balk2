@@ -1,0 +1,17 @@
+# nodes: files
+Cargo.toml
+src/lib.rs
+# nodes: symbols
+src/lib.rs:broken
+src/lib.rs:ok
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+exports src/lib.rs -> src/lib.rs:broken [high]
+exports src/lib.rs -> src/lib.rs:ok [high]
+packageRoot package:cargo:.#lib:demo -> src/lib.rs [high]

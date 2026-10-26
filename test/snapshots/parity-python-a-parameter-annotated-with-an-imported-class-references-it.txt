@@ -1,0 +1,18 @@
+# nodes: files
+main.py
+model.py
+# nodes: symbols
+main.py:f
+model.py:User
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+exports main.py -> main.py:f [high]
+exports model.py -> model.py:User [high]
+imports main.py -> model.py [high]
+references main.py -> model.py:User [high]

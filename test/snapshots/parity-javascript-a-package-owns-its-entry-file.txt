@@ -1,0 +1,15 @@
+# nodes: files
+package.json
+src/index.ts
+# nodes: symbols
+src/index.ts:x
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+exports src/index.ts -> src/index.ts:x [high]
+packageRoot package:npm:. -> src/index.ts [high]

@@ -1,0 +1,23 @@
+# nodes: files
+codec.py
+fast.py
+slow.py
+# nodes: symbols
+codec.py:run
+fast.py:dump
+slow.py:dump
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+calls codec.py:run -> fast.py:dump [medium]
+calls codec.py:run -> slow.py:dump [medium]
+exports codec.py -> codec.py:run [high]
+exports fast.py -> fast.py:dump [high]
+exports slow.py -> slow.py:dump [high]
+imports codec.py -> fast.py [high]
+imports codec.py -> slow.py [high]

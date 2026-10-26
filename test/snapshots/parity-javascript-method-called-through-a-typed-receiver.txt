@@ -1,0 +1,21 @@
+# nodes: files
+main.ts
+user.ts
+# nodes: symbols
+main.ts:run
+main.ts:user
+user.ts:User
+user.ts:User.save
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+calls main.ts:run -> user.ts:User [high]
+calls main.ts:run -> user.ts:User.save [high]
+exports main.ts -> main.ts:run [high]
+exports user.ts -> user.ts:User [high]
+imports main.ts -> user.ts [high]

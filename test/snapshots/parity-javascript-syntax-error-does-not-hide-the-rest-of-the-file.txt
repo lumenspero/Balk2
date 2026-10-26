@@ -1,0 +1,14 @@
+# nodes: files
+broken.ts
+# nodes: symbols
+broken.ts:broken
+broken.ts:ok
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+exports broken.ts -> broken.ts:ok [high]

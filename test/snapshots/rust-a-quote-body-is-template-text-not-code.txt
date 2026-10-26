@@ -1,0 +1,18 @@
+# nodes: files
+Cargo.toml
+src/lib.rs
+src/shapes.rs
+# nodes: symbols
+src/lib.rs:gen
+src/shapes.rs:Circle
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+declaresModule src/lib.rs -> src/shapes.rs [high]
+exports src/lib.rs -> src/lib.rs:gen [high]
+packageRoot package:cargo:.#proc-macro:gen -> src/lib.rs [high]

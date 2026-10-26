@@ -1,0 +1,22 @@
+# nodes: files
+app.py
+util.py
+# nodes: symbols
+app.py:case
+app.py:match
+app.py:run
+util.py:helper
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+calls app.py -> util.py:helper [high]
+exports app.py -> app.py:case [high]
+exports app.py -> app.py:match [high]
+exports app.py -> app.py:run [high]
+exports util.py -> util.py:helper [high]
+imports app.py -> util.py [high]

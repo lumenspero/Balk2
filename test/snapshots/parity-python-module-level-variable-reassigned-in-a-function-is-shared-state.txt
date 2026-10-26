@@ -1,0 +1,18 @@
+# nodes: files
+store.py
+# nodes: symbols
+store.py:bump
+store.py:count
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+state:store.py:count
+# nodes: unresolved
+# relationships
+exports store.py -> store.py:bump [high]
+exports store.py -> store.py:count [high]
+readsState store.py:bump -> state:store.py:count [high]
+writesState store.py:bump -> state:store.py:count [high]

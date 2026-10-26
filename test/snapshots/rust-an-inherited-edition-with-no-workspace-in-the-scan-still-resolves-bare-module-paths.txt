@@ -1,0 +1,21 @@
+# nodes: files
+Cargo.toml
+src/ipc/authority.rs
+src/ipc/mod.rs
+src/lib.rs
+# nodes: symbols
+src/ipc/authority.rs:Scope
+src/lib.rs:run
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+declaresModule src/ipc/mod.rs -> src/ipc/authority.rs [high]
+declaresModule src/lib.rs -> src/ipc/mod.rs [high]
+exports src/lib.rs -> src/lib.rs:run [high]
+imports src/ipc/mod.rs -> src/ipc/authority.rs [high]
+packageRoot package:cargo:.#lib:demo -> src/lib.rs [high]

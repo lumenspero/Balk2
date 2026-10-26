@@ -1,0 +1,17 @@
+# nodes: files
+Cargo.toml
+build.rs
+src/lib.rs
+# nodes: symbols
+build.rs:main
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+dependsOn package:cargo:.#lib:demo -> package:cargo:.#build-script:build [medium]
+packageRoot package:cargo:.#build-script:build -> build.rs [high]
+packageRoot package:cargo:.#lib:demo -> src/lib.rs [high]

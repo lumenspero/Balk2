@@ -1,0 +1,21 @@
+# nodes: files
+main.py
+other.py
+user.py
+# nodes: symbols
+main.py:run
+other.py:Other
+other.py:Other.save
+user.py:User
+user.py:User.save
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+exports main.py -> main.py:run [high]
+exports other.py -> other.py:Other [high]
+exports user.py -> user.py:User [high]

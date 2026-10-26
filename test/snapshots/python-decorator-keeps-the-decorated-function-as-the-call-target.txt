@@ -1,0 +1,21 @@
+# nodes: files
+app.py
+deco.py
+# nodes: symbols
+app.py:run
+app.py:task
+deco.py:wrap
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+calls app.py:run -> app.py:task [medium]
+calls app.py:task -> deco.py:wrap [high]
+exports app.py -> app.py:run [high]
+exports app.py -> app.py:task [high]
+exports deco.py -> deco.py:wrap [high]
+imports app.py -> deco.py [high]

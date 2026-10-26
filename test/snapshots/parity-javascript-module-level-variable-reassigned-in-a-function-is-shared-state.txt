@@ -1,0 +1,18 @@
+# nodes: files
+store.ts
+# nodes: symbols
+store.ts:bump
+store.ts:count
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+state:store.ts:count
+# nodes: unresolved
+# relationships
+exports store.ts -> store.ts:bump [high]
+exports store.ts -> store.ts:count [high]
+readsState store.ts:bump -> state:store.ts:count [high]
+writesState store.ts:bump -> state:store.ts:count [high]

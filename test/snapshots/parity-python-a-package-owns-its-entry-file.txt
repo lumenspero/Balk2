@@ -1,0 +1,15 @@
+# nodes: files
+pyproject.toml
+src/app/__init__.py
+# nodes: symbols
+src/app/__init__.py:x
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+exports src/app/__init__.py -> src/app/__init__.py:x [high]
+packageRoot package:python:. -> src/app/__init__.py [high]

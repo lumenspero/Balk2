@@ -1,0 +1,27 @@
+# nodes: files
+Cargo.toml
+crates/app/Cargo.toml
+crates/app/src/lib.rs
+crates/sample/Cargo.toml
+crates/sample/src/lib.rs
+crates/sample/src/models.rs
+# nodes: symbols
+crates/app/src/lib.rs:take
+crates/sample/src/models.rs:PingRequest
+# nodes: artifacts
+# nodes: eventChannels
+# nodes: registryKeys
+# nodes: metadataKeys
+# nodes: resources
+# nodes: statePaths
+# nodes: unresolved
+# relationships
+declaresModule crates/sample/src/lib.rs -> crates/sample/src/models.rs [high]
+dependsOn package:cargo:crates/app#lib:app -> package:cargo:crates/sample#lib:sample [high]
+exports crates/app/src/lib.rs -> crates/app/src/lib.rs:take [high]
+exports crates/sample/src/models.rs -> crates/sample/src/models.rs:PingRequest [high]
+imports crates/app/src/lib.rs -> crates/sample/src/models.rs [high]
+imports crates/sample/src/lib.rs -> crates/sample/src/models.rs [high]
+packageRoot package:cargo:crates/app#lib:app -> crates/app/src/lib.rs [high]
+packageRoot package:cargo:crates/sample#lib:sample -> crates/sample/src/lib.rs [high]
+references crates/app/src/lib.rs:take -> crates/sample/src/models.rs:PingRequest [high]
