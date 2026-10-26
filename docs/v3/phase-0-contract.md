@@ -1,12 +1,23 @@
 # Balk2 V3 Phase 0 Contract
 
-Status: **Decided.** D1–D9 are settled, and the pending-marker gating rule is approved. Phase 1 starts once the Phase 0 tests are green on the user's machine.
+Status: **Decided.** D1–D9 are settled, and the pending-marker gating rule is approved. This document now records the V3 release. The section "Status at 3.0.0" describes the current state. Sections marked _Historical_ describe the state when they were written and are kept as a record.
 
 ## Product Outcome
 
 JavaScript/TypeScript, Python and Rust are equally supported languages. The same graph contract, mechanism families, accuracy budgets and release gates apply to each. The authoritative per-mechanism status is `docs/v3/language-parity.md`.
 
+## Status at 3.0.0
+
+- **Decisions.** D1–D8 were confirmed by the user and D9 was approved. D3 is in effect: the connection map is `version: 3` and the configuration `version` accepts `2` or `3`. The package is `3.0.0`, reached through the `3.0.0-rc.1` release candidate.
+- **Languages.** JS/TS, Python and Rust are all analyzed. The per-mechanism status is in `docs/v3/language-parity.md`.
+- **Package representation.** One `package` node kind covers npm, Python and Cargo (D4).
+- **Approvals for 3.0.0.** The Rust `libloading` Partial cell (row 16) and the deferred Python `lib` item are approved.
+- **CI.** `ci`, `determinism` (digests and compare), `pre-commit` and the three oracles run on Node 18, 20 and 22. `ci`, `determinism` and `pre-commit` run on `ubuntu-latest` and `windows-latest`. The oracles run on `ubuntu-latest`. The `perf` workflow runs on both operating systems and is non-blocking.
+- **Performance budgets.** Budgets are kept per platform in `test/perf-budgets.json`, at 1.5× the slowest sample measured across CI runs. See the Performance section below.
+
 ## Current Package Snapshot
+
+_Historical: observed at commit `35ba930` (package `@lumenspero/balk2` 2.0.1)._
 
 Observed at commit `35ba930` (package `@lumenspero/balk2` 2.0.1):
 
@@ -152,14 +163,14 @@ The plan said Python and Rust expectations would be failing tests at the end of 
 
 Applied to every language and every mechanism family.
 
-| Measure                                                           | Budget                                                                                                                                           |
-| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Expected high-confidence edge recall                              | 100% of declared edges                                                                                                                           |
-| Declared false positives                                          | 0                                                                                                                                                |
-| Declared observations                                             | 100% produced with the declared reason                                                                                                           |
-| Determinism                                                       | Byte-identical JSON and Markdown across repeated runs, on Linux and Windows                                                                      |
-| Synthetic repository, 1,000 files, about 150k lines, per language | Scan completes within a runtime budget, recorded in the CI report on the CI runner. The budget is set as 1.5× the first measured run, then held. |
-| Repository with `target/`, `.venv` or `node_modules`              | Scan time within 10% of the same repository without those directories                                                                            |
+| Measure                                                           | Budget                                                                                                                                                                                                                                                                      |
+| ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Expected high-confidence edge recall                              | 100% of declared edges                                                                                                                                                                                                                                                      |
+| Declared false positives                                          | 0                                                                                                                                                                                                                                                                           |
+| Declared observations                                             | 100% produced with the declared reason                                                                                                                                                                                                                                      |
+| Determinism                                                       | Byte-identical JSON and Markdown across repeated runs, on Linux and Windows                                                                                                                                                                                                 |
+| Synthetic repository, 1,000 files, about 150k lines, per language | Scan completes within a runtime budget, recorded in the CI report on the CI runner. The budget is set per platform at 1.5× the slowest measured run across CI runs, and held in `test/perf-budgets.json`. The `perf` workflow is non-blocking until its numbers are stable. |
+| Repository with `target/`, `.venv` or `node_modules`              | Scan time within 10% of the same repository without those directories                                                                                                                                                                                                       |
 
 ### Python performance baseline
 
@@ -169,7 +180,7 @@ Measured with `BALK2_PERF=1 npx vitest run src/analyzer/python-perf.test.ts` (`s
 | ------------------------------ | ----- | ------- | --------- | ------ | ------------- | ------------- |
 | First run, Windows dev machine | 1,000 | 133,000 | 12,445 ms | 36,000 | 56,000        | 18,670 ms     |
 
-This local run sets the provisional budget. The contract records the budget from the CI runner, so the CI figure replaces this one when it is available. The generated repository has 133,000 lines against the target of about 150,000; the budget applies to the generated size shown here.
+_Historical: superseded._ This local run set the first provisional budget. The budgets now live in `test/perf-budgets.json`, set from CI runs. The generated repository has 133,000 lines against the target of about 150,000; the budget applies to the generated size shown here.
 
 ## Change Control
 
@@ -178,6 +189,8 @@ This local run sets the provisional budget. The contract records the budget from
 - The graph schema is versioned. `docs/v3/connection-map-schema.md` is the source of truth for field names.
 
 ## Phase 1 Entry Criteria
+
+_Historical: these were the criteria for starting Phase 1._
 
 - This contract is accepted, including D1–D6 and D9.
 - `docs/v3/language-parity.md`, `docs/v3/connection-map-schema.md` and the corpora are committed.

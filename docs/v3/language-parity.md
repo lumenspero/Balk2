@@ -58,7 +58,7 @@ One cell is Partial at release:
 
 - **Row 16, Rust.** `libloading` paths are observation-only. A literal path is recorded as an observation, not a source-level dependency in the way an import is. Documented in `languages/rust.md` (Native libraries).
 
-The release notes need an explicit approval for this cell. **Approval: pending the user's decision. Not yet given.**
+The release notes need an explicit approval for this cell. **Approval: given by the user for 3.0.0.**
 
 ## Limits in cells marked Supported
 

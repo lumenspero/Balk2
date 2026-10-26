@@ -43,7 +43,7 @@
 ### Known limits
 
 - Items not covered by V3 are listed in `docs/v3/deferred.md`, with the reason and the phase that might reconsider each.
-- Partial cells in the V3 column, and the limits behind them, are listed in `docs/v3/language-parity.md`. The Rust `libloading` cell (row 16) is Partial. Approval for it is pending.
+- Partial cells in the V3 column, and the limits behind them, are listed in `docs/v3/language-parity.md`. The Rust `libloading` cell (row 16) is Partial. The user approved it for 3.0.0.
 
 ### Upgrading
 

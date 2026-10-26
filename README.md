@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/molly-2.png" alt="Balk2 — Repository Connection Map for AI Agents" width="100%">
+  <img src="assets/molly-3.png" alt="Balk2 — Repository Connection Map for AI Agents" width="100%">
 </p>
 
 # Balk2 — Repository Connection Map
@@ -48,7 +48,7 @@ See [Supported languages](#supported-languages) for what each language recognize
   - One-command pre-commit Git hook setup (`npx balk2 install`).
   - Automatically records Git commit hash metadata (`git rev-parse --short HEAD`).
 - **Focused Queries** (`balk2 query`): relationships around one file or node, filtered by family, confidence and node kind, with bounded traversal.
-- **CI Diagnostics** (`--fail-on`): fail a `generate` or `check` run on syntax errors, ignored configuration, or selected unresolved references.
+- **CI Diagnostics** (`--fail-on`): fail a `generate` or `check` run on any diagnostic kind you select, such as syntax errors, ignored configuration, or unresolved references.
 
 ---
 
@@ -202,24 +202,32 @@ npx @lumenspero/balk2 query --focus scripts/collect.py --depth 2 --traverse code
 npx @lumenspero/balk2 query --family events --json
 ```
 
-| Option                                | Meaning                                                                                                                      |
-| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `--focus <file or node>`              | Limit output to the neighborhood of a file path or node id                                                                   |
-| `--depth <n>`                         | Hops from the focus to follow (default `1`)                                                                                  |
-| `--traverse <list>`                   | Families followed outward from the focus (default `code`). Other families are listed for each node reached, but not expanded |
-| `--max-degree <n>`, `--no-max-degree` | Nodes with more than `n` relationships are listed but not expanded (default `50`)                                            |
-| `--family <list>`                     | Keep only these families: `code`, `events`, `data`, `registry`, `metadata`, `resources`, `state`                             |
-| `--min-confidence <level>`            | `high`, `medium` or `low` (default `medium`)                                                                                 |
-| `--node-kind <list>`                  | Keep relationships whose two ends are these node kinds                                                                       |
-| `--limit <n>`, `--no-limit`           | Most relationships to print (default `200`)                                                                                  |
-| `--json`                              | Print JSON instead of text lines                                                                                             |
-| `-o, --output <path>`                 | Where `connection-map.json` was written                                                                                      |
+| Option                                | Meaning                                                                                                                                                                                            |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--focus <file or node>`              | Limit output to the neighborhood of a file path or node id                                                                                                                                         |
+| `--depth <n>`                         | Hops from the focus to follow (default `1`)                                                                                                                                                        |
+| `--traverse <list>`                   | Families followed outward from the focus (default `code`). Other families are listed for each node reached, but not expanded                                                                       |
+| `--max-degree <n>`, `--no-max-degree` | Nodes with more than `n` relationships are listed but not expanded (default `50`)                                                                                                                  |
+| `--family <list>`                     | Keep only these families: `code`, `events`, `data`, `registry`, `metadata`, `resources`, `state`                                                                                                   |
+| `--min-confidence <level>`            | `high`, `medium` or `low` (default `medium`)                                                                                                                                                       |
+| `--node-kind <list>`                  | Keep relationships whose two ends are these node kinds: `file`, `symbol`, `artifact`, `event-channel`, `unresolved-reference`, `registry-key`, `state-path`, `metadata-key`, `resource`, `package` |
+| `--language <list>`                   | Keep relationships whose endpoints are in these languages: `javascript`, `typescript`, `python`, `rust`. Language-neutral nodes are not excluded                                                   |
+| `--limit <n>`, `--no-limit`           | Most relationships to print (default `200`)                                                                                                                                                        |
+| `--json`                              | Print JSON instead of text lines                                                                                                                                                                   |
+| `-o, --output <path>`                 | Where `connection-map.json` was written                                                                                                                                                            |
 
 Exit codes: `0` on success, `1` when the map is missing or the focus matches nothing, `2` for bad arguments.
 
 ### Failing CI on diagnostics (`--fail-on`)
 
-`generate` and `check` report three kinds of diagnostic: `syntax` (a source file did not parse), `config` (an entry in `.balk2.json` was ignored), and unresolved references, named by reason, such as `ambiguous-global` or `dynamic-event-name`. Pass `--fail-on` with the kinds that should fail the run:
+`generate` and `check` report these kinds of diagnostic:
+
+- `syntax`: a source file did not parse.
+- `config`: an entry in `.balk2.json` was ignored.
+- `manifest`, `unreachable-module`, `module-conflict` and `shadowed-module`: a package manifest or module could not be used as declared.
+- One kind per unresolved reference, named by its reason: `ambiguous-global`, `dynamic-event-name`, `unknown-event-receiver`, `dynamic-registry-key`, `unknown-registry-receiver`, `ambiguous-registry`, `dynamic-state-path`, `dynamic-module-specifier`, `unresolved-callback`, `unresolved-metadata-key`, `dynamic-resource-specifier`, `unresolved-module-path`, `macro-generated-item`, `ambiguous-star-import`, `dynamic-include-path`, `unresolved-binding` and `dynamic-command`.
+
+Pass `--fail-on` with the kinds that should fail the run:
 
 ```bash
 npx @lumenspero/balk2 generate --fail-on syntax,config,ambiguous-global
@@ -239,10 +247,10 @@ Balk2 works without a configuration file. To change what it scans or where it wr
 }
 ```
 
-Every key is optional. The available keys are:
+Every key is optional. The keys most projects use are:
 
 - **`include`**: glob patterns for the files to scan, such as `["src/**", "scripts/**"]`. When omitted, every file is considered.
-- **`exclude`**: glob patterns for files to skip, applied after `include`, such as `["**/*.generated.ts"]`. Balk2 always skips `node_modules`, `dist`, `build`, `coverage`, `.git`, `.github`, `.idea`, `.vscode`, and the default `connection-map` files.
+- **`exclude`**: glob patterns for files to skip, applied after `include`, such as `["**/*.generated.ts"]`. Balk2 always skips `node_modules`, `dist`, `build`, `coverage`, `.git`, `.github`, `.idea`, `.vscode`, and the default `connection-map` files. It also skips generated directories: `__pycache__`, `.pytest_cache`, `.mypy_cache`, `.ruff_cache`, `.tox`, `.nox` and `*.egg-info`; a `target` directory beside a `Cargo.toml`; and a `.venv` or `venv` directory that contains `pyvenv.cfg`.
 - **`output`**: where `generate` writes `connection-map.json` and `connection-map.md`. Use an existing directory to write both files inside it, or a path ending in `.json` or `.md`. Any other value falls back to the repository root.
 - **`data.lineage`**: explicit links that Balk2 cannot infer from the code, such as a script that writes a data file which another file reads. Each entry names a `producer` and its `output`, or a `consumer` and its `input`. Both paths must exist in the repository, or Balk2 reports a `config` diagnostic. Add entries only for links your repository actually has.
 
