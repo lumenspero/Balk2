@@ -77,7 +77,9 @@ describePackage('packed package contract', () => {
 
   afterAll(() => {
     if (tarballPath && fs.existsSync(tarballPath)) fs.rmSync(tarballPath);
-    if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
+    // Windows can hold a file open for a moment after a child process exits; retry instead of failing the suite.
+    if (tempDir)
+      fs.rmSync(tempDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 });
   });
 
   it('loads the documented root API from an ESM consumer', async () => {
@@ -309,5 +311,5 @@ console.log(kind, ecosystem, symbol.length, evidence, packageNode, analyzers.len
         ]);
       }
     }
-  });
+  }, 180_000);
 });
