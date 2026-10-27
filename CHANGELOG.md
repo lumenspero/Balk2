@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.0.1
+
+### Fixed
+
+- A path that climbs out of the repository and still names a file through the file's own directory, such as `../package.json` from `src/`, now resolves to that file. Before, the connection map recorded the raw `../` path.
+
 ## 3.0.0
 
 ### Breaking changes

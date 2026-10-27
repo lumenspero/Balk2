@@ -175,7 +175,10 @@ export function resolveBarePath(
   if (existing.length === 1) return existing[0];
   if (existing.length > 1) return candidates[0];
   const atRoot = nodePath.posix.normalize(path);
-  return atRoot === '..' || atRoot.startsWith('../') ? undefined : atRoot;
+  // A path that climbs out of the root can still name a file through the file directory, such as
+  // `../package.json` from `src/`. Use that candidate instead of the raw path.
+  if (atRoot === '..' || atRoot.startsWith('../')) return candidates[0];
+  return atRoot;
 }
 
 /** The bases a served URL path is placed from: the public folder, the package root, the repo root. */

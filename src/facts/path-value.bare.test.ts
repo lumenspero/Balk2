@@ -51,4 +51,9 @@ describe('resolveBarePath (Phase 11.4)', () => {
     expect(resolveBarePath('../a.json', bases, none)).toBeUndefined();
     expect(resolveBarePath('/a.json', bases, none)).toBeUndefined();
   });
+
+  it('resolves a path that climbs out of the root through the file directory when that stays inside', () => {
+    const bases = defaultBareBases('javascript', { file: 'src' });
+    expect(resolveBarePath('../package.json', bases, none)).toBe('package.json');
+  });
 });
